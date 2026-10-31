@@ -1,0 +1,14 @@
+{
+  "name": "world-powers",
+  "version": "1.0.0",
+  "description": "Striphe's World Powers — a multiplayer nation-building game you host yourself",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
