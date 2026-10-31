@@ -35,12 +35,20 @@ Use **HTTPS** when it's on the internet so passwords are encrypted in transit. (
 
 ## Admin page
 
-Go to **/admin** (or click **Admin** in the top bar of the game while signed in as an admin). It has:
+The admin page lives at a **secret address** (like `/hq-3f9a…`) that is created the first time the server starts. Only admin accounts can open it — everyone else gets "Not found", even with the link.
+
+- **Easiest way in:** sign in to the game with your admin account and click **Admin** in the top bar. Only admins see that button.
+- The address is also printed in the server log at startup, and `node server.js admin-link` prints it.
+- To change it (if you think someone learned it), use **Game settings → Private admin link → Change secret link**.
+
+The first account to sign up becomes the admin. Other people can only be made admin from the server command line (`node server.js make-admin email`). There is no button for it on the website.
+
+What's inside:
 
 - **Dashboard** — server health (saving, storage volume, memory, errors), player counts, who's online, and anything that needs attention.
-- **Players** — search everyone; click a player to edit any number in their nation, reset cooldowns, reset their nation, set a new password, ban/unban, make admin, or delete the account.
-- **Cheat watch** — the server checks every save for impossible jumps (cash, troops, XP, tech), skipped timers and out-of-range stats, and lists accounts that share a network (possible duplicates).
-- **Game settings** — speed, income and XP multipliers, new-player protection, turn war on/off, open/close sign-ups, a banner message, chat announcements, clear chat, wipe the world (auto-backup first), and download a full backup.
+- **Players** — search everyone; click a player to edit any number in their nation, reset cooldowns, reset their nation, set a new password, ban/unban, or delete the account.
+- **Cheat watch** — flags bots clicking faster than a person can, accounts that share a network (possible duplicates), and aid sent between them.
+- **Game settings** — speed, income and XP multipliers, new-player protection, turn war on/off, open/close sign-ups, a banner message, chat announcements, clear chat, wipe the world (auto-backup first), download a full backup, and change the secret admin link.
 - **Activity log** — every admin action and recent server errors.
 
 From the server's command line:
@@ -54,9 +62,15 @@ node server.js remove-admin player@email.com
 
 Run these while the server is stopped (or restart it afterward), since the running server keeps its own copy in memory.
 
+## Security
+
+- **All game rules run on the server.** Browsers only send requests like "collect taxes" or "attack this province"; the server checks cooldowns, costs and rules, rolls the dice, and saves the result. Players cannot give themselves money, skip timers or change their stats.
+- Other players only receive public information about your nation (no treasury, stockpiles, logs or pending decisions).
+- Passwords are hashed with scrypt. Sign-ins are rate-limited per network and per account. Sessions use secure, HTTP-only cookies.
+- Requests from other websites are rejected, pages can't be embedded in other sites, and a content security policy blocks injected scripts.
+- Rapid-fire requests are rate-limited and flagged in Cheat watch.
+- Emails aren't verified (there's no email sending), so someone could make a second account with another address. Cheat watch flags accounts that share a network so you can review them.
+
 ## Good to know
 
-- Passwords are stored hashed (scrypt), never in plain text. Logins and sign-ups are rate-limited.
-- Emails aren't verified (there's no email sending), so "one account per email" stops casual duplicates but someone could still sign up with a second email address. Ban duplicates you spot.
-- The game rules run in each player's browser, and the server only checks that players change their own data. A determined player who knows web development could cheat. Fine for friends; ask if you want the rules moved onto the server.
 - Built for a group of friends up to a few hundred players. The whole world lives in memory and one file.
