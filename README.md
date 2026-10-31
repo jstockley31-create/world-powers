@@ -33,9 +33,15 @@ Any host that runs Node.js works. Some easy options:
 
 Use **HTTPS** when it's on the internet so passwords are encrypted in transit. (Caddy does this automatically: `caddy reverse-proxy --from yourdomain.com --to localhost:3000`.) If you use nginx, turn off buffering for `/api/stream` (`proxy_buffering off;`) so chat stays live.
 
-## Admin tools
+## Admin page
 
-In the game (Rankings page) admins can **Remove nation** (they can start over) or **Ban** (account locked, nation and chat deleted).
+Go to **/admin** (or click **Admin** in the top bar of the game while signed in as an admin). It has:
+
+- **Dashboard** — server health (saving, storage volume, memory, errors), player counts, who's online, and anything that needs attention.
+- **Players** — search everyone; click a player to edit any number in their nation, reset cooldowns, reset their nation, set a new password, ban/unban, make admin, or delete the account.
+- **Cheat watch** — the server checks every save for impossible jumps (cash, troops, XP, tech), skipped timers and out-of-range stats, and lists accounts that share a network (possible duplicates).
+- **Game settings** — speed, income and XP multipliers, new-player protection, turn war on/off, open/close sign-ups, a banner message, chat announcements, clear chat, wipe the world (auto-backup first), and download a full backup.
+- **Activity log** — every admin action and recent server errors.
 
 From the server's command line:
 
