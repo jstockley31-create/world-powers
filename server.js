@@ -33,6 +33,7 @@ fs.mkdirSync(BACKUP_DIR, { recursive: true });
 let S = { users: {}, sessions: {}, docs: {}, meta: {}, flags: [], audit: [], config: { ...WP.DEFCFG } };
 try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { if (e.code !== 'ENOENT') { console.error('Could not read', FILE, e.message); process.exit(1); } }
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
+if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats']) S[k] = S[k] || {};
 for (const k of ['flags', 'audit', 'reports', 'fallen']) S[k] = S[k] || [];
 S.council = S.council || { props: [], active: {} };

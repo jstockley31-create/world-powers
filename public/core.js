@@ -33,7 +33,7 @@ const ACTS = [
   { k: 'campaign', s: 'Campaign', n: 'Election Campaign', i: 'vote', cd: 30, xp: 5, dem: true },
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
-const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 6 };
+const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24 };
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
 const COVERT = {
@@ -191,8 +191,10 @@ function Core(PD, CARDS) {
     if (W.OWN[h].cap) {
       if (!W.cfg.conquest) return 'Capitals cannot be captured.';
       if (Object.keys(n.hexes || {}).length > 1) return `${n.name}'s capital can only be besieged once it has lost all its other provinces.`;
-      const ls = (n.lastStand || 0) + (W.cfg.lastStandH || 6) * HOUR;
-      if (!n.lastStand) return 'Capitals cannot be captured.';
+      // the defender always gets a warning period: from losing its last other province, or from the declaration of war
+      const start = n.ai ? 1 : n.lastStand || (atWar(W, u, v) ? warSince(W, u, v) : 0); // AI nations get no warning period
+      if (!start) return `Declare war on ${n.name} first. Its capital can be besieged ${W.cfg.lastStandH ?? 24} hours after war begins.`;
+      const ls = start + (W.cfg.lastStandH ?? 24) * HOUR;
       if (W.now < ls) return `${n.name} is making its last stand. The capital can be besieged in ${fmtT(ls - W.now)}.`;
     }
     const rt = route(W, u, h); if (!rt) return 'Only provinces bordering your territory (by land or by sea from a coastal province) can be invaded.';
@@ -380,7 +382,7 @@ function Core(PD, CARDS) {
     const isCap = !!(W.OWN[h] && W.OWN[h].cap);
     if (win && isCap) { result.conquered = true; loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
     else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
-      if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH || 6} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH || 6} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
+      if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
     Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) });
     pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: rt === 'sea' ? 1 : 0 });
@@ -408,6 +410,7 @@ function Core(PD, CARDS) {
       if (atWar(W, u, v)) fail('You are already at war.');
       setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
       news(W, u, `${me.name} has declared war on ${them.name}.`); log(them, `${me.name} has declared war on you.`, W); note(W, v, 'war', `${me.name} has declared war on you!`);
+      if (W.cfg.conquest && !them.ai && Object.keys(them.hexes || {}).length === 1) { const hrs = W.cfg.lastStandH ?? 24; log(them, `You hold only your capital. ${me.name} can besiege it in ${hrs} hours — make peace, rally allies, fortify or expand.`, W); note(W, v, 'attack', `LAST STAND: ${me.name} can besiege your capital in ${hrs} hours.`); }
     } else if (kind === 'peace') {
       if (!atWar(W, u, v)) fail('You are not at war with them.');
       setRel(me, v, 'peace', t);
