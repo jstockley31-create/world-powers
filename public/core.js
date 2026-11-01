@@ -553,7 +553,7 @@ function Core(PD, CARDS) {
   function buildNuke(W, u) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (n.nuke) fail('You already have a nuclear deterrent.');
     if ((n.tech || 0) < NUKE.tech) fail(`A nuclear program requires tech level ${NUKE.tech}.`);
-    if (rankOf(n.xp) < NUKE.rank) fail(`A nuclear program requires the rank of ${RANKS[NUKE.rank][1]}.`);
+    if (!W.cfg.nukeTest && rankOf(n.xp) < NUKE.rank) fail(`A nuclear program requires the rank of ${RANKS[NUKE.rank][1]}.`);
     if (n.cash < NUKE.cash || n.res.steel < NUKE.steel || n.res.oil < NUKE.oil || n.res.goods < NUKE.goods) fail(`Requires ${money(NUKE.cash)}, ${NUKE.steel} steel, ${NUKE.oil} oil and ${NUKE.goods} goods.`);
     n.cash -= NUKE.cash; n.res.steel -= NUKE.steel; n.res.oil -= NUKE.oil; n.res.goods -= NUKE.goods; n.nuke = W.now;
     n.aggr = Math.min(100, (n.aggr || 0) + 40); n.stability = clamp(n.stability + 5, 0, 100); rogueCheck(W, u);
@@ -570,7 +570,7 @@ function Core(PD, CARDS) {
     if (W.now - n.nuke < nkT(W).holdH * HOUR) return `Your deterrent must be operational for ${nkT(W).holdH} hours first: ${fmtT(nkT(W).holdH * HOUR - (W.now - n.nuke))} left.`;
     if (left(W, n, 'warhead') && !W.cfg.nukeTest) return `After a launch, a new warhead takes time to approve: ${fmtT(left(W, n, 'warhead'))} left.`;
     if ((n.tech || 0) < WARHEAD.tech) return `A launchable warhead requires tech level ${WARHEAD.tech}.`;
-    if (rankOf(n.xp) < WARHEAD.rank) return `A launchable warhead requires the rank of ${RANKS[WARHEAD.rank][1]}.`;
+    if (!W.cfg.nukeTest && rankOf(n.xp) < WARHEAD.rank) return `A launchable warhead requires the rank of ${RANKS[WARHEAD.rank][1]}.`;
     if (n.cash < WARHEAD.cash || n.res.steel < WARHEAD.steel || n.res.oil < WARHEAD.oil || n.res.goods < WARHEAD.goods) return `Requires ${money(WARHEAD.cash)}, ${num(WARHEAD.steel)} steel, ${num(WARHEAD.oil)} oil and ${num(WARHEAD.goods)} goods.`;
     return null;
   }
