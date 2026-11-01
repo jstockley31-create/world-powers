@@ -71,10 +71,40 @@ module.exports = function makeBots(core, WP, rng) {
     return best;
   }
 
+  // ---------- peace: AI nations judge each offer on how the war is going, answer within minutes, and say why ----------
+  const PEACE_BASE = { warlord: -.35, expansionist: -.15, merchant: .15, isolationist: .25 };
+  function warState(W, u, v) {
+    const n = W.A[u], t = W.A[v], day = W.now - 24 * HOUR;
+    const lost = (t.out || []).filter(e => e.type === 'battle' && e.to === u && e.win && e.t > day).length;
+    const won = (n.out || []).filter(e => e.type === 'battle' && e.to === v && e.win && e.t > day).length;
+    const ratio = core.score(W, v) / Math.max(1, core.score(W, u)), hours = (W.now - core.warSince(W, u, v)) / HOUR;
+    let will = (PEACE_BASE[n.ai.p] ?? 0) + .25 * lost - .2 * won + (ratio > 1.3 ? .35 : ratio > 1 ? .15 : ratio < .6 ? -.25 : 0) + Math.min(.3, hours / 24 * .3)
+      + (n.approval < 35 ? .2 : 0) + (n.stability < 30 ? .15 : 0) + (n.troops < 200 ? .3 : 0);
+    const reason = won > lost ? 'they believe they are winning' : ratio < .8 ? 'they see themselves as the stronger power' : n.ai.p === 'warlord' ? 'their generals want to fight on' : 'they are not ready to make peace yet';
+    return { will, reason, hours };
+  }
+  function handlePeace(W, u) {
+    const n = W.A[u]; n.ai.pa = n.ai.pa || {};
+    for (const v of core.wars(W, u)) {
+      if (!W.A[v]) continue;
+      const since = core.warSince(W, u, v), theirs = core.R(W, v, u).peace || 0, mine = core.R(W, u, v).peace || 0;
+      const st = warState(W, u, v);
+      if (theirs > since) {
+        const prev = n.ai.pa[v];
+        if (prev && prev.offer === theirs && W.now - prev.t < 2 * HOUR) continue; // already answered; think again in 2 hours
+        if (rng() > .35) continue; // a short, human-like pause before answering
+        if (st.will > .25) { tryExec(W, u, { c: 'dip', kind: 'peace', v }); delete n.ai.pa[v]; return true; }
+        if (!prev || prev.offer !== theirs) core.note(W, v, 'diplo', `${n.name} rejected your peace offer — ${st.reason}. They may reconsider if the war turns against them.`);
+        n.ai.pa[v] = { offer: theirs, t: W.now }; W.changed.add(u);
+      } else if (mine <= since && st.hours > 1 && st.will > .5 && rng() < .2) { tryExec(W, u, { c: 'dip', kind: 'peace', v }); return true; } // losing: ask for peace themselves
+    }
+    return false;
+  }
   function turn(W, u, cfg) {
     const n = W.A[u]; if (!n || !n.ai) return;
     const per = PERS[n.ai.p] || PERS.merchant; W.now = Date.now();
     // AI nations act at the pace of a dedicated human player, not every instant, and take a long break each day
+    if (core.wars(W, u).length && handlePeace(W, u)) return;
     const hourUTC = new Date(W.now).getUTCHours(); n.ai.sleep = n.ai.sleep != null ? n.ai.sleep : Math.floor(rng() * 24);
     if ((hourUTC - n.ai.sleep + 24) % 24 < 9) return;
     if (rng() > .085) return;
@@ -85,7 +115,8 @@ module.exports = function makeBots(core, WP, rng) {
     if (n.debt > 0 && n.cash > 4e6) return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(n.debt, n.cash * .4)), repay: true });
     if (n.gov === 'dem' && n.nextElection && n.nextElection - W.now < 24 * HOUR && !core.left(W, n, 'campaign') && (n.campaign || 0) < 12 && n.cash > 4e5) return tryExec(W, u, { c: 'act', k: 'campaign' });
     // 2) basic income
-    for (const k of ['daily', 'tax', 'prod']) if (!core.left(W, n, k)) return tryExec(W, u, { c: 'act', k });
+    if (!core.left(W, n, 'daily')) return tryExec(W, u, { c: 'act', k: 'daily' });
+    for (const k of ['tax', 'prod']) if (!core.left(W, n, k) && (n.cash < 5e5 || rng() < .45)) return tryExec(W, u, { c: 'act', k });
     // 3) keep supplies healthy via the market
     const cons = core.consumption(n), prod = core.production(W, u);
     for (const r of ['food', 'oil', 'steel', 'goods']) { const need = (cons[r] - prod[r]) * 6 + 60; if (n.res[r] < need && n.cash > 4e5) { const q = Math.round(Math.max(60, need - n.res[r] + 60)); if (tryExec(W, u, { c: 'market', r, q, buy: true })) return; } }
@@ -95,10 +126,8 @@ module.exports = function makeBots(core, WP, rng) {
     for (const v of others) {
       if (core.offered(W, v, u, 'trade') && rng() < per.trade * .5) return tryExec(W, u, { c: 'dip', kind: 'trade', v });
       if (core.offered(W, v, u, 'ally') && rng() < per.ally * .4) return tryExec(W, u, { c: 'dip', kind: 'ally', v });
-      if (core.atWar(W, u, v) && (core.R(W, v, u).peace || 0) > core.warSince(W, u, v) && rng() < per.peace) return tryExec(W, u, { c: 'dip', kind: 'peace', v });
     }
     const myWars = core.wars(W, u);
-    for (const v of myWars) if (W.now - core.warSince(W, u, v) > 3 * HOUR && rng() < per.peace * .3) return tryExec(W, u, { c: 'dip', kind: 'peace', v });
     if (rng() < .02 * per.trade && core.traders(W, u).length < 3) { const cand = others.filter(v => !core.atWar(W, u, v) && !core.pact(W, u, v, 'trade') && !core.offered(W, u, v, 'trade')); if (cand.length) return tryExec(W, u, { c: 'dip', kind: 'trade', v: pick(cand) }); }
     // 5) war: only against bordering nations of similar strength, within all the usual protections
     if (cfg.war && cfg.botWar !== 'no') {
