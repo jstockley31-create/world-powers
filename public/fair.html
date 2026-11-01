@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fair Play — World Powers</title><link rel="icon" href="/icon.svg">
+<meta name="description" content="World Powers fair play record: a fingerprint of the exact game code running, when it last changed, the settings in force, and every admin action that affected the game.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#06090d;color:#e6edf3;font:16px/1.65 Inter,system-ui,sans-serif}
+.w{max-width:880px;margin:0 auto;padding:34px 20px 90px}a{color:#d4a64a}
+h1{font-size:34px;margin:26px 0 4px}h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#d4a64a;margin:36px 0 10px}
+.mu{color:#8b98a5}.top{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.22em;font-size:14px;color:#e6edf3;text-decoration:none}
+.top i{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#4c7ca5,#0d2236 70%)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.play{background:#d4a64a;color:#111;padding:9px 18px;border-radius:8px;font-weight:600;text-decoration:none;font-size:14px}
+.card{border:1px solid #1e2833;border-radius:12px;background:#0c1218;padding:16px 18px;margin:10px 0}
+.seal{display:flex;gap:16px;align-items:center;border-color:#245a35;background:#0d1a12}
+.seal .ic{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#12301c;color:#7ee2a0;font-size:26px;flex:none}
+.seal b{font-size:18px}.fp{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;word-break:break-all;color:#c5ced8}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.kv{border:1px solid #1e2833;border-radius:10px;padding:10px 12px;background:#0c1218}.kv span{display:block;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:#8b98a5}.kv b{font-size:15px}
+.kv.chg{border-color:#7a5a10;background:#1d1606}.kv.chg b{color:#ffd98a}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px solid #1e2833;padding:8px 8px;text-align:left;vertical-align:top}th{color:#8b98a5;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+td.t{white-space:nowrap;color:#8b98a5;font-size:13px}.tag{display:inline-block;font-size:12px;border-radius:20px;padding:1px 9px;border:1px solid #2a3542;color:#c5ced8;white-space:nowrap}
+.tag.r{border-color:#6b2a2d;color:#ff9a94}.tag.y{border-color:#7a5a10;color:#ffd98a}.tag.g{border-color:#245a35;color:#7ee2a0}
+details summary{cursor:pointer;color:#8b98a5;font-size:14px}ul{padding-left:20px}li{margin:4px 0}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}.filters button{background:none;border:1px solid #2a3542;border-radius:20px;color:#c5ced8;padding:3px 12px;font:inherit;font-size:13px;cursor:pointer}.filters button.on{border-color:#d4a64a;color:#fff}
+</style></head>
+<body><div class="w">
+<div class="bar"><a class="top" href="/"><i></i>WORLD POWERS</a><a class="play" href="/play">Play now</a></div>
+<h1>Fair play record</h1>
+<p class="mu">Proof of what's running and a public record of every admin action that touched the game. This page updates live and anyone can see it, signed in or not.</p>
+<div id="app"><p class="mu">Loading…</p></div>
+
+<h2>What this page proves — and what it can't</h2>
+<div class="card"><ul>
+<li><b>The code fingerprint</b> is calculated by the server from its own files every time it starts. If a single character of the game rules changes, the fingerprint changes and a new entry appears under “Game updates” with the date and time.</li>
+<li><b>Admin actions</b> that affect the game — editing a nation, changing settings, rolling back the world, starting events, adding or removing AI — are written to this log automatically, with exactly what changed. There is no button to hide or delete entries.</li>
+<li><b>Settings</b> are shown live. Anything different from the standard rules is highlighted.</li>
+<li><b>Every game action is checked by the server.</b> Your browser only asks; the server applies the rules, so players can't edit their own money, troops or timers. Suspicious activity (like actions faster than a person can click) is flagged for review.</li>
+<li><b>Honest limit:</b> this is a transparency record kept by the game's server. The people who run the server could, in principle, change the server itself. The record makes that visible rather than impossible — any code change shows up as a new fingerprint and date.</li>
+</ul></div>
+</div>
+<script>
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when=t=>new Date(t).toLocaleString([], {year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const ago=t=>{const s=(Date.now()-t)/1e3;return s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<172800?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'};
+const LABEL={cd:'Operation timer speed',income:'Income multiplier',xp:'XP multiplier',protectH:'New-nation protection (h)',lastStandH:'Capital protection (h)',war:'Warfare',conquest:'Conquest (nations can fall)',weakRule:'Protect much weaker players',nukeTest:'Nuke test mode',bots:'AI nations',botWar:'AI can attack players',electionH:'Hours between elections',eventsOn:'World events',signups:'Sign-ups'};
+const fmt=(k,v)=>typeof v==='boolean'?(v?'On':'Off'):k==='cd'||k==='income'||k==='xp'?('×'+v):k==='botWar'?({yes:'Yes',retaliate:'Only in retaliation',no:'No'}[v]||v):v;
+const KIND={'Edited nation':'r','Rolled back the world':'r','Wiped the world':'r','Reset nation':'r','Changed game settings':'y','Scheduled':'y','Cancelled scheduled event':'y','Started world event':'g','Ended world event':'g','Added AI nation':'','Removed AI nation':'','Cancelled council vote':'y'};
+let D=null,filter='all';
+function render(){if(!D)return;const changed=Object.keys(D.settings).filter(k=>D.settings[k]!==D.defaults[k]&&k!=='bots');
+ const log=D.log.filter(e=>filter==='all'||(filter==='edits'?/Edited nation|Reset nation/.test(e.action):filter==='world'?/Rolled back|Wiped/.test(e.action):filter==='settings'?/settings|Scheduled|scheduled/.test(e.action):true));
+ const last=D.log[0],edits30=D.log.filter(e=>/Edited nation/.test(e.action)&&Date.now()-e.t<30*864e5).length;
+ document.getElementById('app').innerHTML=`
+ <div class="card seal"><div class="ic">✓</div><div><b>Game code fingerprint ${esc(D.fingerprint.slice(0,12))}</b><div class="mu" style="font-size:14px">Running unchanged since <b style="color:#e6edf3">${when(D.releases[0].t)}</b> (${ago(D.releases[0].t)}). Server last restarted ${ago(D.live)}.</div></div></div>
+ <div class="grid" style="margin-top:8px">
+  <div class="kv"><span>Admin game actions</span><b>${D.logTotal} total</b></div>
+  <div class="kv ${edits30?'chg':''}"><span>Nation edits, last 30 days</span><b>${edits30}</b></div>
+  <div class="kv"><span>Last admin action</span><b>${last?ago(last.t):'None ever'}</b></div>
+  <div class="kv"><span>Nations · players</span><b>${D.world.nations} · ${D.world.players}</b></div>
+ </div>
+ <h2>Settings in force right now</h2>
+ ${changed.length?`<p class="mu" style="margin:0 0 8px">${changed.length} setting${changed.length>1?'s differ':' differs'} from the standard rules (highlighted).</p>`:`<p class="mu" style="margin:0 0 8px">All rules are at their standard values.</p>`}
+ ${D.boost?`<div class="card" style="border-color:#7a5a10;background:#1d1606;margin:0 0 8px">Active boost for everyone: <b>${esc(D.boost.label)}</b> until ${when(D.boost.end)}</div>`:''}
+ <div class="grid">${Object.keys(D.settings).map(k=>`<div class="kv ${changed.includes(k)?'chg':''}"><span>${esc(LABEL[k]||k)}</span><b>${esc(fmt(k,D.settings[k]))}</b>${changed.includes(k)?`<div class="mu" style="font-size:12px">standard: ${esc(fmt(k,D.defaults[k]))}</div>`:''}</div>`).join('')}</div>
+ <h2>Admin action log</h2>
+ <p class="mu" style="margin:0">Everything the administrators did that affected the game, newest first. Moderation (bans, chat cleanup) and private account actions are not listed.</p>
+ <div class="filters">${[['all','All'],['edits','Nation edits'],['world','Rollbacks & wipes'],['settings','Settings & boosts']].map(([k,l])=>`<button data-f="${k}" class="${filter===k?'on':''}">${l}</button>`).join('')}</div>
+ ${log.length?`<div class="card" style="padding:4px 12px;overflow-x:auto"><table><thead><tr><th>When</th><th>Action</th><th>Details</th></tr></thead><tbody>${log.map(e=>`<tr><td class="t">${when(e.t)}</td><td><span class="tag ${KIND[e.action]||''}">${esc(e.action)}</span>${e.target?`<div style="font-size:13px;margin-top:3px">${esc(e.target)}</div>`:''}</td><td style="font-size:13.5px;color:#c5ced8;word-break:break-word">${esc(e.detail||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="card mu">No admin actions of this kind, ever.</div>'}
+ <h2>Game updates</h2>
+ <p class="mu" style="margin:0 0 8px">Each row is a different version of the game code going live. Same fingerprint = identical rules.</p>
+ <div class="card" style="padding:4px 12px"><table><thead><tr><th>Live from</th><th>Fingerprint</th></tr></thead><tbody>${D.releases.map((r,i)=>`<tr><td class="t">${when(r.t)}${i===0?' <span class="tag g">current</span>':''}</td><td class="fp">${esc(r.fp)}</td></tr>`).join('')}</tbody></table></div>
+ <details style="margin-top:10px"><summary>Fingerprints of each game file</summary><div class="card" style="padding:4px 12px;overflow-x:auto"><table><tbody>${D.files.map(f=>`<tr><td style="white-space:nowrap">${esc(f.name)}</td><td class="fp">${esc(f.sha)}</td></tr>`).join('')}</tbody></table></div><p class="mu" style="font-size:13px">SHA-256 of each file. The game fingerprint is the SHA-256 of this list.</p></details>`;}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){filter=b.dataset.f;render()}});
+async function load(){try{D=await (await fetch('/api/fairplay',{cache:'no-store'})).json();render()}catch(e){document.getElementById('app').innerHTML='<p class="mu">Could not load the record. Try refreshing.</p>'}}
+load();setInterval(load,60000);
+</script>
+</body></html>
