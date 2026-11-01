@@ -328,9 +328,9 @@ function councilResolve(W) {
     p.status = ys > ns && ys >= 3 ? 'passed' : 'failed'; p.result = `${ys}–${ns}`; changed = true;
     const label = R.n + (tn ? ' against ' + tn.name : '');
     if (p.status === 'passed') {
-      if (p.type === 'sanction') { tn.aggr = Math.max(tn.aggr || 0, 80); W.changed.add(p.target); }
+      if (p.type === 'sanction') { tn.aggr = Math.max(tn.aggr || 0, 80); core.rogueCheck(W, p.target); W.changed.add(p.target); }
       else if (p.type === 'embargo') { tn.embargo = now + 24 * HOUR; W.changed.add(p.target); }
-      else if (p.type === 'condemn') { tn.approval = Math.max(0, tn.approval - 8); tn.stability = Math.max(0, tn.stability - 5); W.changed.add(p.target); }
+      else if (p.type === 'condemn') { tn.approval = Math.max(0, tn.approval - 10); tn.stability = Math.max(0, tn.stability - 8); tn.aggr = Math.min(100, (tn.aggr || 0) + 20); W.changed.add(p.target); }
       else S.council.active[p.type] = now + 24 * HOUR;
       systemMessage(`World Council resolution PASSED (${p.result}): ${label}.`);
       if (p.target) addNote(p.target, 'council', `The World Council passed a resolution against you: ${R.n}.`);
@@ -347,7 +347,7 @@ function botVotes(W) {
     for (const u of Object.keys(W.A)) {
       if (!BOTS.isBot(u) || p.votes[u] || rng() > .15) continue;
       const me = W.A[u], per = (me.ai || {}).p; let yes = .5;
-      if (p.target) { const t = W.A[p.target]; if (!t) continue; if (p.target === u) yes = 0; else { if (core.atWar(W, u, p.target)) yes = .95; else if (core.pact(W, u, p.target, 'ally')) yes = .05; else if (core.pact(W, u, p.target, 'trade')) yes = .25; yes = Math.max(yes, Math.min(.9, (t.aggr || 0) / 70)); } }
+      if (p.target) { const t = W.A[p.target]; if (!t) continue; if (p.target === u) yes = 0; else { const bad = Math.min(.9, (t.aggr || 0) / 70) + (core.rogue(W, t) ? .3 : 0); if (core.atWar(W, u, p.target)) yes = .95; else if (core.pact(W, u, p.target, 'ally')) yes = Math.min(.05, bad); else { yes = Math.max(.05, bad); if (core.pact(W, u, p.target, 'trade')) yes *= .5; } } }
       else yes = { climate: { isolationist: .8, merchant: .6, warlord: .3, expansionist: .4 }, arms: { isolationist: .8, merchant: .6, warlord: .1, expansionist: .3 }, freetrade: { merchant: .95, expansionist: .6, warlord: .4, isolationist: .3 }, peacekeeping: { isolationist: .85, merchant: .7, warlord: .1, expansionist: .3 } }[p.type][per] || .5;
       p.votes[u] = rng() < yes ? 'y' : 'n';
     }
