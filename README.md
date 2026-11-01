@@ -62,6 +62,12 @@ node server.js remove-admin player@email.com
 
 Run these while the server is stopped (or restart it afterward), since the running server keeps its own copy in memory.
 
+## AI nations
+
+The world starts with **12 computer-controlled nations** so it never feels empty. They're always labeled **AI**, never appear in the online list, and never chat. They play by exactly the same rules as people (same timers, costs and war protections) at the pace of a dedicated player, and each has a personality: Merchant, Expansionist, Warlord or Isolationist.
+
+By default they **retire gradually** as real players join (one fewer AI per 3 players), weakest first. In **Game settings** you can change how many there are, whether they may attack real players (yes / only if attacked first / never) and whether they retire. **Players → AI nations** lets you add or remove individual ones.
+
 ## Security
 
 - **All game rules run on the server.** Browsers only send requests like "collect taxes" or "attack this province"; the server checks cooldowns, costs and rules, rolls the dice, and saves the result. Players cannot give themselves money, skip timers or change their stats.

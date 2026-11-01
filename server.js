@@ -11,6 +11,7 @@ const WP = require('./public/core.js');
 const SCENARIOS = require('./public/scenarios.js');
 const PROV = require('./prov-lite.json');
 const core = WP.Core(PROV, SCENARIOS);
+const makeBots = require('./bots.js');
 
 const PORT = +process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -45,6 +46,7 @@ for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { persist(true); 
 function logErr(msg) { health.errors.unshift({ t: Date.now(), msg: String(msg).slice(0, 600) }); health.errors.length = Math.min(health.errors.length, 100); console.error(msg); }
 process.on('uncaughtException', e => logErr('Crash avoided: ' + (e.stack || e)));
 const rng = () => crypto.randomInt(0, 2 ** 32) / 2 ** 32;
+const BOTS = makeBots(core, WP, rng);
 
 // ---------- passwords ----------
 function hashPw(pw, salt = crypto.randomBytes(16).toString('hex')) { return { salt, hash: crypto.scryptSync(pw, salt, 64).toString('hex') }; }
@@ -136,7 +138,7 @@ const sharesNetwork = (a, b) => { const A = (S.meta[a] || {}).ips || [], B = (S.
 // Your own nation is sent in full. Other nations are sent without private details (treasury, stockpiles, logs, pending decisions).
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 },
+    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD } : e) };
 }
 
@@ -162,14 +164,27 @@ function commit(W) {
   if (W.changed.size) persist();
   if (W.welcome) { systemMessage(W.welcome); broadcast('announce', { text: W.welcome }); }
 }
-// Passive simulation: production, consumption, approval, decisions. Runs every 30 seconds.
-setInterval(() => {
+// Passive simulation: production, consumption, approval, decisions, AI nations. Runs every 30 seconds.
+function worldLoop() {
   try {
     const W = core.world(nationsMap(), S.config); const now = Date.now();
-    for (const u of Object.keys(W.A)) { const active = now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
-    commit(W);
+    for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
+    manageBots(W);
+    for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, S.config); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
+    W.welcome = null; commit(W);
   } catch (e) { logErr('Tick failed: ' + (e.stack || e)); }
-}, 30000).unref();
+}
+setInterval(worldLoop, 30000).unref();
+setTimeout(worldLoop, 1000);
+
+// AI nations: keep the configured number, retiring the weakest as real players join.
+function botTarget(W) { const real = Object.keys(W.A).filter(u => !BOTS.isBot(u)).length; const want = Math.max(0, Math.min(30, +S.config.bots || 0)); return S.config.botRetire ? Math.max(0, want - Math.floor(real / 3)) : want; }
+function removeBot(W, u, why) { const n = W.A[u]; if (!n) return; delete W.A[u]; W.changed.delete(u); for (const v of Object.keys(W.A)) if (W.A[v].rel && W.A[v].rel[u]) { delete W.A[v].rel[u]; W.changed.add(v); } setDoc('nations', u, null); W.OWN = core.computeOwn(W.A); if (why) systemMessage(`${n.name} (AI) has withdrawn from the world${why === 'retire' ? ' to make room for new leaders' : ''}.`); }
+function manageBots(W) {
+  const bots = Object.keys(W.A).filter(BOTS.isBot); const target = botTarget(W);
+  if (bots.length < target) for (let i = 0; i < target - bots.length; i++) BOTS.spawn(W);
+  else if (bots.length > target) { const weakest = bots.sort((a, b) => core.score(W, a) - core.score(W, b))[0]; removeBot(W, weakest, 'retire'); }
+}
 
 // ---------- validation ----------
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
@@ -192,13 +207,14 @@ function overview() {
       nation: n ? { name: n.name, color: n.color, gov: n.gov, xp: n.xp, rank: core.rankOf(n.xp), cash: n.cash, pop: n.pop, troops: n.troops, provinces: core.hexesOf(W, id).length, tech: n.tech, approval: n.approval, stability: n.stability, aggr: n.aggr, created: n.created, score: core.score(W, id) } : null,
       shared: shared.some(s => s.ids.includes(id)) };
   });
+  const bots = Object.entries(nations).filter(([id]) => BOTS.isBot(id)).map(([id, n]) => ({ id, name: n.name, color: n.color, p: (BOTS.PERS[(n.ai || {}).p] || {}).n || '?', rank: core.rankOf(n.xp), provinces: core.hexesOf(W, id).length, troops: n.troops, score: core.score(W, id), wars: core.wars(W, id).map(v => (nations[v] || {}).name) }));
   const volume = process.env.RAILWAY_VOLUME_MOUNT_PATH || null;
   let dataBytes = 0; try { dataBytes = fs.statSync(FILE).size; } catch (e) {}
   return {
     health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, saveError: health.saveError, dataDir: DATA_DIR,
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length },
-    players, flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config
+    players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config
   };
 }
 const NUM_FIELDS = ['cash', 'pop', 'troops', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr'];
@@ -265,6 +281,8 @@ async function adminRoute(p, req, res, me) {
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.war != null) nc.war = !!c.war; if (c.signups != null) nc.signups = !!c.signups;
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 300);
+      if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
+      if (['yes', 'retaliate', 'no'].includes(c.botWar)) nc.botWar = c.botWar; if (c.botRetire != null) nc.botRetire = !!c.botRetire;
       const diff = Object.keys(nc).filter(k => nc[k] !== S.config[k]).map(k => `${k}: ${S.config[k]} → ${nc[k]}`).join('; ');
       S.config = nc; persist(); broadcast('config', nc); audit(me.name, 'Changed game settings', null, diff || 'no changes');
       return send(res, 200, { ok: true, config: nc });
@@ -277,6 +295,16 @@ async function adminRoute(p, req, res, me) {
       for (const k of Object.keys(S.docs)) { const [c, id] = k.split('/'); if (COLS.includes(c)) setDoc(c, id, null); }
       S.flags = []; systemMessage('A new era begins: the world has been reset. Found your nation again!');
       audit(me.name, 'Wiped the world', null, 'Backup saved as ' + path.basename(backup)); return send(res, 200, { ok: true });
+    }
+    case '/api/admin/bot-remove': {
+      const id = String(b.bot || ''); if (!BOTS.isBot(id) || !S.docs['nations/' + id]) return send(res, 404, { error: 'Unknown AI nation.' });
+      const W = core.world(nationsMap(), S.config); const name = W.A[id].name; removeBot(W, id, 'admin'); S.config.bots = Math.max(0, (S.config.bots || 0) - 1); commit(W); broadcast('config', S.config);
+      audit(me.name, 'Removed AI nation', name); return send(res, 200, { ok: true });
+    }
+    case '/api/admin/bot-add': {
+      S.config.bots = Math.min(30, (S.config.bots || 0) + 1); const W = core.world(nationsMap(), S.config); const id = BOTS.spawn(W); W.welcome = null; commit(W); broadcast('config', S.config);
+      if (!id) return send(res, 400, { error: 'No room for another nation on the map.' });
+      audit(me.name, 'Added AI nation', W.A[id].name); return send(res, 200, { ok: true });
     }
     case '/api/admin/rotate-link': {
       S.adminPath = '/hq-' + crypto.randomBytes(12).toString('hex'); persist(); audit(me.name, 'Changed the admin link');
