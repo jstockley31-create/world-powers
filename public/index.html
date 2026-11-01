@@ -214,6 +214,31 @@ textarea{background:var(--bg);border:1px solid var(--bd2);border-radius:6px;padd
 
 .nav.mob{display:none}
 .brand,.brand *{white-space:nowrap}
+
+/* ---- phone: "More" sheet, app install, larger text ---- */
+#more{position:fixed;inset:0;z-index:40;display:none;background:#000a;align-items:flex-end}
+#more.on{display:flex}
+#more .sheet{background:#111922;border-top:1px solid var(--bd2);border-radius:16px 16px 0 0;width:100%;max-height:86vh;overflow-y:auto;padding:10px 14px calc(18px + env(safe-area-inset-bottom));animation:sheetup .2s ease-out}
+@keyframes sheetup{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+#more .grab{width:40px;height:4px;border-radius:2px;background:#ffffff30;margin:2px auto 12px}
+#more .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+#more .tile{background:#16202b;border:1px solid var(--bd2);border-radius:10px;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:7px;color:var(--tx);font-size:12.5px;font-weight:500;position:relative;cursor:pointer}
+#more .tile .ic{width:24px;height:24px}#more .tile.on{border-color:var(--ac);color:var(--ac)}
+#more .tile .bdg{position:absolute;top:6px;right:8px;margin:0}
+#more h4{margin:16px 2px 8px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);font-weight:600}
+#more .row2{display:flex;flex-direction:column;gap:8px}#more .row2 .btn{width:100%;justify-content:center;padding:12px;font-size:14px}
+.dipcard{border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:10px;background:#0f161e}
+.dipcard .top{display:flex;align-items:center;gap:8px;margin-bottom:6px}.dipcard .btn{padding:9px 12px}
+body.bigtext #main,body.bigtext #top,body.bigtext #timers,body.bigtext #dock,body.bigtext #more .sheet{zoom:1.15}
+@media(max-width:820px){
+ .nav.more{display:flex!important}
+ #side .nav{flex:1 1 0;min-width:0}
+ .btn{min-height:38px}.btn.sm{min-height:34px}
+ .gwrap[data-found]{height:50vh!important}
+ #fhex.flash{animation:flash 1.2s ease-out}@keyframes flash{0%{box-shadow:0 0 0 3px var(--ac)}100%{box-shadow:0 0 0 0 transparent}}
+ #toast{left:12px;right:12px;transform:none;max-width:none;text-align:center}
+}
+.nav.more{display:none}
 </style>
 <script src="/vendor/d3.min.js"></script>
 <script src="/core.js"></script>
@@ -222,6 +247,7 @@ textarea{background:var(--bg);border:1px solid var(--bd2);border-radius:6px;padd
 </head><body>
 <svg width="0" height="0" style="position:absolute"><defs>
 <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
 <symbol id="i-ops" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
 <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></symbol>
@@ -287,7 +313,7 @@ textarea{background:var(--bg);border:1px solid var(--bd2);border-radius:6px;padd
  <div id="onlstrip"></div>
  <div class="dockb"><div class="chatcol"><div id="chat"></div><form id="chatin" autocomplete="off"><input id="cin" maxlength="200" placeholder="Message the world…"><button class="btn sm pri">Send</button></form></div><div id="onl"></div></div>
 </section>
-<div id="bellPanel"></div><div id="mod"></div><div id="toast"></div><div id="tip"></div><div id="fx"></div>
+<div id="more"></div><div id="bellPanel"></div><div id="mod"></div><div id="toast"></div><div id="tip"></div><div id="fx"></div>
 <script>
 (function(){
 'use strict';
@@ -427,6 +453,24 @@ const SND=(()=>{let ctx=null,on=false;try{on=localStorage.getItem('wp_sound')===
  return{play:k=>P[k]&&P[k](),get on(){return on},set(v){on=v;try{localStorage.setItem('wp_sound',v?'1':'0')}catch(e){}if(v)P.ok()}}})();
 function confetti(){const fx=$('fx');const cols=['#d4a64a','#3fb950','#4c9aff','#e07a9c','#fff'];for(let i=0;i<70;i++){const d=document.createElement('i');d.className='confetti';d.style.left=Math.random()*100+'vw';d.style.background=cols[i%cols.length];d.style.animationDelay=Math.random()*.5+'s';d.style.animationDuration=1.4+Math.random()*1.2+'s';fx.appendChild(d);setTimeout(()=>d.remove(),3200)}}
 function promo(rank){SND.play('promo');const el=document.createElement('div');el.className='promo';el.innerHTML=`<div><small>PROMOTION</small><b>${esc(rank)}</b><span class="mu">Your province limit and output have grown.</span></div>`;document.body.appendChild(el);confetti();setTimeout(()=>el.remove(),2700)}
+// ================= phone helpers =================
+const MQ=window.matchMedia('(max-width:820px)');const isMob=()=>MQ.matches;
+const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+let installEvt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;if($('more').classList.contains('on'))moreSheet()});
+window.addEventListener('appinstalled',()=>{installEvt=null;toast('World Powers is installed. Open it from your home screen.')});
+let bigText=false;try{bigText=localStorage.getItem('wp_bigtext')==='1'}catch(e){}document.body.classList.toggle('bigtext',bigText);
+async function installApp(){if(installEvt){installEvt.prompt();try{await installEvt.userChoice}catch(e){}installEvt=null;moreSheet();return}
+ if(isIOS())modal(`<header><h2>Install on iPhone</h2><button class="btn sm ghost" data-act="close">Close</button></header><div class="bd"><ol style="margin:0;padding-left:20px;line-height:2">
+ <li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (the square with an arrow, at the bottom of the screen).</li><li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li><li>Open <b>World Powers</b> from your home screen — full screen, no browser bars, and notifications work.</li></ol></div>`);
+ else modal(`<header><h2>Install the app</h2><button class="btn sm ghost" data-act="close">Close</button></header><div class="bd"><ol style="margin:0;padding-left:20px;line-height:2"><li>Tap your browser’s <b>⋮ menu</b> (top right in Chrome).</li><li>Tap <b>Install app</b> or <b>Add to Home screen</b>.</li><li>Open <b>World Powers</b> from your home screen.</li></ol></div>`)}
+function moreSheet(){const el=$('more');const b=k=>sideBadge(k);const mi=WP.me()||{};
+ el.innerHTML=`<div class="sheet"><div class="grab"></div><div class="tiles">${NAV.filter(n=>!MAINMOB.includes(n[0])).map(([k,i,t])=>`<button class="tile ${page===k?'on':''}" data-act="page" data-a="${k}">${I(i)}<span>${t}</span>${b(k)}</button>`).join('')}</div>
+ <h4>Phone options</h4><div class="row2">${isStandalone()?'':`<button class="btn pri" data-act="install">${I('home')} Install as an app — full screen, easier to play</button>`}
+ <button class="btn" data-act="bigtext">${bigText?'Normal text size':'Larger text'}</button><button class="btn" data-act="bell">${I('bell')} Notifications & sound</button>${mi.admin&&mi.adminPath?`<a class="btn" href="${esc(mi.adminPath)}">Admin page</a>`:''}<a class="btn ghost" href="/">Home page</a></div></div>`}
+function toggleMore(on){const el=$('more');on=on==null?!el.classList.contains('on'):on;if(on)moreSheet();el.classList.toggle('on',on)}
+$('more').addEventListener('click',e=>{if(e.target.id==='more')toggleMore(false)});
+MQ.addEventListener('change',()=>{renderSide();if(loaded)render()});
 // ================= server commands =================
 let lastBtn=null;
 async function cmd(body,okMsg,url='/api/cmd'){if(busy)return null;busy=true;const btn=lastBtn;if(btn&&btn.classList.contains('btn'))btn.classList.add('loading');document.body.style.cursor='progress';
@@ -501,8 +545,8 @@ const GL=(()=>{
  return{attach,redraw,flyTo,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
-function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl"><button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
-function pickProv(h){if(!me){if(W.OWN[h])return toast('That province is already claimed.');if(!startOk(h))return toast('Too close to another nation. Choose land at least two provinces away.');const el=$('fn_name');if(el)found_.name=el.value;found_.hex=h;GL.redraw();const fi=$('fhex');if(fi)fi.innerHTML=foundHexTxt();return}
+function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl"><button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
+function pickProv(h){if(!me){if(W.OWN[h])return toast('That province is already claimed.');if(!startOk(h))return toast('Too close to another nation. Choose land at least two provinces away.');const el=$('fn_name');if(el)found_.name=el.value;found_.hex=h;GL.redraw();const fi=$('fhex');if(fi){fi.innerHTML=foundHexTxt();if(isMob()){setTimeout(()=>{fi.scrollIntoView({behavior:'smooth',block:'center'});fi.classList.remove('flash');void fi.offsetWidth;fi.classList.add('flash')},250)}}return}
  selHex=h;GL.redraw();const pi=$('pinfo');if(pi)pi.innerHTML=provInfo();else if(page!=='world'){page='world';render()}}
 // ================= render =================
 // Update the page in place: only text/attributes that actually changed are touched, so nothing flickers,
@@ -537,7 +581,11 @@ const NAV=[['overview','overview','Overview'],['ops','ops','Operations'],['world
 let chatSeen=0;try{chatSeen=+(localStorage.getItem('wp_chatseen')||0)}catch(e){}
 function unread(){let c=0;for(const[u,ch]of Object.entries(CH))if(u!==uid&&!isMutedByMe(u))for(const m of ch.m||[])if(m.t>chatSeen)c++;return c}
 function markChatSeen(){chatSeen=Date.now();try{localStorage.setItem('wp_chatseen',chatSeen)}catch(e){}}
-function renderSide(){const b=k=>{if(!me)return'';if(k==='chat'){const u=unread();return u&&page!=='chat'?`<span class="bdg">${u>9?'9+':u}</span>`:''}if(k==='overview'&&me.cards.length)return`<span class="bdg">${me.cards.length}</span>`;if(k==='ops'){const r=myActs().filter(a=>ready(a.k)).length;if(r)return`<span class="bdg g">${r}</span>`}if(k==='diplo'){const p=others().filter(u=>offered(u,uid,'ally')||offered(u,uid,'trade')||(atWar(uid,u)&&(R(u,uid).peace||0)>warSince(uid,u))).length;if(p)return`<span class="bdg">${p}</span>`}if(k==='mail'&&X().mailUnread)return`<span class="bdg">${X().mailUnread}</span>`;if(k==='council'){const o=((X().council||{}).props||[]).filter(p=>p.status==='open'&&!p.votes[uid]).length;if(o)return`<span class="bdg">${o}</span>`}return''};
+const MAINMOB=['overview','ops','world','chat'];
+function sideBadge(k){if(!me)return'';if(k==='chat'){const u=unread();return u&&page!=='chat'?`<span class="bdg">${u>9?'9+':u}</span>`:''}if(k==='overview'&&me.cards.length)return`<span class="bdg">${me.cards.length}</span>`;if(k==='ops'){const r=myActs().filter(a=>ready(a.k)).length;if(r)return`<span class="bdg g">${r}</span>`}if(k==='diplo'){const p=others().filter(u=>offered(u,uid,'ally')||offered(u,uid,'trade')||(atWar(uid,u)&&(R(u,uid).peace||0)>warSince(uid,u))).length;if(p)return`<span class="bdg">${p}</span>`}if(k==='mail'&&X().mailUnread)return`<span class="bdg">${X().mailUnread}</span>`;if(k==='council'){const o=((X().council||{}).props||[]).filter(p=>p.status==='open'&&!p.votes[uid]).length;if(o)return`<span class="bdg">${o}</span>`}return''}
+function renderSide(){const b=sideBadge;
+ if(isMob()){const extra=NAV.filter(n=>!MAINMOB.includes(n[0])).reduce((a,n)=>a+(+(sideBadge(n[0]).replace(/\D/g,''))||0),0);const inMore=!MAINMOB.includes(page);
+  $('side').innerHTML=NAV.filter(n=>MAINMOB.includes(n[0])).map(n=>navB(n,b)).join('')+`<button class="nav more ${inMore?'on':''}" data-act="more">${I('menu')}<span>${inMore?(NAV.find(n=>n[0]===page)||[0,0,'More'])[2]:'More'}</span>${extra?`<span class="bdg">${extra>9?'9+':extra}</span>`:''}</button>`;document.body.classList.toggle('chatopen',page==='chat');if($('more').classList.contains('on'))moreSheet();return}
  $('side').innerHTML=`<div class="sec">Command</div>`+NAV.slice(0,4).map(n=>navB(n,b)).join('')+`<div class="sec">Affairs of state</div>`+NAV.slice(4,8).map(n=>navB(n,b)).join('')+`<div class="sec">The world</div>`+NAV.slice(8).map(n=>navB(n,b)).join('');document.body.classList.toggle('chatopen',page==='chat')}
 const navB=([k,i,t],b)=>`<button class="nav ${page===k?'on':''} ${k==='chat'?'mob':''}" data-act="page" data-a="${k}">${I(i)}<span>${t}</span>${b(k)}</button>`;
 const panel=(title,body,right='',icon='')=>`<section class="panel"><header><h2>${icon?I(icon):''}${title}</h2><div>${right}</div></header><div class="bd">${body}</div></section>`;
@@ -548,7 +596,7 @@ function renderPage(){if(!loaded)return'<p class="mu">Connecting to the world…
  if(!me)return pFound();if(page==='chat'){markChatSeen();return''}return({overview:pOverview,ops:pOps,world:pWorld,military:pMilitary,economy:pEconomy,gov:pGov,intel:pIntel,diplo:pDiplo,council:pCouncil,mail:pMail,rank:pRank,help:pHelp}[page]||pOverview)()}
 const foundHexTxt=()=>found_.hex!=null?`<div class="st"><span>Starting province</span><b>${esc(pname(found_.hex))}</b><small>${TYPE[P[found_.hex].t].n}${P[found_.hex].co?' · coastal (starts with 2 warships)':''}${P[found_.hex].m?' · mountains':''}${P[found_.hex].r?' · river':''}</small></div>`:`<div class="st" style="border-style:dashed"><span>Starting province</span><b class="ac" style="font-size:14px">Select a province on the globe</b><small>Must be at least two provinces away from any nation</small></div>`;
 function pFound(){const s=found_,used=new Set(Object.values(A).map(n=>n.color));if(!s.color)s.color=COLORS.find(c=>!used.has(c))||COLORS[0];
- return`<h1 class="pg">Found your nation</h1><p class="pgsub">Every nation begins with a single province. Location matters: oil lies in the Middle East, Russia and Texas; farmland across the great plains; mountains and rivers make land easier to defend; coasts give you a navy.</p><div class="cols"><div>${globeSlot('found','min(68vh,640px)')}</div><div>${panel('Charter',`
+ return`<h1 class="pg">Found your nation</h1><p class="pgsub">Every nation begins with a single province. Location matters: oil lies in the Middle East, Russia and Texas; farmland across the great plains; mountains and rivers make land easier to defend; coasts give you a navy.</p>${isMob()?`<div class="motd" style="margin-bottom:12px">${I('pin')}<span><b>Step 1:</b> tap a dark (unclaimed) area on the globe. <b>Step 2:</b> scroll down, name your nation and tap <b>Establish nation</b>.</span></div>`:''}<div class="cols"><div>${globeSlot('found','min(68vh,640px)')}</div><div>${panel('Charter',`
  <div class="field"><label>Nation name</label><input id="fn_name" maxlength="28" value="${esc(s.name)}" placeholder="e.g. Republic of Avalon"></div>
  <div class="field"><label>National color</label><div class="swatches">${COLORS.map(c=>`<button class="${c===s.color?'on':''} ${used.has(c)&&c!==s.color?'used':''}" style="background:${c}" data-act="fcol" data-a="${c}" title="${used.has(c)?'In use by another nation':''}"></button>`).join('')}</div></div>
  <div class="field"><label>Form of government</label><div class="govs">${Object.entries(GOV).map(([k,g])=>`<button class="gov ${k===s.gov?'on':''}" data-act="fgov" data-a="${k}"><b>${g.n}</b><small>${g.d}</small></button>`).join('')}</div></div>
@@ -628,7 +676,7 @@ function dipBtns(u){const b=[];const w=atWar(uid,u);
   if(pact(uid,u,'trade'))b.push(`<button class="btn sm" data-act="dip" data-a="untrade" data-b="${esc(u)}">Cancel trade</button>`);else if(offered(uid,u,'trade'))b.push('<button class="btn sm" disabled>Trade proposed</button>');else b.push(`<button class="btn sm ok" data-act="dip" data-a="trade" data-b="${esc(u)}">${offered(u,uid,'trade')?'Accept trade':'Propose trade'}</button>`)}
  b.push(`<button class="btn sm" data-act="dip" data-a="aid" data-b="${esc(u)}">Send aid</button>`);if(!A[u].ai)b.push(`<button class="btn sm" data-act="dip" data-a="mail" data-b="${esc(u)}">${I('mail')} Message</button>`);return`<div style="display:flex;gap:6px;flex-wrap:wrap">${b.join('')}</div>`}
 function pDiplo(){const os=others().sort((a,b)=>score(b)-score(a));return`<h1 class="pg">Diplomacy</h1><p class="pgsub">Alliances and trade agreements require both parties to agree. War requires only one; peace requires both.</p>
- ${panel('Nations',os.length?`<table><thead><tr><th>Nation</th><th>Leader</th><th>Rank</th><th class="r">Provinces</th><th>Relations</th><th>Actions</th></tr></thead><tbody>${os.map(u=>`<tr><td><span class="dot" style="background:${esc(A[u].color)};display:inline-block;margin-right:8px"></span>${nmHtml(u)}</td><td class="mu">${esc(ruler(u))}</td><td>${esc(rankName(A[u]))}</td><td class="r num">${hexesOf(u).length}</td><td>${relTxt(u)}</td><td>${dipBtns(u)}</td></tr>`).join('')}</tbody></table>`:'<p class="mu" style="margin:0">No other nations yet. Invite others to join.</p>','','dip')}
+ ${panel('Nations',os.length&&isMob()?os.map(u=>`<div class="dipcard"><div class="top"><span class="dot" style="background:${esc(A[u].color)}"></span><b>${nmHtml(u)}</b><span class="mu" style="margin-left:auto;font-size:12px">${esc(rankName(A[u]))} · ${hexesOf(u).length} prov.</span></div><div class="mu" style="font-size:12.5px;margin-bottom:6px">${esc(ruler(u))}</div><div style="margin-bottom:8px">${relTxt(u)}</div>${dipBtns(u)}</div>`).join(''):os.length?`<table><thead><tr><th>Nation</th><th>Leader</th><th>Rank</th><th class="r">Provinces</th><th>Relations</th><th>Actions</th></tr></thead><tbody>${os.map(u=>`<tr><td><span class="dot" style="background:${esc(A[u].color)};display:inline-block;margin-right:8px"></span>${nmHtml(u)}</td><td class="mu">${esc(ruler(u))}</td><td>${esc(rankName(A[u]))}</td><td class="r num">${hexesOf(u).length}</td><td>${relTxt(u)}</td><td>${dipBtns(u)}</td></tr>`).join('')}</tbody></table>`:'<p class="mu" style="margin:0">No other nations yet. Invite others to join.</p>','','dip')}
  ${panel('How it works',`<ul style="margin:0;padding-left:18px;color:#aab5c0;line-height:1.75"><li>Allies commit 10% of their troops to your defense when you are invaded.</li><li>Trade agreements give both sides more revenue, GDP, approval and better market prices.</li><li>Declaring war ends any alliance or trade agreement with that nation.</li><li>Negotiate privately with other leaders through Mail.</li></ul>`)}`}
 // ---------- World Council ----------
 let councilDraft={type:'sanction',target:''};
@@ -708,7 +756,7 @@ let askFn=null;function ask(title,body,label,fn){askFn=fn;modal(`<header><h2>${t
 let toastT;function toast(t){if(!t)return;const el=$('toast');el.textContent=t;el.style.display='block';clearTimeout(toastT);toastT=setTimeout(()=>el.style.display='none',4500)}
 // ================= events =================
 document.addEventListener('click',async e=>{const el=e.target.closest('[data-act]');if(!el)return;lastBtn=el;const a=el.dataset.a,b=el.dataset.b;switch(el.dataset.act){
- case'page':page=a;closeModal();$('bellPanel').classList.remove('on');if(a==='mail'){mailState.list=null}if(a==='economy')budgetDraft=null;render();$('main').scrollTop=0;if(a==='chat')renderChat(true);break;
+ case'page':page=a;closeModal();toggleMore(false);$('bellPanel').classList.remove('on');if(a==='mail'){mailState.list=null}if(a==='economy')budgetDraft=null;render();$('main').scrollTop=0;if(a==='chat')renderChat(true);break;
  case'do':doAct(a,b);break;
  case'decide':decide(a,+b);break;
  case'gov':if(a===me.gov)break;ask(`Change government to ${GOV[a].n}?`,'The transition will reduce stability by 25 and approval by 10.','Change government',()=>cmd({c:'gov',g:a}));break;
@@ -740,7 +788,10 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'mute':{const mute=!isMutedByMe(a);try{const r=await WP.api('POST','/api/mute',{id:a,mute});WP.extra.muted=r.muted;toast(mute?'Muted. You will no longer see their chat messages or receive their mail.':'Unmuted.');closeModal();renderChat(true)}catch(err){toast(err.message)}break}
  case'report':{const who=a,kind=b;modal(`<header><h2>Report ${esc(names[who]||nm(who))}</h2><button class="btn sm ghost" data-act="close">Close</button></header><div class="bd"><p class="mu" style="margin-top:0">Reports go privately to the administrators.</p><div class="field"><label>What happened?</label><textarea id="repText" rows="4" maxlength="300" placeholder="e.g. harassment in chat, offensive name, cheating"></textarea></div><button class="btn pri" data-act="reportgo" data-a="${esc(who)}" data-b="${esc(kind)}">Send report</button></div>`);break}
  case'reportgo':{const sample=(CH[a]&&CH[a].m||[]).slice(0,3).map(m=>m.x).join(' | ');try{await WP.api('POST','/api/report',{id:a,kind:b,reason:$('repText').value,text:b==='chat'?sample:((mailState.list||[]).find(m=>m.id===mailState.sel)||{}).body||''});toast('Thank you — the administrators have been notified.');closeModal()}catch(err){toast(err.message)}break}
- case'bell':toggleBell();break;
+ case'bell':toggleMore(false);toggleBell();break;
+ case'more':toggleMore();break;
+ case'install':toggleMore(false);installApp();break;
+ case'bigtext':bigText=!bigText;document.body.classList.toggle('bigtext',bigText);try{localStorage.setItem('wp_bigtext',bigText?'1':'0')}catch(err){}moreSheet();break;
  case'push':togglePush();break;
  case'sound':SND.set(!SND.on);bellPanel();break;
  case'askyes':{const f=askFn;askFn=null;closeModal();f&&f();break}
