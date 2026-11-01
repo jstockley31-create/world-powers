@@ -64,6 +64,8 @@ const rid = () => Date.now().toString(36) + crypto.randomBytes(4).toString('hex'
 
 // ---------- passwords ----------
 function hashPw(pw, salt = crypto.randomBytes(16).toString('hex')) { return { salt, hash: crypto.scryptSync(pw, salt, 64).toString('hex') }; }
+const tokHash = t => crypto.createHash('sha256').update(t).digest('hex');
+const DUMMY_PW = hashPw('dummy-password-for-timing');
 function checkPw(pw, u) { return crypto.timingSafeEqual(crypto.scryptSync(pw, u.salt, 64), Buffer.from(u.hash, 'hex')); }
 const findByEmail = email => Object.entries(S.users).find(([, u]) => u.email === email);
 
@@ -85,7 +87,7 @@ if (cmd === 'admin-link') { console.log('Admin page:', S.adminPath); process.exi
 
 // ---------- static files ----------
 const STATIC = {};
-function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
+function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), br: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
 STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
@@ -93,6 +95,11 @@ STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
 STATIC['/landing-land.js'] = loadFile('landing-land.js', JS, 'public, max-age=604800');
+STATIC['/prov.js'] = loadFile('prov.js', JS, 'public, max-age=31536000, immutable'); // the URL carries a version number, so browsers keep it until the map changes
+STATIC['/og.jpg'] = loadFile('og.jpg', 'image/jpeg', 'public, max-age=604800');
+STATIC['/robots.txt'] = { type: 'text/plain; charset=utf-8', buf: Buffer.from('User-agent: *\nAllow: /$\nAllow: /faq\nAllow: /terms\nAllow: /privacy\nDisallow: /\n'), cache: 'public, max-age=86400' };
+Object.assign(STATIC['/robots.txt'], { gz: zlib.gzipSync(STATIC['/robots.txt'].buf), br: zlib.brotliCompressSync(STATIC['/robots.txt'].buf), etag: '"robots1"' });
+const NOTFOUND = loadFile('404.html', HTML, 'no-cache');
 STATIC['/manifest.webmanifest'] = loadFile('manifest.webmanifest', 'application/manifest+json', 'no-cache');
 STATIC['/icon.svg'] = loadFile('icon.svg', 'image/svg+xml', 'public, max-age=604800');
 const ADMIN_HTML = { ...loadFile('admin.html', HTML, 'no-store') };
@@ -107,10 +114,12 @@ function serveStatic(req, res, f) {
   if (f.type.startsWith('text/html')) h['Content-Security-Policy'] = CSP;
   if (f === STATIC['/sw.js']) h['Service-Worker-Allowed'] = '/';
   if (req.headers['if-none-match'] === f.etag) { res.writeHead(304, h); return res.end(); }
-  if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { res.writeHead(200, { ...h, 'Content-Encoding': 'gzip' }); return res.end(f.gz); }
+  const ae = req.headers['accept-encoding'] || '';
+  if (/\bbr\b/.test(ae)) { res.writeHead(200, { ...h, 'Content-Encoding': 'br' }); return res.end(f.br); }
+  if (/\bgzip\b/.test(ae)) { res.writeHead(200, { ...h, 'Content-Encoding': 'gzip' }); return res.end(f.gz); }
   res.writeHead(200, h); res.end(f.buf);
 }
-function notFound(req, res) { res.writeHead(404, { ...secHeaders(req), 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Not found'); }
+function notFound(req, res) { const h = { ...secHeaders(req), 'Content-Type': HTML, 'Content-Security-Policy': CSP, 'Cache-Control': 'no-cache' }; if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { res.writeHead(404, { ...h, 'Content-Encoding': 'gzip' }); return res.end(NOTFOUND.gz); } res.writeHead(404, h); res.end(NOTFOUND.buf); }
 
 // ---------- helpers ----------
 function send(res, code, obj, headers = {}) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers }); res.end(JSON.stringify(obj)); }
@@ -130,12 +139,14 @@ const ipOf = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() 
 function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { return new URL(o).host === req.headers.host; } catch (e) { return false; } }
 function auth(req) {
   const t = cookies(req).wp_s; if (!t || !/^[a-f0-9]{64}$/.test(t)) return null;
-  const s = S.sessions[t]; if (!s) return null;
-  if (s.exp < Date.now()) { delete S.sessions[t]; persist(); return null; }
+  const k = tokHash(t); let s = S.sessions[k];
+  if (!s && S.sessions[t]) { s = S.sessions[t]; delete S.sessions[t]; S.sessions[k] = s; persist(); } // upgrade a session created before tokens were hashed
+  if (!s) return null;
+  if (s.exp < Date.now()) { delete S.sessions[k]; persist(); return null; }
   const u = S.users[s.uid]; if (!u || u.banned) return null;
   return { id: s.uid, ...u, token: t };
 }
-function newSession(uid) { for (const [t, s] of Object.entries(S.sessions)) if (s.exp < Date.now()) delete S.sessions[t]; const token = crypto.randomBytes(32).toString('hex'); S.sessions[token] = { uid, exp: Date.now() + SESSION_DAYS * 864e5 }; persist(); return token; }
+function newSession(uid) { for (const [t, s] of Object.entries(S.sessions)) if (s.exp < Date.now()) delete S.sessions[t]; const token = crypto.randomBytes(32).toString('hex'); S.sessions[tokHash(token)] = { uid, exp: Date.now() + SESSION_DAYS * 864e5 }; persist(); return token; }
 const pub = u => ({ id: u.id, name: u.name, email: u.email, admin: !!u.admin, ...(u.admin ? { adminPath: S.adminPath } : {}) });
 function meta(uid) { return S.meta[uid] || (S.meta[uid] = { ips: [], lastSeen: 0 }); }
 const today = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
@@ -298,13 +309,23 @@ function botVotes(W) {
 }
 
 // ---------- passive simulation, events, council, reminders, backups. Runs every 30 seconds. ----------
+// AI nations show in the online list while they are awake (they sleep about 9 hours a day, like people do)
+function botPresence(W) {
+  const now = Date.now(), hour = new Date(now).getUTCHours();
+  for (const [u, n] of Object.entries(W.A)) {
+    if (!BOTS.isBot(u) || !n.ai) continue;
+    const awake = (hour - (n.ai.sleep != null ? n.ai.sleep : 0) + 24) % 24 >= 9;
+    const cur = S.docs['online/' + u];
+    if (awake && (!cur || now - (cur.t || 0) > 150e3)) setDoc('online', u, { t: now, ai: 1 });
+  }
+}
 function worldLoop() {
   try {
     const W = mkWorld(); const now = Date.now();
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, S.config); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
-    botVotes(W); councilResolve(W);
+    botVotes(W); councilResolve(W); botPresence(W);
     W.welcome = null; commit(W);
     // world events
     if (S.event && now >= S.event.end) endEvent();
@@ -357,6 +378,15 @@ function mailSend(me, b) {
 
 // Only real browser push services (Chrome/Android, Firefox, Edge/Windows, Safari/iPhone) — never arbitrary servers
 const PUSH_HOST = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|[a-z0-9-]+\.notify\.windows\.com|web\.push\.apple\.com|[a-z0-9-]+\.push\.apple\.com)\//;
+// remove an account and everything tied to it; other nations forget it too
+function wipeUser(id) {
+  const W = mkWorld(); if (W.A[id]) { delete W.A[id]; for (const [u, n] of Object.entries(W.A)) if (n.rel && n.rel[id]) { delete n.rel[id]; W.changed.add(u); } commit(W); }
+  for (const c of COLS) if (S.docs[c + '/' + id]) setDoc(c, id, null);
+  for (const [t, s] of Object.entries(S.sessions)) if (s.uid === id) delete S.sessions[t];
+  for (const c of clients) if (c.uid === id) { try { c.res.end(); } catch (e) {} }
+  for (const k of Object.keys(S.mail)) S.mail[k] = (S.mail[k] || []).filter(m => m.from !== id && m.to !== id);
+  delete S.users[id]; delete S.meta[id]; delete S.mail[id]; delete S.notes[id]; delete S.push[id]; broadcast('user', { id, name: null }); persist();
+}
 // ---------- admin ----------
 function analytics() {
   const days = []; for (let i = 13; i >= 0; i--) { const d = today(Date.now() - i * 864e5); const s = S.stats[d] || {}; days.push({ d, active: (s.active || []).length, signups: s.signups || 0, cmds: s.cmds || 0, chat: s.chat || 0, mail: s.mail || 0, nations: s.nations || 0 }); }
@@ -370,7 +400,7 @@ function overview() {
   const now = Date.now();
   const nations = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = d;
   const W = core.world(Object.fromEntries(Object.entries(nations).map(([k, v]) => [k, core.normalize(v)])), S.config, now, S.event, S.council);
-  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && now - (d.t || 0) < 5 * 60e3).length;
+  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && now - (d.t || 0) < 5 * 60e3).length;
   let reqs5 = 0; const m = Math.floor(now / 60000); for (let i = 0; i < 5; i++) reqs5 += health.reqs.get(m - i) || 0;
   const flagCount = {}; for (const f of S.flags) flagCount[f.uid] = (flagCount[f.uid] || 0) + 1;
   const byIp = {}; for (const [id, mt] of Object.entries(S.meta)) if (S.users[id]) for (const ip of mt.ips || []) (byIp[ip] = byIp[ip] || []).push(id);
@@ -460,11 +490,8 @@ async function adminRoute(p, req, res, me) {
     }
     case '/api/admin/delete-account': {
       if (!u || b.id === me.id) return send(res, 400, { error: 'Unknown player.' });
-      for (const c of COLS) if (S.docs[c + '/' + b.id]) setDoc(c, b.id, null);
-      for (const [t, s] of Object.entries(S.sessions)) if (s.uid === b.id) delete S.sessions[t];
-      for (const c of clients) if (c.uid === b.id) c.res.end();
-      delete S.users[b.id]; delete S.meta[b.id]; delete S.mail[b.id]; delete S.notes[b.id]; delete S.push[b.id]; broadcast('user', { id: b.id, name: null });
-      audit(me.name, 'Deleted account', target + ' (' + u.email + ')'); return send(res, 200, { ok: true });
+      const email = u.email; wipeUser(b.id);
+      audit(me.name, 'Deleted account', target + ' (' + email + ')'); return send(res, 200, { ok: true });
     }
     case '/api/admin/clear-flags': { S.flags = u ? S.flags.filter(f => f.uid !== b.id) : []; audit(me.name, 'Cleared cheat flags', target || 'everyone'); return send(res, 200, { ok: true }); }
     case '/api/admin/config': {
@@ -515,7 +542,7 @@ function publicStats() {
   if (publicCache && Date.now() - publicCache.t < 30000) return publicCache.v;
   const W = mkWorld(); const now = Date.now();
   const ids = Object.keys(W.A).sort((a, b) => core.score(W, b) - core.score(W, a));
-  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && now - (d.t || 0) < 30 * 60e3).length;
+  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && now - (d.t || 0) < 30 * 60e3).length;
   const newsl = []; for (const n of Object.values(W.A)) for (const e of n.out || []) if (e.type === 'news') newsl.push({ t: e.t, x: e.x });
   newsl.sort((a, b) => b.t - a.t);
   const v = { nations: ids.length, players: humans(W).length, online, provinces: core.P.length, scenarios: SCENARIOS.length,
@@ -544,6 +571,7 @@ async function handle(req, res) {
     if (p === '/api/signup' && req.method === 'POST') {
       if (!S.config.signups) return send(res, 403, { error: 'Sign-ups are closed right now.' });
       if (limited('signup:' + ipOf(req), 5, 60 * 60e3)) return send(res, 429, { error: 'Too many sign-ups from your network. Try again later.' });
+      if (limited('signup:all', 60, 60 * 60e3)) { logErr('Sign-up limit reached: more than 60 new accounts in an hour.'); return send(res, 429, { error: 'Lots of new leaders are joining right now. Please try again in a few minutes.' }); }
       const b = await readBody(req, 4096);
       const email = String(b.email || '').trim().toLowerCase(), name = String(b.name || '').trim(), pw = String(b.password || '');
       if (!EMAIL_RE.test(email)) return send(res, 400, { error: 'Enter a valid email address.' });
@@ -567,22 +595,49 @@ async function handle(req, res) {
       const email = String(b.email || '').trim().toLowerCase();
       if (limited('loginE:' + email, 8, 15 * 60e3)) return send(res, 429, { error: 'Too many attempts for this account. Wait 15 minutes.' });
       const f = findByEmail(email);
-      if (!f || !checkPw(String(b.password || '').slice(0, 200), f[1])) return send(res, 401, { error: 'Wrong email or password.' });
+      const okPw = checkPw(String(b.password || '').slice(0, 200), f ? f[1] : DUMMY_PW);
+      if (!f || !okPw) return send(res, 401, { error: 'Wrong email or password.' });
       if (f[1].banned) return send(res, 403, { error: 'This account has been banned.' });
       touch(f[0], req); const token = newSession(f[0]);
       return send(res, 200, pub({ id: f[0], ...f[1] }), { 'Set-Cookie': sessionCookie(req, token, SESSION_DAYS * 86400) });
     }
-    if (p === '/api/logout' && req.method === 'POST') { const t = cookies(req).wp_s; if (t) { delete S.sessions[t]; persist(); } return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) }); }
+    if (p === '/api/logout' && req.method === 'POST') { const t = cookies(req).wp_s; if (t && /^[a-f0-9]{64}$/.test(t)) { delete S.sessions[tokHash(t)]; delete S.sessions[t]; persist(); } return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) }); }
 
     const me = auth(req);
     if (!me) return send(res, 401, { error: 'Not signed in.' });
     if (p === '/api/me' && req.method === 'GET') { touch(me.id, req); return send(res, 200, pub(me)); }
+    if (p.startsWith('/api/account/') && req.method === 'POST') {
+      if (limited('acct:' + me.id, 6, 15 * 60e3)) return send(res, 429, { error: 'Too many attempts. Wait 15 minutes.' });
+      const b = await readBody(req, 4096); const u = S.users[me.id]; const cur = cookies(req).wp_s;
+      const pwOk = () => checkPw(String(b.password || '').slice(0, 200), u);
+      if (p === '/api/account/password') {
+        if (!pwOk()) return send(res, 400, { error: 'Your current password is incorrect.' });
+        const nx = String(b.next || ''); if (nx.length < 8 || nx.length > 200) return send(res, 400, { error: 'New password must be at least 8 characters.' });
+        Object.assign(u, hashPw(nx)); for (const [t, s2] of Object.entries(S.sessions)) if (s2.uid === me.id && t !== tokHash(cur)) delete S.sessions[t];
+        persist(); return send(res, 200, { ok: true });
+      }
+      if (p === '/api/account/signout-all') {
+        for (const [t, s2] of Object.entries(S.sessions)) if (s2.uid === me.id) delete S.sessions[t];
+        for (const c of clients) if (c.uid === me.id) { try { c.res.end(); } catch (e) {} }
+        persist(); return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+      }
+      if (p === '/api/account/delete') {
+        if (!pwOk()) return send(res, 400, { error: 'Your password is incorrect.' });
+        if (b.confirm !== 'DELETE') return send(res, 400, { error: 'Type DELETE to confirm.' });
+        if (u.admin && Object.values(S.users).filter(x => x.admin).length <= 1) return send(res, 400, { error: 'You are the only administrator, so this account cannot be deleted.' });
+        const nm = u.name, em = u.email; wipeUser(me.id); audit(nm, 'Deleted their own account', nm + ' (' + em + ')');
+        return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) });
+      }
+      return send(res, 404, { error: 'Not found.' });
+    }
     if (p.startsWith('/api/admin/')) return adminRoute(p, req, res, me);
 
     if (p === '/api/stream' && req.method === 'GET') {
       touch(me.id, req);
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write('retry: 3000\n\n'); write({ res }, 'init', snapshot(me.id));
+      const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { try { mine[0].res.end(); } catch (e) {} clients.delete(mine[0]); }
+      if (clients.size >= 5000) return send(res, 503, { error: 'The server is very busy. Try again shortly.' });
       const c = { res, uid: me.id }; clients.add(c); req.on('close', () => clients.delete(c));
       return;
     }
