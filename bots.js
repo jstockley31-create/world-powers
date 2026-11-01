@@ -6,10 +6,10 @@ const NAMES = ['Kingdom of Varn', 'Republic of Kestria', 'Federation of Orlesia'
   'Republic of Istara', 'Federation of Cordia', 'Emirate of Zahran', 'Commonwealth of Wexmoor', 'Republic of Talmyra', 'Kingdom of Eskavar', 'Union of Pallas', 'Free Republic of Aldmere',
   'Empire of Corvanth', 'Republic of Meridia', 'Kingdom of Thessaly Nova', 'Federation of Rhodan', 'Principality of Avenor', 'Republic of Galdor'];
 const PERS = {
-  merchant: { n: 'Merchant', gov: 'dem', war: .0003, trade: .9, ally: .6, peace: .2, build: ['research', 'infra', 'expand'], sell: true },
-  expansionist: { n: 'Expansionist', gov: 'mon', war: .002, trade: .5, ally: .5, peace: .08, build: ['expand', 'recruit', 'infra', 'research'] },
-  warlord: { n: 'Warlord', gov: 'dic', war: .006, trade: .3, ally: .35, peace: .03, build: ['recruit', 'drill', 'expand', 'fort'] },
-  isolationist: { n: 'Isolationist', gov: 'com', war: .0001, trade: .35, ally: .25, peace: .3, build: ['fort', 'infra', 'research', 'expand'] }
+  merchant: { n: 'Merchant', gov: 'dem', war: .0003, trade: .9, ally: .6, peace: .2, build: ['research', 'infra', 'expand', 'navy'], sell: true, budget: { spend: 16, mil: 20, health: 25, edu: 30, infra: 25 } },
+  expansionist: { n: 'Expansionist', gov: 'mon', war: .002, trade: .5, ally: .5, peace: .08, build: ['expand', 'recruit', 'navy', 'infra', 'research'], budget: { spend: 17, mil: 35, health: 20, edu: 20, infra: 25 } },
+  warlord: { n: 'Warlord', gov: 'dic', war: .006, trade: .3, ally: .35, peace: .03, build: ['recruit', 'air', 'drill', 'navy', 'expand', 'spies'], budget: { spend: 20, mil: 50, health: 15, edu: 15, infra: 20 } },
+  isolationist: { n: 'Isolationist', gov: 'com', war: .0001, trade: .35, ally: .25, peace: .3, build: ['fort', 'infra', 'research', 'spies', 'expand'], budget: { spend: 15, mil: 35, health: 25, edu: 20, infra: 20 } }
 };
 const PKEYS = Object.keys(PERS);
 
@@ -36,13 +36,14 @@ module.exports = function makeBots(core, WP, rng) {
     const r = tryExec(W, u, { c: 'found', name, gov: PERS[p].gov, hex: best, color: WP.COLORS[0] });
     if (!r) return null;
     const n = W.A[u];
-    n.ai = { p }; n.color = distinctColor(W);
+    n.ai = { p }; n.color = distinctColor(W); n.budget = { ...PERS[p].budget };
     // a head start so the world looks lived-in: some experience and a few provinces
     n.created = W.now - (3 + rng() * 4) * 24 * HOUR;
     n.xp = Math.round(150 + rng() * 650); n.tech = Math.floor(rng() * 4); n.infra = Math.floor(rng() * 3); n.fort = p === 'isolationist' ? 2 : Math.floor(rng() * 2);
-    n.troops = Math.round(400 + rng() * 500); n.pop = 1.3e5 + rng() * 1e5;
+    n.troops = Math.round(400 + rng() * 500); n.pop = 1.3e5 + rng() * 1e5; n.ships = core.hasCoast(W, u) || core.isCoastal(n.cap) ? Math.floor(2 + rng() * 6) : 0; n.air = n.tech >= 2 ? Math.floor(rng() * 8) : 0; n.spies = Math.floor(rng() * 5);
     const extra = 1 + Math.floor(rng() * 4); const t0 = n.created;
     for (let i = 0; i < extra; i++) { const ts = core.expandTargets(W, u); if (!ts.length) break; const h = pick(ts); n.hexes[h] = t0 + i * 3600e3; W.OWN[h] = { u, ts: t0 + i * 3600e3 }; }
+    n.gdp = core.gdpTarget(W, u); n.gdpHist = [{ t: W.now, v: Math.round(n.gdp) }]; if (n.gov === 'dem') n.nextElection = W.now + (12 + rng() * 60) * HOUR;
     n.out = (n.out || []).filter(e => e.type !== 'news'); n.log = [];
     W.changed.add(u); W.welcome = null;
     return u;
@@ -78,7 +79,11 @@ module.exports = function makeBots(core, WP, rng) {
     if ((hourUTC - n.ai.sleep + 24) % 24 < 9) return;
     if (rng() > .085) return;
     // 1) decisions
-    if (n.cards.length && rng() < .5) { const c = n.cards[0]; const card = core.CARDS[c.i]; if (card) return tryExec(W, u, { c: 'decide', id: c.id, o: chooseOption(W, u, card) }); }
+    if (n.cards.length && rng() < .5) { const c = n.cards[0]; const card = core.getCard(c.i); if (card) return tryExec(W, u, { c: 'decide', id: c.id, o: chooseOption(W, u, card) }); }
+    // finances: borrow when broke, repay when flush, campaign before elections
+    if (n.cash < 1e5 && core.maxBorrow(n) > 3e5 && !core.left(W, n, 'bonds')) { n.cd.bonds = W.now + 2 * HOUR; return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(core.maxBorrow(n), n.gdp * .1)) }); }
+    if (n.debt > 0 && n.cash > 4e6) return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(n.debt, n.cash * .4)), repay: true });
+    if (n.gov === 'dem' && n.nextElection && n.nextElection - W.now < 24 * HOUR && !core.left(W, n, 'campaign') && (n.campaign || 0) < 12 && n.cash > 4e5) return tryExec(W, u, { c: 'act', k: 'campaign' });
     // 2) basic income
     for (const k of ['daily', 'tax', 'prod']) if (!core.left(W, n, k)) return tryExec(W, u, { c: 'act', k });
     // 3) keep supplies healthy via the market
@@ -99,7 +104,7 @@ module.exports = function makeBots(core, WP, rng) {
     if (cfg.war && cfg.botWar !== 'no') {
       const front = []; for (const h of core.hexesOf(W, u)) for (const k of core.nbrs(h)) { const v = core.owner(W, k); if (v && v !== u) front.push([k, v]); }
       if (myWars.length) {
-        if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const X = Math.floor(n.troops * .7); if (X < 50) break; if (X * core.atkMult(n) > core.defense(W, h, u) * (.9 + rng() * .25)) return tryExec(W, u, { c: 'attack', h, x: X }); }
+        if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const rt = core.route(W, u, h); let X = Math.floor(n.troops * .7); if (rt === 'sea') X = Math.min(X, n.ships * 100); if (X < 50) continue; const AIR = Math.floor(n.air * .7); if ((X + AIR * 20) * core.atkMult(n) * (rt === 'sea' ? .8 : 1) > core.defense(W, h, u) * (.9 + rng() * .25) && (rt !== 'sea' || n.ships * 25 > core.navalDefense(W, h))) return tryExec(W, u, { c: 'attack', h, x: X, air: AIR }); }
       } else if (core.rankOf(n.xp) >= 2 && rng() < per.war) {
         const mine = core.score(W, u);
         const targets = [...new Set(front.map(f => f[1]))].filter(v => {
@@ -111,10 +116,12 @@ module.exports = function makeBots(core, WP, rng) {
         if (targets.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: pick(targets) });
       }
     }
+    // covert operations against enemies (warlords and isolationists mostly)
+    if (myWars.length && n.spies >= 2 && !core.left(W, n, 'covert') && rng() < (n.ai.p === 'warlord' ? .25 : .08)) { const v = pick(myWars); const op = W.A[v].tech > n.tech && n.spies >= 3 ? 'steal' : pick(['sabotage', 'unrest']); const r = tryExec(W, u, { c: 'covert', op, v }); if (r) return r; }
     // 6) development according to personality
     if (n.approval < 45 && !core.left(W, n, 'rally')) return tryExec(W, u, { c: 'act', k: 'rally' });
     for (const k of per.build) if (!core.left(W, n, k) && n.cash > 2.5e5) { const r = tryExec(W, u, { c: 'act', k }); if (r) return r; }
-    for (const k of ['research', 'infra', 'recruit', 'drill', 'fort', 'expand']) if (!core.left(W, n, k) && n.cash > 6e5 && rng() < .4) { const r = tryExec(W, u, { c: 'act', k }); if (r) return r; }
+    for (const k of ['research', 'infra', 'recruit', 'drill', 'fort', 'expand', 'air', 'navy']) if (!core.left(W, n, k) && n.cash > 6e5 && rng() < .4) { const r = tryExec(W, u, { c: 'act', k }); if (r) return r; }
     if (n.tax !== 22) tryExec(W, u, { c: 'tax', t: 22 });
   }
 

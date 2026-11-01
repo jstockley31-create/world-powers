@@ -4,6 +4,24 @@ A multiplayer nation-building game you host yourself. Players sign up with an em
 
 No extra packages needed — only **Node.js 18 or newer**.
 
+## What's in version 4
+
+- **Home page** at `/` for visitors (the game itself is at `/play`; signed-in players go straight to the game). Also `/terms` and `/privacy`.
+- **Mail**: private messages between leaders, with reply, delete and report.
+- **Notifications**: the bell in the header, plus optional phone/desktop push (works on Android, Windows, Mac; on iPhone after "Add to Home Screen"). Each player chooses which kinds they get.
+- **Real economy**: GDP, unemployment, inflation, national debt, government bonds, credit ratings, default/bankruptcy, and a budget split across military, health, education and infrastructure.
+- **Geography**: resources follow the real world (oil in the Gulf, Russia and Texas; farmland on the plains; deserts), mountains (+25% defense), rivers (+15%), coasts.
+- **Navy and air force**: islands and overseas land can only be invaded by sea after winning a naval battle; aircraft support attack and defense.
+- **Elections** for democracies every 72 hours (adjustable). Losing resets your policies; a landslide loss purges ministries.
+- **Intelligence**: steal technology, sabotage, stir unrest, rig elections — with a real chance of being caught publicly.
+- **World events** (recessions, pandemics, oil shocks and more) hit every nation at once, every 10–18 hours.
+- **World Council**: propose and vote on sanctions, embargoes, condemnations and global treaties.
+- **Moderation**: automatic profanity filter, per-player mute and report; admins can mute, kick and delete chat.
+- **Admin**: Analytics tab (daily active players, sign-ups, day-1 retention), Moderation tab, World tab (start/end events, cancel council votes), nightly backups kept for 7 days.
+- Optional sound effects (bell menu), loading spinners, battle animations and promotion celebrations. The logo links to the home page.
+
+**Note:** deploying version 4 starts a fresh world (the map changed). Accounts, passwords and the admin link are kept; everyone founds a new nation.
+
 ## Run it
 
 ```
