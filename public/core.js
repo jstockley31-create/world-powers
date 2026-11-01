@@ -114,8 +114,9 @@ function Core(PD, CARDS) {
   const R = (W, a, b) => (W.A[a] && W.A[a].rel && W.A[a].rel[b]) || {};
   function atWar(W, a, b) { const x = R(W, a, b), y = R(W, b, a); const w = Math.max(x.war || 0, y.war || 0); if (!w) return false; return !((x.peace || 0) > w && (y.peace || 0) > w); }
   const warSince = (W, a, b) => Math.max(R(W, a, b).war || 0, R(W, b, a).war || 0);
-  function pact(W, a, b, k) { const x = R(W, a, b), y = R(W, b, a); return (x[k] || 0) > (x['un' + k] || 0) && (y[k] || 0) > (y['un' + k] || 0) && !atWar(W, a, b); }
-  function offered(W, a, b, k) { const x = R(W, a, b), y = R(W, b, a); return (x[k] || 0) > (x['un' + k] || 0) && !((y[k] || 0) > (y['un' + k] || 0)); }
+  // a cancellation by either side ends the deal, and both sides must agree again afterwards
+  function pact(W, a, b, k) { const x = R(W, a, b), y = R(W, b, a), un = Math.max(x['un' + k] || 0, y['un' + k] || 0); return (x[k] || 0) > un && (y[k] || 0) > un && !atWar(W, a, b); }
+  function offered(W, a, b, k) { const x = R(W, a, b), y = R(W, b, a), un = Math.max(x['un' + k] || 0, y['un' + k] || 0); return (x[k] || 0) > un && !((y[k] || 0) > un); }
   const others = (W, u) => Object.keys(W.A).filter(v => v !== u);
   const wars = (W, u) => others(W, u).filter(v => atWar(W, u, v));
   const allies = (W, u) => others(W, u).filter(v => pact(W, u, v, 'ally'));
@@ -416,24 +417,29 @@ function Core(PD, CARDS) {
       if (W.cfg.conquest && !them.ai && Object.keys(them.hexes || {}).length === 1) { const hrs = W.cfg.lastStandH ?? 24; log(them, `You hold only your capital. ${me.name} can besiege it in ${hrs} hours — make peace, rally allies, fortify or expand.`, W); note(W, v, 'attack', `LAST STAND: ${me.name} can besiege your capital in ${hrs} hours.`); }
     } else if (kind === 'peace') {
       if (!atWar(W, u, v)) fail('You are not at war with them.');
+      if ((R(W, u, v).peace || 0) > warSince(W, u, v)) fail(`You have already offered peace to ${them.name}. Waiting for their answer.`);
       setRel(me, v, 'peace', t);
       if (!atWar(W, u, v)) { news(W, u, `${me.name} and ${them.name} signed a peace treaty.`); note(W, v, 'diplo', `${me.name} accepted peace. The war is over.`); }
       else { log(me, `Peace offered to ${them.name}.`, W); log(them, `${me.name} is offering peace.`, W); note(W, v, 'diplo', `${me.name} is offering peace.`); }
     } else if (kind === 'ally') {
       if (atWar(W, u, v)) fail('Make peace first.');
+      if (pact(W, u, v, 'ally')) fail(`You are already allied with ${them.name}.`);
+      if (offered(W, u, v, 'ally')) fail(`You have already proposed an alliance to ${them.name}. Waiting for their answer.`);
       setRel(me, v, 'ally', t);
-      if (pact(W, u, v, 'ally')) { news(W, u, `${me.name} and ${them.name} formed an alliance.`); note(W, v, 'diplo', `${me.name} accepted your alliance.`); }
+      if (pact(W, u, v, 'ally')) { news(W, u, `${me.name} and ${them.name} formed an alliance.`); note(W, v, 'diplo', `${me.name} accepted your alliance.`); note(W, u, 'diplo', `Alliance with ${them.name} formed.`); }
       else { log(me, `Alliance proposed to ${them.name}.`, W); log(them, `${me.name} proposes an alliance.`, W); note(W, v, 'diplo', `${me.name} proposes an alliance.`); }
-    } else if (kind === 'unally') { setRel(me, v, 'unally', t); news(W, u, `${me.name} ended its alliance with ${them.name}.`); note(W, v, 'diplo', `${me.name} ended your alliance.`); }
+    } else if (kind === 'unally') { if (!pact(W, u, v, 'ally') && !offered(W, u, v, 'ally')) fail('There is no alliance to end.'); setRel(me, v, 'unally', t); news(W, u, `${me.name} ended its alliance with ${them.name}.`); note(W, v, 'diplo', `${me.name} ended your alliance.`); }
     else if (kind === 'trade') {
       if (atWar(W, u, v)) fail('Make peace first.');
       if (sanctioned(me)) fail('No nation will sign trade agreements with you while you are under sanctions.');
       if (embargoed(W, me)) fail('You are under a World Council embargo.');
-      if (traders(W, u).length >= 5 && !pact(W, u, v, 'trade')) fail('You can hold at most 5 trade agreements.');
+      if (pact(W, u, v, 'trade')) fail(`You already have a trade agreement with ${them.name}.`);
+      if (offered(W, u, v, 'trade')) fail(`You have already proposed a trade agreement to ${them.name}. Waiting for their answer.`);
+      if (traders(W, u).length >= 5) fail('You can hold at most 5 trade agreements.');
       setRel(me, v, 'trade', t);
-      if (pact(W, u, v, 'trade')) { news(W, u, `${me.name} and ${them.name} signed a trade agreement.`); note(W, v, 'diplo', `${me.name} accepted your trade agreement.`); }
+      if (pact(W, u, v, 'trade')) { news(W, u, `${me.name} and ${them.name} signed a trade agreement.`); note(W, v, 'diplo', `${me.name} accepted your trade agreement.`); note(W, u, 'diplo', `Trade agreement with ${them.name} signed.`); }
       else { log(me, `Trade agreement proposed to ${them.name}.`, W); log(them, `${me.name} proposes a trade agreement.`, W); note(W, v, 'diplo', `${me.name} proposes a trade agreement.`); }
-    } else if (kind === 'untrade') { setRel(me, v, 'untrade', t); log(me, `Trade agreement with ${them.name} cancelled.`, W); log(them, `${me.name} cancelled your trade agreement.`, W); note(W, v, 'diplo', `${me.name} cancelled your trade agreement.`); }
+    } else if (kind === 'untrade') { if (!pact(W, u, v, 'trade') && !offered(W, u, v, 'trade')) fail('There is no trade agreement to cancel.'); setRel(me, v, 'untrade', t); log(me, `Trade agreement with ${them.name} cancelled.`, W); log(them, `${me.name} cancelled your trade agreement.`, W); note(W, v, 'diplo', `${me.name} cancelled your trade agreement.`); }
     else fail('Unknown action.');
     touch(W, u, v); return { msg: 'Done.' };
   }
