@@ -155,16 +155,22 @@ function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
     approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
-    out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
+    out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
 }
 
 // ---------- live stream ----------
 const clients = new Set();
 function write(c, event, data) { try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
-function broadcast(event, data) { for (const c of clients) write(c, event, data); }
+function writeRaw(c, str) { try { c.res.write(str); } catch (e) {} }
+function broadcast(event, data) { if (!clients.size) return; const str = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const c of clients) writeRaw(c, str); }
 function sendTo(uid, event, data) { for (const c of clients) if (c.uid === uid) write(c, event, data); }
 const isOnline = uid => [...clients].some(c => c.uid === uid);
-function sendNation(id) { const n = S.docs['nations/' + id]; for (const c of clients) write(c, 'doc', { col: 'nations', id, data: n == null ? null : (c.uid === id ? n : publicView(n)) }); }
+// serialize once per nation (one copy for its owner, one public copy for everyone else) instead of once per connected player
+function sendNation(id) {
+  if (!clients.size) return; const n = S.docs['nations/' + id];
+  const pub = `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n == null ? null : publicView(n) })}\n\n`;
+  let own = null; for (const c of clients) { if (c.uid === id && n != null) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } else writeRaw(c, pub); }
+}
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
 const councilView = () => ({ props: S.council.props.slice(0, 40), active: S.council.active });
 function snapshot(uid) {

@@ -54,7 +54,7 @@ a{color:var(--bl);text-decoration:none;cursor:pointer}a:hover{text-decoration:un
 .nav .ic{width:17px;height:17px}.nav .bdg{margin-left:auto;background:var(--ac);color:#17120a;border-radius:10px;font-size:10.5px;font-weight:700;padding:0 6px}
 .nav .bdg.g{background:#2c5a39;color:#b8f0c4}
 #main{overflow-y:auto;padding:20px 22px 30px;min-width:0}
-.wrap{max-width:1240px;margin:0 auto}
+.wrap{max-width:1240px;margin:0 auto}.wrap.enter{animation:pgin .18s ease-out}@keyframes pgin{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){.wrap.enter,.confetti,.promo,.shake{animation:none!important}}
 h1.pg{font-size:22px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}.pgsub{color:var(--mu);margin:0 0 18px}
 .panel{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:16px}
 .panel>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bd)}
@@ -470,19 +470,20 @@ const GL=(()=>{
   const g=ctx.createRadialGradient(w/2,h/2,r*.95,w/2,h/2,r*1.12);g.addColorStop(0,'rgba(76,154,255,.22)');g.addColorStop(1,'rgba(76,154,255,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(w/2,h/2,r*1.12,0,7);ctx.fill();
   const oc=ctx.createRadialGradient(w/2-r*.35,h/2-r*.4,r*.1,w/2,h/2,r);oc.addColorStop(0,'#16324d');oc.addColorStop(1,'#08172a');ctx.fillStyle=oc;ctx.beginPath();path({type:'Sphere'});ctx.fill();
   ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=.6;ctx.beginPath();path(grat);ctx.stroke();
-  const ctr=[-st.rot[0],-st.rot[1]];const cand=st.mode==='world'&&me?new Set(expandTargets()):null;const pick=st.mode==='found'?found_.hex:selHex;const lw=Math.max(.35,Math.min(1,st.scale*.4));
+  const ctr=[-st.rot[0],-st.rot[1]];if(candW!==W){candW=W;candS=me?new Set(expandTargets()):null;mineS=me?myHexes():[]}const cand=st.mode==='world'?candS:null;const pick=st.mode==='found'?found_.hex:selHex;const lw=Math.max(.35,Math.min(1,st.scale*.4));
   for(const p of P){if(d3.geoDistance(ctr,p.c)>1.85)continue;const o=OWN[p.id];let fill=TYPE[p.t].col;if(o&&A[o.u])fill=A[o.u].color;
    ctx.beginPath();path(p.geo);ctx.fillStyle=fill;ctx.globalAlpha=o?.88:1;ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle=o?'rgba(0,0,0,.45)':'rgba(8,14,20,.75)';ctx.lineWidth=lw;ctx.stroke()}
   ctx.strokeStyle='rgba(220,230,240,.22)';ctx.lineWidth=Math.max(.6,lw*1.2);ctx.beginPath();path(CG);ctx.stroke();
   if(st.scale>3.2&&st.mode==='world'){ctx.font='9px Inter,sans-serif';ctx.textAlign='center';for(const p of P){if(!(p.m||p.r)||OWN[p.id]||d3.geoDistance(ctr,p.c)>1.2)continue;const xy=proj(p.c);ctx.fillStyle=p.m?'rgba(230,220,200,.3)':'rgba(120,180,255,.4)';ctx.fillText(p.m?'▲':'≈',xy[0],xy[1]+3)}}
-  if(me&&st.mode!=='found'){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1.2;for(const h of myHexes()){ctx.beginPath();path(P[h].geo);ctx.stroke()}}
+  if(me&&st.mode!=='found'){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1.2;for(const h of mineS){ctx.beginPath();path(P[h].geo);ctx.stroke()}}
   if(cand&&cand.size){ctx.setLineDash([3,3]);ctx.strokeStyle='rgba(212,166,74,.9)';ctx.lineWidth=1.1;for(const h of cand){if(d3.geoDistance(ctr,P[h].c)>1.6)continue;ctx.beginPath();path(P[h].geo);ctx.stroke()}ctx.setLineDash([])}
   if(st.hover!=null&&st.hover!==pick){ctx.strokeStyle='rgba(255,255,255,.6)';ctx.lineWidth=1.4;ctx.beginPath();path(P[st.hover].geo);ctx.stroke()}
   if(pick!=null&&P[pick]){ctx.strokeStyle='#ffd166';ctx.lineWidth=2.2;ctx.beginPath();path(P[pick].geo);ctx.stroke();if(st.mode==='found'){ctx.fillStyle='rgba(255,209,102,.35)';ctx.fill()}}
   for(const n of Object.values(A)){const p=P[n.cap];if(!p||d3.geoDistance(ctr,p.c)>1.5)continue;const xy=proj(p.c);ctx.beginPath();ctx.arc(xy[0],xy[1],3.2,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='#0b1118';ctx.stroke()}
   const fs=Math.round(clamp(10+st.scale*1.5,10,16));ctx.font=`600 ${fs}px Inter,system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-  for(const[u,n]of Object.entries(A)){const hs=hexesOf(u);if(!hs.length)continue;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}const c=[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI];if(d3.geoDistance(ctr,c)>1.3)continue;const xy=proj(c);const t=n.name.toUpperCase();ctx.lineWidth=3.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.strokeText(t,xy[0],xy[1]-12);ctx.fillStyle='#fff';ctx.fillText(t,xy[0],xy[1]-12)}
+  for(const[u,n,c]of labels()){if(d3.geoDistance(ctr,c)>1.3)continue;const xy=proj(c);const t=n.name.toUpperCase();ctx.lineWidth=3.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.strokeText(t,xy[0],xy[1]-12);ctx.fillStyle='#fff';ctx.fillText(t,xy[0],xy[1]-12)}
   ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;ctx.beginPath();path({type:'Sphere'});ctx.stroke()}
+ let labW=null,labC=[],candW=null,candS=null,mineS=[];function labels(){if(labW===W)return labC;labW=W;labC=[];for(const[u,n]of Object.entries(A)){const hs=hexesOf(u);if(!hs.length)continue;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}labC.push([u,n,[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI]])}return labC}
  const redraw=()=>{if(!st.raf)st.raf=requestAnimationFrame(draw)};
  function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);size();redraw()}
  function ll(ev){const r=cv.getBoundingClientRect();proj.rotate(st.rot).scale(radius()).translate([st.w/2,st.h/2]);const p=proj.invert([ev.clientX-r.left,ev.clientY-r.top]);if(!p||!isFinite(p[0]))return null;if(d3.geoDistance(p,[-st.rot[0],-st.rot[1]])>Math.PI/2)return null;return p}
@@ -504,11 +505,26 @@ function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"><div id
 function pickProv(h){if(!me){if(W.OWN[h])return toast('That province is already claimed.');if(!startOk(h))return toast('Too close to another nation. Choose land at least two provinces away.');const el=$('fn_name');if(el)found_.name=el.value;found_.hex=h;GL.redraw();const fi=$('fhex');if(fi)fi.innerHTML=foundHexTxt();return}
  selHex=h;GL.redraw();const pi=$('pinfo');if(pi)pi.innerHTML=provInfo();else if(page!=='world'){page='world';render()}}
 // ================= render =================
-function refresh(){refreshW();render();renderChat();renderOnline();renderBell()}
+// Update the page in place: only text/attributes that actually changed are touched, so nothing flickers,
+// hover and typed values survive, and the globe canvas is never torn down.
+function morphAttrs(a,b){for(const at of [...a.attributes])if(!b.hasAttribute(at.name))a.removeAttribute(at.name);for(const at of b.attributes)if(a.getAttribute(at.name)!==at.value){a.setAttribute(at.name,at.value);if(at.name==='value'&&'value' in a&&a!==document.activeElement)a.value=at.value}
+ if(a.tagName==='INPUT'&&(a.type==='checkbox'||a.type==='radio'))a.checked=b.hasAttribute('checked')}
+function morphKids(a,b){const ak=a.childNodes,bk=[...b.childNodes];let i=0;
+ for(;i<bk.length;i++){const nb=bk[i],na=ak[i];if(!na){a.appendChild(nb);continue}
+  if(na.nodeType!==nb.nodeType||na.nodeName!==nb.nodeName||(na.nodeType===1&&na.id!==nb.id)){a.replaceChild(nb,na);continue}
+  if(na.nodeType===3||na.nodeType===8){if(na.nodeValue!==nb.nodeValue)na.nodeValue=nb.nodeValue;continue}
+  morphAttrs(na,nb);if(na.id==='gslot'||na.id==='pinfo'&&na.dataset.live)continue;if(na.isEqualNode&&na.isEqualNode(nb))continue;morphKids(na,nb)}
+ while(ak.length>bk.length)a.removeChild(a.lastChild)}
+function morph(el,html){const t=document.createElement('template');t.innerHTML=html;morphKids(el,t.content)}
+let lastHtml='',lastPage='',renderQ=0,hiddenDirty=false;
+function refresh(){if(document.hidden){hiddenDirty=true;return}refreshW();render();renderChat();renderOnline();renderBell()}
+// many updates can arrive together (every nation ticks at once); draw at most once per animation frame
+function refreshSoon(){if(renderQ)return;renderQ=requestAnimationFrame(()=>{renderQ=0;refresh()})}
 const EDITING=['mail','council','economy','intel'];
 function render(){renderTop();renderSide();const m=$('main');const act=document.activeElement;if(act&&m.contains(act)&&/INPUT|SELECT|TEXTAREA/.test(act.tagName)&&act.type!=='range'){updTimers();return}
- if(page==='chat'&&innerWidth>820)page='overview';const st=m.scrollTop;m.innerHTML=`<div class="wrap">${CFG.motd?`<div class="motd">${I('mega')}<span>${esc(CFG.motd)}</span></div>`:''}${evBar()}${renderPage()}</div>`;m.scrollTop=st;
- const slot=$('gslot');if(slot)GL.attach(slot,slot.dataset.mode);updTimers();if(page==='mail')mailAfter();if(page==='economy')budgetAfter()}
+ if(page==='chat'&&innerWidth>820)page='overview';const html=`<div class="wrap${page!==lastPage?' enter':''}">${CFG.motd?`<div class="motd">${I('mega')}<span>${esc(CFG.motd)}</span></div>`:''}${evBar()}${renderPage()}</div>`;
+ if(page!==lastPage||!m.firstChild){m.innerHTML=html;lastPage=page}else if(html.replace(' enter','')!==lastHtml.replace(' enter',''))morph(m,html.replace(' enter',''));lastHtml=html;
+ const slot=$('gslot');if(slot&&(GL.st.el!==slot||!slot.firstChild))GL.attach(slot,slot.dataset.mode);else if(slot)GL.redraw();updTimers();if(page==='mail')mailAfter();if(page==='economy')budgetAfter()}
 function evBar(){const e=X().event;if(!e||!EVENTS[e.key]||e.end<Date.now())return'';const E=EVENTS[e.key];return`<div class="evbar">${I('globe')}<div><b>World event: ${esc(E.n)}</b> — ${esc(E.d)} <span class="mu">Ends in ${fmtT(e.end-Date.now())}.</span></div></div>`}
 const kpi=(i,l,v,cls='')=>`<div class="kpi"><span>${I(i)}${l}</span><b class="${cls}">${v}</b></div>`;
 function renderTop(){const nb=$('natbox'),k=$('kpis');if(!me){nb.innerHTML=loaded?`<div><b>Found your nation</b><small>${esc(names[uid]||'')}</small></div>`:'';k.innerHTML='';$('timers').innerHTML='';return}
@@ -573,19 +589,21 @@ function pMilitary(){const n=me;const fronts=[];for(const h of myHexes())for(con
  ${panel('Battle record',bat.length?`<div class="log">${bat.slice(0,25).map(([u,e])=>`<div><time>${ago(e.t)}</time><span>${nmHtml(u)} ${e.win?'<span class="tag g">won</span>':'<span class="tag r">lost</span>'} ${e.sea?'an amphibious assault on':'an invasion of'} ${esc(pname(e.h))} held by ${nmHtml(e.to)} — ${num(e.X)} committed, ${num(e.lossA)} lost; defenders lost ${num(e.lossD)}</span></div>`).join('')}</div>`:'<p class="mu" style="margin:0">No engagements yet.</p>')}`}
 let budgetDraft=null;
 function pEconomy(){const n=me,pr=prices(),s=spreads(),sp=sanctioned(n),b=budgetDraft||{...n.budget},rate=C.interestRate(W,n),em=C.embargoed(W,n);
- const sl=(k,l,min,max)=>`<div class="slider"><span>${l}</span><input type="range" data-bk="${k}" min="${min}" max="${max}" step="1" value="${b[k]}"><b id="bv_${k}">${k==='spend'?b[k]+'%':b[k]+'%'}</b></div>`;
+ const bsum_=(b.mil+b.health+b.edu+b.infra)||1;const sl=(k,l,min,max)=>`<div class="slider"><span>${l}</span><input type="range" data-bk="${k}" min="${min}" max="${max}" step="1" value="${b[k]}"><b id="bv_${k}">${k==='spend'?b[k]:Math.round(b[k]/bsum_*100)}%</b></div>`;
  return`<h1 class="pg">Economy</h1><p class="pgsub">Your GDP grows with population, technology, infrastructure, education, health, trade and stability — and shrinks with unemployment, inflation, war and sanctions. One game year passes every real day.</p>
  ${sp?`<div class="motd" style="border-color:#5f2b2e;background:#2a1517;color:#ffc1bd">${I('alert')}<span>Your nation is under international sanctions: worse market prices and no trade-deal benefits.</span></div>`:''}${em?`<div class="motd" style="border-color:#5f2b2e;background:#2a1517;color:#ffc1bd">${I('alert')}<span>The World Council has placed you under a trade embargo for ${fmtT(n.embargo-Date.now())}.</span></div>`:''}
  ${panel('National accounts',econStats(n)+`<div class="econ" style="margin-top:10px">${stat('Tax revenue / collection',moneyS(taxIncome()),'',`${n.tax}% rate`)}${stat('Government spending',moneyS(C.spendPerTick(n)),'',`per 10 min · ${n.budget.spend}% of GDP`)}${stat('Interest rate',pct(rate),rate>10?'rd':'',`${moneyS(n.debt*rate/100/144)} per 10 min`)}${stat('Credit rating',C.rating(W,n),['B','CCC','D'].includes(C.rating(W,n))?'rd':'gn')}</div>`,'','chart')}
  <div class="cols"><div>${panel('Budget',`<p class="mu" style="margin-top:0;font-size:13px">Spending is paid from the treasury every 10 minutes. Health raises population growth and approval; education raises GDP and research; infrastructure raises GDP and lowers unemployment; the military share pays upkeep and morale.</p>
  ${sl('spend','Total spending (% GDP)',5,40)}<div style="height:8px"></div>${sl('mil','Military',0,100)}${sl('health','Health',0,100)}${sl('edu','Education',0,100)}${sl('infra','Infrastructure',0,100)}
- <p class="mu" style="font-size:12.5px" id="bsum"></p><div class="row" style="display:flex;gap:8px"><button class="btn pri" data-act="budget">Approve budget</button><button class="btn" data-act="budgetreset">Reset</button></div>`,'','bank')}</div>
+ <p class="mu" style="font-size:12.5px" id="bsum">${budgetSum(b)}</p><div class="row" style="display:flex;gap:8px"><button class="btn pri" data-act="budget">Approve budget</button><button class="btn" data-act="budgetreset">Reset</button></div>`,'','bank')}</div>
  <div>${panel('Government bonds',`<p class="mu" style="margin-top:0;font-size:13px">Borrow by issuing bonds. Interest is charged every 10 minutes and rises as debt grows. Above 200% of GDP — or if the treasury falls deep into the red — your nation <b>defaults</b>: debt is written down, but the economy crashes and lenders refuse you for 48 hours.</p>
  <div class="stats" style="grid-template-columns:1fr 1fr;margin-bottom:12px">${stat('Debt',moneyS(n.debt),'',pct(C.debtRatio(n)*100,0)+' of GDP')}${stat('Can still borrow',moneyS(C.maxBorrow(n)))}</div>
  <div class="field"><label>Amount</label><input id="bondAmt" type="number" min="1" placeholder="e.g. 500000"></div><div style="display:flex;gap:8px"><button class="btn ok" data-act="bonds">Issue bonds</button><button class="btn" data-act="repay">Repay debt</button></div>`,'','coins')}</div></div>
  ${panel('World market',`<table><thead><tr><th>Commodity</th><th class="r">Stockpile</th><th class="r">World price</th><th class="r">Import at</th><th class="r">Export at</th><th>Quantity</th><th></th></tr></thead><tbody>${Object.keys(RES).map(r=>{const p=pr[r],ch=p/RES[r].p-1;return`<tr><td>${resI(r)} ${RES[r].n}</td><td class="r num">${num(n.res[r])}</td><td class="r num">${money(p)} <span class="${ch>=0?'gn':'rd'}" style="font-size:11.5px">${ch>=0?'▲':'▼'} ${Math.abs(ch*100).toFixed(0)}%</span></td><td class="r num">${money(p*s.buy)}</td><td class="r num">${money(p*s.sell)}</td><td><input id="q_${r}" type="number" min="1" value="50" style="width:90px"></td><td class="r" style="white-space:nowrap"><button class="btn sm ok" data-act="buy" data-a="${r}">Import</button> <button class="btn sm" data-act="sell" data-a="${r}">Export</button></td></tr>`}).join('')}</tbody></table><p class="mu" style="margin:10px 0 0;font-size:12.5px">Prices move with what every nation buys and sells over the past six hours, and with world events.</p>`,'','chart')}
  <div class="cols3">${panel('Trade balance',`<div class="stats" style="grid-template-columns:1fr 1fr">${stat('Exports',moneyS(n.exp||0),'gn')}${stat('Imports',moneyS(n.imp||0),'rd')}</div>`)}${panel('Trade agreements',`<p style="margin:0 0 8px"><b>${traders(uid).length}</b> of 5 active</p><p class="mu" style="margin:0;font-size:13px">Each gives both nations +5% revenue, higher GDP and better market prices.</p>`)}${panel('Taxation',`<p style="margin:0 0 8px"><b>${n.tax}%</b> tax rate</p><p class="mu" style="margin:0;font-size:13px">Set it on the <a data-act="page" data-a="gov">Government</a> page.</p>`)}</div>`}
-function budgetAfter(){const upd=()=>{const b=budgetDraft||me.budget;const parts=['mil','health','edu','infra'];const sum=parts.reduce((a,k)=>a+(+b[k]),0)||1;for(const k of parts){const el=$('bv_'+k);if(el)el.textContent=Math.round(b[k]/sum*100)+'%'}const sv=$('bv_spend');if(sv)sv.textContent=b.spend+'%';const bs=$('bsum');if(bs)bs.innerHTML=`Spending ${moneyS(me.gdp*b.spend/100/144)} every 10 minutes. Military share ${moneyS(me.gdp*b.spend/100/144*b.mil/sum)} vs upkeep ${moneyS(C.upkeep(W,me))}.`};upd();
+function budgetSum(b){const sum=(b.mil+b.health+b.edu+b.infra)||1;return`Spending ${moneyS(me.gdp*b.spend/100/144)} every 10 minutes. Military share ${moneyS(me.gdp*b.spend/100/144*b.mil/sum)} vs upkeep ${moneyS(C.upkeep(W,me))}.`}
+function setTxt(el,t){if(el&&el.textContent!==t)el.textContent=t}
+function budgetAfter(){const upd=()=>{const b=budgetDraft||me.budget;const parts=['mil','health','edu','infra'];const sum=parts.reduce((a,k)=>a+(+b[k]),0)||1;for(const k of parts){setTxt($('bv_'+k),Math.round(b[k]/sum*100)+'%')}setTxt($('bv_spend'),b.spend+'%');const bs=$('bsum');if(bs&&bs.innerHTML!==budgetSum(b))bs.innerHTML=budgetSum(b)};upd();
  document.querySelectorAll('[data-bk]').forEach(i=>i.oninput=()=>{budgetDraft=budgetDraft||{...me.budget};budgetDraft[i.dataset.bk]=+i.value;upd()})}
 function electionPanel(n){if(n.gov!=='dem')return panel('Elections',`<p class="mu" style="margin:0">Your ${GOV[n.gov].n.toLowerCase()} does not hold elections. Low approval and stability can still lead to revolution.</p>`,'','vote');
  const proj=clamp(n.approval*.75+12-n.unemp*.7-Math.max(0,n.infl-3)+(n.campaign||0),3,97),le=n.lastElection;const open=n.nextElection-Date.now()<24*HOUR;
@@ -738,14 +756,14 @@ $('chatin').addEventListener('submit',e=>{e.preventDefault();const i=$('cin');se
 setInterval(()=>{if(me)updTimers()},1000);
 setInterval(()=>{if(loaded&&!(['economy','mail','council','intel'].includes(page)&&document.activeElement&&document.activeElement.tagName!=='BODY'))refresh()},30000);
 setInterval(heartbeat,120000);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){heartbeat();if(loaded)refresh()}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){heartbeat();if(loaded&&hiddenDirty){hiddenDirty=false;refresh()}}});
 window.addEventListener('wp-config',e=>{CFG={...CFG,...e.detail};if(loaded)refresh()});
 window.addEventListener('wp-announce',e=>{toast(e.detail.text);SND.play('note')});
-window.addEventListener('wp-extra',()=>{if(loaded)refresh()});
+window.addEventListener('wp-extra',()=>{if(loaded)refreshSoon()});
 window.addEventListener('wp-note',e=>{renderBell();const n=e.detail;if(['attack','war','election','covert','economy','council','diplo','mail'].includes(n.kind)){toast(n.text);SND.play(n.kind==='attack'||n.kind==='war'?'lose':'note')}});
 window.addEventListener('wp-mail',()=>{renderTop();renderSide();if(page==='mail'&&mailState.view!=='compose'){mailState.list=null;render()}});
 window.addEventListener('wp-council',()=>{renderSide();if(page==='council'&&!(document.activeElement&&/SELECT|INPUT/.test(document.activeElement.tagName)))render()});
-window.addEventListener('wp-event',()=>{if(loaded)refresh()});
+window.addEventListener('wp-event',()=>{if(loaded)refreshSoon()});
 window.addEventListener('wp-login',()=>{const host=document.getElementById('authGlobe');if(!host)return;refreshW();GL.st.scale=1.25;GL.attach(host,'bg');const spin=()=>{if(!host.isConnected)return;GL.st.rot=[GL.st.rot[0]+.08,-18,0];GL.redraw();requestAnimationFrame(spin)};spin()});
 // ================= boot =================
 refreshW();
@@ -760,7 +778,7 @@ refreshW();
  db.collection('nations').onSnapshot(s=>{N={};s.docs.forEach(d=>{if(d.exists)N[d.id]=d.data()});
   if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
   if(N[uid])hadMine=true;else if(hadMine){hadMine=false;toast('Your nation was reset by an administrator.')}
-  refresh();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
+  refreshSoon();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
  db.collection('chat').onSnapshot(s=>{CH={};s.docs.forEach(d=>{if(d.exists)CH[d.id]=d.data()});if(uid&&CH[uid]&&!gotC)myChat=(CH[uid].m||[]).slice();gotC=true;if(uid&&myChat.length&&CH[uid])CH[uid]={m:myChat};renderChat();if(page==='chat')markChatSeen();renderSide()},()=>{});
  db.collection('online').onSnapshot(s=>{ON={};s.docs.forEach(d=>{if(d.exists)ON[d.id]=d.data()});loadNames();renderOnline()},()=>{});
 })();
