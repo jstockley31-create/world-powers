@@ -145,6 +145,8 @@ module.exports = function makeBots(core, WP, rng) {
         if (targets.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: pick(targets) });
       }
     }
+    // warlords sometimes bomb their enemies' armies from the air
+    if (myWars.length && n.ai.p === 'warlord' && (n.air || 0) >= 10 && rng() < .12) { const v = pick(myWars); if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: 'mil', n: Math.floor(n.air * .6) }); if (r) return r; } }
     // covert operations against enemies (warlords and isolationists mostly)
     if (myWars.length && n.spies >= 2 && !core.left(W, n, 'covert') && rng() < (n.ai.p === 'warlord' ? .25 : .08)) { const v = pick(myWars); const op = W.A[v].tech > n.tech && n.spies >= 3 ? 'steal' : pick(['sabotage', 'unrest']); const r = tryExec(W, u, { c: 'covert', op, v }); if (r) return r; }
     // 6) development according to personality

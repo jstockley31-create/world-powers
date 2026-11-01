@@ -34,6 +34,35 @@ const ACTS = [
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
 const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false };
+// Chain events: a crisis that unfolds over several decisions. An option's third element names the next step.
+const CHAINS = {
+  strike1: { t: 'General strike', d: 'The national federation of unions has called a general strike over wages and rising prices. Ports and factories are shutting down.', o: [['Open wage negotiations', { tr: -1, ap: 3 }, 'strike2a'], ['Declare the strike illegal', { st: -4, ap: -6 }, 'strike2b'], ['Wait it out', { gdp: -1, ap: -2 }, 'strike2c']] },
+  strike2a: { t: 'Union raises its demands', d: 'Talks are going well, but union leaders now also want a pension guarantee before anyone returns to work.', o: [['Agree to the pension guarantee', { tr: -2, ap: 5, st: 3 }], ['Hold firm on wages only', { ap: -2 }, 'strike3'], ['Ask an independent mediator', { tr: -.5, st: 2, ap: 2 }]] },
+  strike2b: { t: 'Clashes at the ports', d: 'Police and strikers clashed overnight at the main port. Footage of the violence is everywhere.', o: [['Deploy the army to restore order', { st: 3, ap: -8, troops: -40 }], ['Withdraw police and reopen talks', { ap: 2, st: -3 }, 'strike2a'], ['Arrest the strike leaders', { st: -6, ap: -5, aggr: 3 }, 'strike3']] },
+  strike2c: { t: 'The strike drags on', d: 'Three weeks in, shelves are emptying and exporters are losing contracts abroad.', o: [['Make a generous offer', { tr: -2.5, ap: 4, st: 4 }], ['Bring in replacement workers', { gdp: 1, ap: -6, st: -4 }, 'strike3'], ['Keep waiting', { gdp: -2, food: -150, ap: -3 }]] },
+  strike3: { t: 'Nationwide shutdown', d: 'Other sectors have joined in solidarity. The country has nearly ground to a halt.', o: [['Concede to every demand', { tr: -3, ap: 6, st: 5, infl: 1 }], ['Call early elections', { ap: 3, st: -5 }], ['Impose a state of emergency', { st: -8, ap: -10, aggr: 5 }]] },
+  scandal1: { t: 'Corruption allegations', d: 'Investigative journalists allege that your finance minister accepted bribes from a construction company.', o: [['Dismiss the minister immediately', { st: -2, ap: 2 }], ['Defend the minister publicly', { ap: -4 }, 'scandal2a'], ['Order an independent inquiry', { tr: -.5 }, 'scandal2b']] },
+  scandal2a: { t: 'More evidence emerges', d: 'Leaked bank records appear to show payments to the minister — and to two of your other officials.', o: [['Fire all three', { st: -4, ap: 3 }], ['Call the leaks a smear campaign', { ap: -7, st: -3 }, 'scandal3'], ['Resign the finance portfolio yourself', { ap: 1, st: -2 }]] },
+  scandal2b: { t: 'Inquiry report', d: 'The inquiry finds the minister guilty, but clears the rest of the government. Opposition parties say it was a whitewash.', o: [['Publish the full report', { ap: 4, st: 2 }], ['Publish a summary only', { ap: -2 }], ['Pass anti-corruption laws', { tr: -1, ap: 5, gdp: .5 }]] },
+  scandal3: { t: 'Mass protests', d: 'Tens of thousands march against corruption in the capital, demanding your resignation.', o: [['Reshuffle the whole cabinet', { st: -3, ap: 4 }], ['Disperse the protests', { st: -6, ap: -8, aggr: 4 }], ['Promise a referendum on reform', { ap: 6, st: -2 }]] },
+  chip1: { t: 'Microchip breakthrough', d: 'A domestic startup has designed a chip far ahead of anything else on the market. It needs money to scale up.', o: [['Fund a national chip program', { tr: -2 }, 'chip2a'], ['Let private investors handle it', { gdp: .5 }, 'chip2b'], ['Sell the design abroad', { tr: 3, tech: -1 }]] },
+  chip2a: { t: 'The first factory', d: 'The state-backed factory is ready, but it needs rare materials and skilled engineers.', o: [['Import engineers and materials', { tr: -1.5, steel: -60 }, 'chip3'], ['Train local engineers instead', { edu: 4, tr: -1 }, 'chip3'], ['Scale back the program', { tr: 1, ap: -2 }]] },
+  chip2b: { t: 'Foreign takeover bid', d: 'A foreign conglomerate offers to buy the startup outright, with a huge payout to its founders.', o: [['Allow the sale', { tr: 1.5, gdp: -.5 }], ['Block it on security grounds', { st: 2, aggr: 2 }, 'chip3'], ['Take a government stake', { tr: -1 }, 'chip3']] },
+  chip3: { t: 'Chips go global', d: 'The chips are a hit. Orders pour in from around the world.', o: [['Invest profits in research', { tech: 1, edu: 3 }], ['Cut taxes with the windfall', { ap: 5, tr: 1 }], ['Build export capacity', { gdp: 2, goods: 120, unemp: -1 }]] },
+  drought1: { t: 'Severe drought', d: 'The rainy season has failed. Farmers warn of a poor harvest and reservoirs are falling fast.', o: [['Buy emergency food imports', { tr: -1.5, food: 250 }, 'drought2a'], ['Ration water nationwide', { ap: -4, food: 80 }, 'drought2b'], ['Do nothing and hope for rain', { food: -150 }, 'drought2c']] },
+  drought2a: { t: 'Import prices soar', d: 'Other nations are buying too. Grain prices on world markets have doubled.', o: [['Keep buying', { tr: -2, food: 200, ap: 2 }], ['Build desalination plants', { tr: -2.5, infra: 1, health: 2 }], ['Subsidise drought-resistant crops', { tr: -1, gdp: .5 }]] },
+  drought2b: { t: 'Farmers protest', d: 'Farmers block highways with tractors, saying rationing is ruining them.', o: [['Compensate farmers', { tr: -1.5, ap: 4 }], ['Exempt agriculture from rationing', { food: 120, ap: -2, health: -2 }], ['Clear the roads', { st: -4, ap: -5 }]] },
+  drought2c: { t: 'Famine warnings', d: 'Aid agencies warn of famine in rural regions. Food prices are climbing quickly.', o: [['Emergency aid program', { tr: -3, food: 300, ap: 3 }], ['Ask the world for help', { food: 200, st: -2 }], ['Blame the previous government', { ap: -6, st: -4, pop: -1 }]] },
+  refugee1: { t: 'Refugees at the border', d: 'A civil war abroad has sent tens of thousands of refugees to your border, asking for shelter.', o: [['Open the border', { pop: 2, ap: -3, tr: -1 }, 'refugee2a'], ['Build camps at the border', { tr: -1.5, st: 1 }, 'refugee2b'], ['Close the border', { ap: 2, aggr: 3 }]] },
+  refugee2a: { t: 'Integration challenges', d: 'Newcomers need housing, jobs and language classes. Some towns are struggling.', o: [['Fund an integration program', { tr: -1.5, unemp: -1, ap: 3 }], ['Fast-track work permits', { gdp: 1, unemp: 1, ap: -2 }], ['Leave it to local towns', { st: -3, ap: -2 }]] },
+  refugee2b: { t: 'Camp conditions', d: 'Reports describe overcrowding and disease in the border camps. Aid groups are calling for action.', o: [['Improve the camps', { tr: -1.5, health: 2, ap: 2 }], ['Resettle refugees across the country', { pop: 1.5, ap: -3 }, 'refugee2a'], ['Restrict press access', { st: -2, ap: -5 }]] }
+};
+const CHAIN_STARTS = ['strike1', 'scandal1', 'chip1', 'drought1', 'refugee1'];
+// Generals: earned in victory, lost in defeat
+const GEN_FIRST = ['Alexei', 'Maren', 'Tomas', 'Ilse', 'Rafael', 'Noor', 'Kenji', 'Elena', 'Viktor', 'Amara', 'Dario', 'Sven', 'Lucia', 'Omar', 'Hana', 'Felix', 'Ines', 'Bram', 'Yara', 'Casimir', 'Petra', 'Malik', 'Astrid', 'Jonah'];
+const GEN_LAST = ['Varga', 'Holm', 'Okafor', 'Brandt', 'Castell', 'Rourke', 'Sato', 'Lindqvist', 'Marek', 'Duarte', 'Haddad', 'Novak', 'Ferreira', 'Kowal', 'Abara', 'Strand', 'Morel', 'Tanaka', 'Ilic', 'Rayne', 'Vasquez', 'Achterberg'];
+const GEN_TYPES = { attack: { n: 'Field marshal', d: '+4% attack strength per star' }, defense: { n: 'Defense commander', d: '+4% defense in every province per star' }, logistics: { n: 'Quartermaster general', d: 'Distant attacks: 10% smaller penalty and cost per star' } };
+const NUKE = { tech: 12, rank: 4, cash: 25e6, steel: 1500, oil: 1500, goods: 500, upkeep: 1e5 };
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
 const COVERT = {
@@ -84,7 +113,7 @@ function Core(PD, CARDS) {
   const sea = h => (P[h] && P[h].s) || [];
   const nbrs = h => land(h).concat(sea(h));
   const pname = h => { const p = P[h]; if (!p) return 'Unknown'; return p.n === CN[p.ci] ? p.n : `${p.n}, ${CN[p.ci]}`; };
-  const getCard = i => (typeof i === 'string' && i.startsWith('ev:')) ? (EVENTS[i.slice(3)] || {}).card : CARDS[i];
+  const getCard = i => (typeof i === 'string' && i.startsWith('ev:')) ? (EVENTS[i.slice(3)] || {}).card : (typeof i === 'string' && i.startsWith('ch:')) ? CHAINS[i.slice(3)] : CARDS[i];
 
   function computeOwn(A) {
     const best = {};
@@ -154,7 +183,7 @@ function Core(PD, CARDS) {
   }
   function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(5, traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR;
-  const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150) * W.m.upkeep;
+  const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0)) * W.m.upkeep;
   function production(W, u) {
     const n = W.A[u]; const p = { food: 0, oil: 0, steel: 0, goods: 0 };
     for (const h of hexesOf(W, u)) {
@@ -187,6 +216,7 @@ function Core(PD, CARDS) {
   const fortCost = n => Math.round(1e5 * Math.pow(n.fort + 1, 1.5) * cheap(n));
   const rallyCost = n => Math.round(2e4 + n.pop * .05);
   const campaignCost = n => Math.round(5e4 + n.pop * .1);
+  const streakMult = c => c % 7 === 0 ? 2.5 : 1 + .15 * (Math.min(c, 6) - 1); // grows to ×1.75, with a ×2.5 bonus every 7th day
   const dailyGrant = n => 2e5 * (1 + rankOf(n.xp) * .5);
   const left = (W, n, k) => Math.max(0, ((n.cd && n.cd[k]) || 0) - W.now);
 
@@ -208,8 +238,9 @@ function Core(PD, CARDS) {
   function route(W, u, h) { const r = reach(W, u, h); return r ? r.rt : null; }
   // strength and cost by route: borders fight at full strength; distant fronts lose up to 45% and cost more to supply
   const distF = km => Math.max(.55, 1 - km / 12000);
-  const routeMult = r => r.rt === 'land' ? 1 : r.rt === 'sea' ? .8 : r.rt === 'march' ? distF(r.km) : .8 * distF(r.km);
-  const routeCostX = r => r.rt === 'land' || r.rt === 'sea' ? 1 : 1 + r.km / 2500;
+  const logiCut = n => { const g = n && bestGen(n, 'logistics'); return g ? 1 - g.stars * .1 : 1; };
+  const routeMult = (r, n) => r.rt === 'land' ? 1 : r.rt === 'sea' ? .8 : 1 - (1 - (r.rt === 'march' ? distF(r.km) : .8 * distF(r.km))) * logiCut(n);
+  const routeCostX = (r, n) => r.rt === 'land' || r.rt === 'sea' ? 1 : 1 + r.km / 2500 * logiCut(n);
   const PER_SHIP = { sea: 100, ocean: 75 };
   const fmtT = ms => { const s = Math.ceil(ms / 1e3); if (s >= 3600) return Math.floor(s / 3600) + 'h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + 'm'; return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   function canAttack(W, u, h) {
@@ -225,6 +256,7 @@ function Core(PD, CARDS) {
     if (W.cfg.weakRule && !theyHitMe && !fairWar && !n.ai && score(W, v) < score(W, u) * .4) return `${n.name} is far weaker than you. Attacking them is not permitted.`;
     if (W.OWN[h].cap) {
       if (!W.cfg.conquest) return 'Capitals cannot be captured.';
+      if (n.nuke) return `${n.name} has a nuclear deterrent. Its capital cannot be besieged.`;
       if (Object.keys(n.hexes || {}).length > 1) return `The capital can only be besieged once ${n.name} has lost all its other provinces.`;
       // the defender always gets a warning period: from losing its last other province, or from the declaration of war (none for AI)
       const start = n.ai ? 1 : n.lastStand || warSince(W, u, v);
@@ -245,7 +277,7 @@ function Core(PD, CARDS) {
     const SEA = r.rt === 'sea' || r.rt === 'ocean', perShip = PER_SHIP[r.rt] || 0;
     const maxX = Math.max(0, SEA ? Math.min(me.troops, (me.ships || 0) * perShip) : me.troops);
     X = X == null ? Math.floor(maxX * .8) : Math.max(0, Math.min(maxX, Math.floor(X))); AIR = AIR == null ? Math.floor((me.air || 0) * .8) : Math.max(0, Math.min(me.air || 0, Math.floor(AIR)));
-    const mult = routeMult(r), cx = routeCostX(r), base = atkCost(W, X);
+    const mult = routeMult(r, me), cx = routeCostX(r, me), base = atkCost(W, X);
     const cost = { cash: Math.round(base.cash * cx), oil: Math.ceil(base.oil * cx) + AIR * 2, food: Math.ceil(base.food * cx) };
     const atk = (X + AIR * 20) * atkMult(me) * mult, def = defense(W, h, u);
     // chance: average over the battle's random spread (attack ±15%, defense ±10%), times the chance of winning at sea first
@@ -258,10 +290,18 @@ function Core(PD, CARDS) {
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? 1.5 : 1);
+    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? 1.5 : 1) * genF(n, 'defense');
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
-  const atkMult = n => techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n);
+  const bestGen = (n, type) => (n.gens || []).filter(g => g.type === type).reduce((b, g) => !b || g.stars > b.stars ? g : b, null);
+  const genF = (n, type) => { const g = bestGen(n, type); return g ? 1 + g.stars * .04 : 1; };
+  const atkMult = n => techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n) * genF(n, 'attack');
+  function newGeneral(W, u, rng) {
+    const n = W.A[u]; n.gens = n.gens || []; if (n.gens.length >= 3) return null;
+    const r = rng(), type = r < .4 ? 'attack' : r < .7 ? 'defense' : 'logistics';
+    const g = { id: rid(), name: GEN_FIRST[Math.floor(rng() * GEN_FIRST.length)] + ' ' + GEN_LAST[Math.floor(rng() * GEN_LAST.length)], type, stars: 1, wins: 0, t: W.now };
+    n.gens.push(g); return g;
+  }
   const atkCost = (W, x) => ({ cash: Math.round(x * 25 * W.m.atkCost), oil: Math.ceil(x / 10), food: Math.ceil(x / 20) });
 
   // ---------- decisions: situational conditions ----------
@@ -347,7 +387,7 @@ function Core(PD, CARDS) {
     else if (k === 'spies') { if (n.spies >= spyCap(n)) fail(`Your intelligence agency is at capacity (${spyCap(n)} agents for your rank).`); const c = 8e4; if (n.cash < c) fail(`Requires ${money(c)}.`); n.cash -= c; n.spies = Math.min(spyCap(n), n.spies + 2); msg = `Two agents completed training. You now have ${n.spies}.`; }
     else if (k === 'rally') { const c = rallyCost(n); if (n.cash < c) fail(`Requires ${money(c)}.`); n.cash -= c; n.approval = clamp(n.approval + 6, 0, 100); msg = 'Your address was well received. Approval rose.'; }
     else if (k === 'campaign') { if (n.gov !== 'dem') fail('Only democracies hold elections.'); if (!n.nextElection || n.nextElection - W.now > 24 * HOUR) fail('Campaigning opens 24 hours before the election.'); if ((n.campaign || 0) >= 12) fail('Your campaign is already at full strength.'); const c = campaignCost(n); if (n.cash < c) fail(`Requires ${money(c)}.`); n.cash -= c; n.campaign = (n.campaign || 0) + 3; msg = `Campaign rallies held across the country. Projected vote +3% (total +${n.campaign}%).`; }
-    else if (k === 'daily') { const v = dailyGrant(n); n.cash += v; n.res.food += 100; n.res.oil += 60; n.res.steel += 60; n.res.goods += 30; msg = `Received a ${money(v)} grant and supplies.`; }
+    else if (k === 'daily') { const st = n.streak && W.now - n.streak.t < 48 * HOUR ? n.streak.c + 1 : 1; n.streak = { c: st, t: W.now }; const sm = streakMult(st); const v = Math.round(dailyGrant(n) * sm); n.cash += v; if (st % 7 === 0) gainXP(W, u, 100); n.res.food += 100; n.res.oil += 60; n.res.steel += 60; n.res.goods += 30; msg = `Received a ${money(v)} grant and supplies.${st > 1 ? ` Day ${st} streak: ×${sm.toFixed(2)}${st % 7 === 0 ? ' — weekly bonus!' : '.'}` : ''}`; }
     n.cd[k] = W.now + a.cd * MIN * W.cfg.cd; n.cnt[k] = (n.cnt[k] || 0) + 1; gainXP(W, u, a.xp); log(n, msg, W); touch(W, u);
     return { msg };
   }
@@ -375,7 +415,8 @@ function Core(PD, CARDS) {
     return true;
   }
   function addCard(W, u, rng) {
-    const n = W.A[u]; const used = new Set([...n.cards.map(c => c.i), ...(n.seen || [])]);
+    const n = W.A[u];
+    if (!n.chain && !n.cards.some(c => String(c.i).startsWith('ch:')) && rng() < .18) { const recent = n.seenCh || []; const opts = CHAIN_STARTS.filter(k => !recent.includes(k)); if (opts.length) { const k = opts[Math.floor(rng() * opts.length)]; n.cards.push({ id: rid(), i: 'ch:' + k }); n.seenCh = [k, ...recent].slice(0, 3); return; } } const used = new Set([...n.cards.map(c => c.i), ...(n.seen || [])]);
     let pool = CARDS.map((c, i) => i).filter(i => !used.has(i) && condOk(W, u, CARDS[i].c));
     if (!pool.length) pool = CARDS.map((c, i) => i).filter(i => !n.cards.some(c => c.i === i) && condOk(W, u, CARDS[i].c));
     if (!pool.length) return;
@@ -388,6 +429,7 @@ function Core(PD, CARDS) {
     const c = n.cards.find(x => x.id === id); if (!c) fail('That decision is no longer pending.');
     const card = getCard(c.i), oi = Number(o); if (!card || !Number.isInteger(oi) || oi < 0 || oi >= card.o.length) fail('Invalid choice.'); const opt = card.o[oi];
     const ok = applyEff(W, u, opt[1], rng); n.cards = n.cards.filter(x => x.id !== id); n.cnt.decide = (n.cnt.decide || 0) + 1; gainXP(W, u, 10);
+    if (opt[2] && CHAINS[opt[2]]) n.chain = { k: opt[2], at: W.now + (30 + Math.floor(rng() * 30)) * MIN }; // the story continues later
     const msg = `${card.t}: ${opt[0]}${opt[1].risk != null ? (ok ? ' — it succeeded.' : ' — it backfired.') : '.'}`; log(n, msg, W); touch(W, u);
     return { msg };
   }
@@ -399,7 +441,7 @@ function Core(PD, CARDS) {
     if (AIR > me.air) fail('You do not have that many aircraft.');
     const RCH = reach(W, u, h), rt = RCH.rt, SEA = rt === 'sea' || rt === 'ocean', OCEAN = rt === 'ocean', MARCH = rt === 'march', perShip = PER_SHIP[rt] || 0, shipsNeeded = SEA ? Math.ceil(X / perShip) : 0;
     if (shipsNeeded > me.ships) fail(`${OCEAN ? 'An overseas' : 'A sea'} invasion of ${num(X)} troops needs ${shipsNeeded} warships to carry them (${perShip} troops each). You have ${me.ships}.`);
-    const c = atkCost(W, X), cx = routeCostX(RCH); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx); c.food = Math.ceil(c.food * cx); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${c.oil + AIR * 2} oil and ${c.food} food.`);
+    const c = atkCost(W, X), cx = routeCostX(RCH, me); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx); c.food = Math.ceil(c.food * cx); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${c.oil + AIR * 2} oil and ${c.food} food.`);
     const v = owner(W, h), d = W.A[v];
     me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN ? 60 : MARCH ? 45 : 30) * MIN; me.aggr = Math.min(100, (me.aggr || 0) + W.m.aggrPerAttack);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 6 : me.gov === 'dic' ? 1 : 3), 0, 100); me.stability = clamp(me.stability - 2, 0, 100);
@@ -419,7 +461,7 @@ function Core(PD, CARDS) {
       }
     }
     // 2) land battle with air support
-    const atk = (X + AIR * 20) * atkMult(me) * routeMult(RCH) * (.85 + rng() * .3), def = defense(W, h, u) * (.9 + rng() * .2); const win = atk > def, ra = def / (atk + def);
+    const atk = (X + AIR * 20) * atkMult(me) * routeMult(RCH, me) * (.85 + rng() * .3), def = defense(W, h, u) * (.9 + rng() * .2); const win = atk > def, ra = def / (atk + def);
     const lossA = Math.min(X, Math.round(X * ra * .6)), lossD = Math.min(d.troops, Math.round(d.troops * .5 * (1 - ra) * .5));
     const airLostA = Math.min(AIR, Math.round(AIR * ra * .3)), airLostD = Math.min(d.air, Math.round(d.air * .5 * (1 - ra) * .3));
     me.troops -= lossA; me.air -= airLostA; d.troops = Math.max(0, d.troops - lossD); d.air -= airLostD;
@@ -430,6 +472,14 @@ function Core(PD, CARDS) {
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
     Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) });
+    // generals: victories can produce a new general and promote the commander; defeats can cost a general's life
+    const ag = bestGen(me, 'attack');
+    if (win) { if (ag) { ag.wins++; if (ag.wins % 3 === 0 && ag.stars < 5) { ag.stars++; result.genUp = ag.name; } } if (rng() < .25) { const g = newGeneral(W, u, rng); if (g) { result.newGen = g; log(me, `${g.name} distinguished themselves in battle and was appointed ${GEN_TYPES[g.type].n}.`, W); note(W, u, 'rank', `New general: ${g.name}, ${GEN_TYPES[g.type].n}.`); } }
+      const dg = bestGen(d, 'defense'); if (dg && rng() < .15) { d.gens = d.gens.filter(x => x !== dg); log(d, `${dg.name}, your defense commander, was killed defending ${pname(h)}.`, W); note(W, v, 'attack', `General ${dg.name} was killed defending ${pname(h)}.`); } }
+    else if (ag && rng() < .2) { me.gens = me.gens.filter(x => x !== ag); result.genLost = ag.name; log(me, `${ag.name}, your field marshal, was killed in the failed attack on ${pname(h)}.`, W); news(W, u, `General ${ag.name} of ${me.name} fell in battle at ${pname(h)}.`); }
+    // newly conquered land may rebel unless it is garrisoned
+    if (win && !isCap) { me.conq = me.conq || {}; me.conq[h] = { t: W.now, from: v }; }
+    for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${me.name} ${win ? 'captured' : 'attacked'} ${pname(h)} from your ally ${d.name}.`);
     pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0 });
     if (result.conquered) {
       const days = Math.max(0, (W.now - (d.created || W.now)) / 864e5);
@@ -446,6 +496,63 @@ function Core(PD, CARDS) {
     return { msg: win ? 'Victory.' : 'Defeat.', battle: result };
   }
 
+  // air and missile strikes: damage without invading
+  function canStrike(W, u, v) {
+    const me = W.A[u], n = W.A[v]; if (!me) return 'Found a nation first.'; if (!n || v === u) return 'Unknown nation.';
+    if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
+    if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
+    if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
+    const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
+    const theyHitMe = (n.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR);
+    if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
+    if (left(W, me, 'strike')) return `Your strike forces are rearming: ${fmtT(left(W, me, 'strike'))}.`;
+    return null;
+  }
+  const MISSILE = { tech: 8, cash: 4e5, steel: 40, oil: 40 };
+  function strike(W, u, v, kind, target, count, rng) {
+    const why = canStrike(W, u, v); if (why) fail(why);
+    const me = W.A[u], d = W.A[v]; if (!['stock', 'infra', 'mil'].includes(target)) fail('Choose a target.');
+    count = Math.floor(Number(count)); let P = 0, lost = 0, hits = 0;
+    if (kind === 'air') {
+      if (!(count >= 5) || count > (me.air || 0)) fail(`Send between 5 and ${me.air || 0} aircraft.`);
+      if (me.res.oil < count * 3) fail(`Needs ${count * 3} oil.`);
+      me.res.oil -= count * 3; const icp = (d.air || 0) / ((d.air || 0) + count + 1);
+      lost = Math.min(count, Math.round(count * icp * .6 + count * .03)); me.air -= lost; P = (count - lost) * techF(me);
+    } else if (kind === 'missile') {
+      if ((me.tech || 0) < MISSILE.tech) fail(`Missiles require tech level ${MISSILE.tech}.`);
+      if (!(count >= 1) || count > 5) fail('Launch between 1 and 5 missiles.');
+      const c = { cash: MISSILE.cash * count, steel: MISSILE.steel * count, oil: MISSILE.oil * count };
+      if (me.cash < c.cash || me.res.steel < c.steel || me.res.oil < c.oil) fail(`${count} missile${count > 1 ? 's need' : ' needs'} ${money(c.cash)}, ${c.steel} steel and ${c.oil} oil.`);
+      me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil;
+      const hp = clamp(.85 - soft(d.fort, 8) * .04, .4, .9); for (let i = 0; i < count; i++) if (rng() < hp) hits++; P = hits * 12 * techF(me);
+    } else fail('Unknown strike.');
+    const dmg = {};
+    if (target === 'stock') { const f = Math.min(.3, P * .004); for (const r in RES) { dmg[r] = Math.floor((d.res[r] || 0) * f); d.res[r] -= dmg[r]; } }
+    else if (target === 'infra') { const lv = P >= 40 ? 2 : P >= 15 ? 1 : 0; dmg.infra = Math.min(d.infra || 0, lv); d.infra -= dmg.infra; dmg.gdp = Math.min(.05, P * .0008); d.gdp = (d.gdp || 0) * (1 - dmg.gdp); }
+    else { dmg.troops = Math.min(Math.floor((d.troops || 0) * .15), Math.round(P * 25)); d.troops -= dmg.troops; dmg.ships = Math.min(d.ships || 0, Math.floor(P / 15)); d.ships -= dmg.ships; dmg.air = Math.min(d.air || 0, Math.floor(P / 20)); d.air -= dmg.air; }
+    me.cd.strike = W.now + 30 * MIN; me.aggr = Math.min(100, (me.aggr || 0) + 8); me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : 2), 0, 100);
+    const what = target === 'stock' ? 'stockpiles' : target === 'infra' ? 'infrastructure' : 'military';
+    const sum = target === 'stock' ? (Object.entries(dmg).filter(([, x]) => x > 0).map(([r, x]) => `${num(x)} ${r}`).join(', ') || 'almost nothing') + ' destroyed'
+      : target === 'infra' ? (dmg.infra ? `infrastructure −${dmg.infra} level${dmg.infra > 1 ? 's' : ''}` : 'no infrastructure destroyed') + `, GDP −${(dmg.gdp * 100).toFixed(1)}%`
+      : `${num(dmg.troops)} troops killed${dmg.ships ? `, ${dmg.ships} warships sunk` : ''}${dmg.air ? `, ${dmg.air} aircraft destroyed` : ''}`;
+    const how = kind === 'air' ? `air strike (${count} aircraft${lost ? `, ${lost} shot down` : ''})` : `missile strike (${hits} of ${count} hit)`;
+    log(me, `Your ${how} on ${d.name}'s ${what}: ${sum}.`, W); log(d, `${me.name} launched a ${how.replace(/ \(.*/, '')} on your ${what}: ${sum}.`, W);
+    note(W, v, 'attack', `${me.name} hit your ${what} with a ${kind === 'air' ? 'air' : 'missile'} strike.`); news(W, u, `${me.name} launched ${kind === 'air' ? 'air strikes' : 'missiles'} against ${d.name}.`);
+    for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${me.name} launched a ${kind === 'air' ? 'air' : 'missile'} strike on your ally ${d.name}.`);
+    gainXP(W, u, 10); touch(W, u, v);
+    return { msg: `Strike complete — ${sum}.`, strike: { kind, target, count, lost, hits, dmg, sum } };
+  }
+  function buildNuke(W, u) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (n.nuke) fail('You already have a nuclear deterrent.');
+    if ((n.tech || 0) < NUKE.tech) fail(`A nuclear program requires tech level ${NUKE.tech}.`);
+    if (rankOf(n.xp) < NUKE.rank) fail(`A nuclear program requires the rank of ${RANKS[NUKE.rank][1]}.`);
+    if (n.cash < NUKE.cash || n.res.steel < NUKE.steel || n.res.oil < NUKE.oil || n.res.goods < NUKE.goods) fail(`Requires ${money(NUKE.cash)}, ${NUKE.steel} steel, ${NUKE.oil} oil and ${NUKE.goods} goods.`);
+    n.cash -= NUKE.cash; n.res.steel -= NUKE.steel; n.res.oil -= NUKE.oil; n.res.goods -= NUKE.goods; n.nuke = W.now;
+    n.aggr = Math.min(100, (n.aggr || 0) + 40); n.stability = clamp(n.stability + 5, 0, 100);
+    news(W, u, `☢ ${n.name} has tested a nuclear weapon. The world is on alert.`); log(n, 'Your nuclear deterrent is operational. Your capital can no longer be besieged, but the world will not forget.', W);
+    for (const v of Object.keys(W.A)) if (v !== u) note(W, v, 'war', `☢ ${n.name} has tested a nuclear weapon.`);
+    gainXP(W, u, 50); touch(W, u); return { msg: 'Your nuclear deterrent is operational.' };
+  }
   function dip(W, u, kind, v) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them || v === u) fail('Unknown nation.');
     const t = W.now;
@@ -586,7 +693,7 @@ function Core(PD, CARDS) {
     n.infl = clamp(n.infl + (clamp(iT, -1, 60) - n.infl) * .04, -2, 80);
     // GDP
     n.gdp = n.gdp + (gdpTarget(W, u) - n.gdp) * .1;
-    if (!n.gdpHist.length || W.now - n.gdpHist[n.gdpHist.length - 1].t >= HOUR) { n.gdpHist.push({ t: W.now, v: Math.round(n.gdp) }); if (n.gdpHist.length > 48) n.gdpHist.shift(); }
+    if (!n.gdpHist.length || W.now - n.gdpHist[n.gdpHist.length - 1].t >= HOUR) { n.gdpHist.push({ t: W.now, v: Math.round(n.gdp), p: Math.round(n.pop), m: Math.round(n.troops || 0) }); if (n.gdpHist.length > 48) n.gdpHist.shift(); }
     // population
     if (W.m.pandemic) n.pop *= 1 - .004 * (1 - n.health / 100);
     if (foodShort) n.pop *= .985; else if (n.approval > 35) n.pop = Math.min(Math.max(n.pop, popCap(W, u)), n.pop * (1 + .012 * (.5 + n.health / 100)));
@@ -612,11 +719,31 @@ function Core(PD, CARDS) {
     }
   }
   // Runs on the server about twice a minute for every nation.
+  // conquered provinces stay restless for 48 hours: without ~800 troops per province, they may rise up
+  const GARRISON = 800;
+  function rebels(W, u, rng) {
+    const n = W.A[u]; let any = false; const held = hexesOf(W, u).length, ratio = (n.troops || 0) / Math.max(1, held * GARRISON);
+    for (const [h, c] of Object.entries(n.conq || {})) {
+      if (W.now - c.t > 48 * HOUR || owner(W, h) !== u) { delete n.conq[h]; any = true; continue; }
+      const p = .02 * (1 - Math.min(1, ratio)) * (n.stability < 40 ? 1.5 : 1);
+      if (p > 0 && rng() < p) {
+        delete n.hexes[h]; delete n.conq[h]; any = true; const back = c.from && W.A[c.from] ? c.from : null;
+        if (back) { W.A[back].hexes[h] = W.now; log(W.A[back], `${pname(h)} rose up against ${n.name} and rejoined your nation.`, W); note(W, back, 'attack', `${pname(h)} rebelled against ${n.name} and returned to you!`); touch(W, back); }
+        W.OWN = computeOwn(W.A); n.stability = clamp(n.stability - 3, 0, 100);
+        log(n, `Rebellion! ${pname(h)} rose up and ${back ? 'returned to ' + W.A[back].name : 'declared independence'}. Keep about ${GARRISON} troops per province to hold new land.`, W);
+        note(W, u, 'attack', `Rebellion in ${pname(h)} — the province ${back ? 'returned to ' + W.A[back].name : 'broke away'}.`);
+        news(W, u, `${pname(h)} rebelled against ${n.name}${back ? ' and rejoined ' + W.A[back].name : ''}.`);
+      }
+    }
+    return any;
+  }
   function tick(W, u, active, rng) {
     const n = W.A[u]; let changed = false;
     const k = Math.floor((W.now - n.lastTick) / TICK);
     if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); n.lastTick += k * TICK; changed = true; }
     if (W.now - n.nextCard > 3 * HOUR) n.nextCard = W.now - 3 * HOUR;
+    if (n.chain && W.now >= n.chain.at && n.cards.length < 4) { n.cards.push({ id: rid(), i: 'ch:' + n.chain.k }); delete n.chain; changed = true; }
+    if (k > 0 && n.conq) for (let i = 0; i < Math.min(k, 12); i++) if (rebels(W, u, rng)) changed = true;
     while (W.now >= n.nextCard) { if (n.cards.length < 3 && active) addCard(W, u, rng); n.nextCard += 40 * MIN; changed = true; }
     if (n.gov === 'dem' && n.nextElection && W.now >= n.nextElection) { election(W, u, rng); changed = true; }
     for (const h of Object.keys(n.hexes)) if (owner(W, h) !== u) { delete n.hexes[h]; changed = true; }
@@ -633,6 +760,8 @@ function Core(PD, CARDS) {
       case 'act': return act(W, u, String(c.k), c.arg, rng);
       case 'decide': return decide(W, u, String(c.id), c.o, rng);
       case 'attack': return attack(W, u, c.h, c.x, c.air, rng);
+      case 'strike': return strike(W, u, String(c.v), String(c.kind), String(c.target), c.n, rng);
+      case 'nuke': return buildNuke(W, u);
       case 'dip': return dip(W, u, String(c.kind), String(c.v));
       case 'aid': return aid(W, u, String(c.v), c.amt || {});
       case 'market': return market(W, u, String(c.r), c.q, !!c.buy);
@@ -646,10 +775,10 @@ function Core(PD, CARDS) {
     }
   }
 
-  return { P, CN, land, sea, nbrs, pname, getCard, devAid, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, getCard, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { Core, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { Core, CHAINS, NUKE, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });

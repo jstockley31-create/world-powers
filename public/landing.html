@@ -50,7 +50,7 @@ footer{padding:30px max(20px,calc((100vw - 1180px)/2));border-top:1px solid var(
  <span class="eyebrow"><b></b>Live now · <span id="liveTxt">real-time multiplayer</span></span>
  <h1>Build a nation.<br>Shape the world.</h1>
  <p>A free strategy game played in real time with everyone else. Run your economy, trade, form alliances, vote in the World Council — and decide when it is worth going to war.</p>
- <div class="cta"><a class="btn pri" href="/play#signup">Found your nation — free</a><a class="btn" href="#features">See how it works</a></div>
+ <div class="cta"><a class="btn pri" href="/play#signup">Found your nation — free</a><a class="btn" href="#" id="guestBtn">Play as a guest</a></div><p id="invited" style="display:none;margin:12px 0 0;color:#9be3b0;font-size:14px"></p>
  <div class="live"><div><b id="sNations">—</b><span>Nations</span></div><div><b id="sOnline">—</b><span>Leaders online</span></div><div><b id="sProv">961</b><span>Provinces</span></div><div><b id="sScen">249</b><span>Crises to solve</span></div></div>
 </div></header>
 <section id="features"><h2>A living world, not a board game</h2><p class="lead">Every nation on the map is led by a real person or a clearly marked AI — and everything you do ripples through a shared world.</p>
@@ -70,6 +70,10 @@ footer{padding:30px max(20px,calc((100vw - 1180px)/2));border-top:1px solid var(
 <footer><span>© <span id="yr"></span> World Powers</span><a href="/faq">FAQ</a><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a><a href="/play">Sign in</a></footer>
 <script src="/vendor/d3.min.js"></script>
 <script>
+(function(){const q=new URLSearchParams(location.search),ref=q.get('ref');try{if(ref&&/^[A-Za-z0-9]{7}$/.test(ref))localStorage.setItem('wp_ref',ref)}catch(e){}
+ let r='';try{r=localStorage.getItem('wp_ref')||''}catch(e){}if(r){const el=document.getElementById('invited');el.textContent='You were invited by a friend — found your nation and you both get a bonus.';el.style.display='block'}
+ const g=document.getElementById('guestBtn');g.onclick=async e=>{e.preventDefault();g.textContent='Starting…';try{const res=await fetch('/api/guest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:r})});const j=await res.json().catch(()=>({}));if(!res.ok)throw new Error(j.error||'Please try again.');location.href='/play'}catch(err){g.textContent='Play as a guest';alert(err.message)}}})();
+
 document.getElementById('yr').textContent=new Date().getFullYear();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 fetch('/api/public/stats').then(r=>r.json()).then(s=>{
