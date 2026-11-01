@@ -126,9 +126,11 @@ function Core(PD, CARDS) {
   const oilF = n => ((n.res && n.res.oil) || 0) > 0 ? 1 : .6;
   const cheap = n => GOV[n.gov].cheap || 1;
   const moraleF = n => .75 + (n.morale == null ? 70 : n.morale) / 400;
-  const techF = n => (1 + n.tech * .05) * (1 + n.train * .02);
+  // diminishing returns: the first levels count fully, later ones less and less (stops one nation running away with the world)
+  const soft = (x, s) => s * Math.log(1 + Math.max(0, x || 0) / s);
+  const techF = n => (1 + soft(n.tech, 10) * .05) * (1 + n.train * .02);
   const power = (W, u) => { const n = W.A[u]; return ((n.troops || 0) + (n.ships || 0) * 25 + (n.air || 0) * 20) * techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n); };
-  const score = (W, u) => { const n = W.A[u]; return Math.round(hexesOf(W, u).length * 100 + (n.troops || 0) * .4 + (n.ships || 0) * 8 + (n.air || 0) * 6 + n.tech * 60 + (n.xp || 0) * .1 + n.pop / 2000 + (n.gdp || 0) / 5e5); };
+  const score = (W, u) => { const n = W.A[u]; return Math.round(hexesOf(W, u).length * 100 + (n.troops || 0) * .4 + (n.ships || 0) * 8 + (n.air || 0) * 6 + soft(n.tech, 10) * 60 + (n.xp || 0) * .1 + n.pop / 2000 + (n.gdp || 0) / 5e5); };
   const isCoastal = h => !!(P[h] && P[h].co);
   const hasCoast = (W, u) => hexesOf(W, u).some(isCoastal);
 
@@ -139,12 +141,18 @@ function Core(PD, CARDS) {
   function interestRate(W, n) { return 3 + Math.max(0, debtRatio(n) - .4) * 12 + ((n.defaulted || 0) > W.now - 48 * HOUR ? 10 : 0) + W.m.rate; }
   function gdpTarget(W, u) {
     const n = W.A[u], b = budget(n);
-    const pc = 187.5 * (1 + n.tech * .04) * (1 + n.infra * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
+    const pc = 187.5 * (1 + soft(n.tech, 10) * .04) * (1 + soft(n.infra, 10) * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
       * (1 + Math.min(5, traders(W, u).length) * .03) * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
       * (sanctioned(n) ? .85 : 1) * Math.pow(.96, wars(W, u).length) * ((n.defaulted || 0) > W.now - 48 * HOUR ? .85 : 1) * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * W.m.gdp;
     return n.pop * pc;
   }
-  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(5, traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax; }
+  // development aid: nations far behind the world leader earn up to +50% tax revenue, shrinking as they catch up
+  function devAid(W, u) {
+    if (!W._top || W._top.t !== W.now || W._top.n !== Object.keys(W.A).length) { let t = 0; for (const x of Object.keys(W.A)) t = Math.max(t, score(W, x)); W._top = { t: W.now, n: Object.keys(W.A).length, v: t }; }
+    const top = W._top.v, me = score(W, u); if (!top || me >= top * .3) return 0;
+    return Math.round(.5 * (1 - me / (top * .3)) * 100) / 100;
+  }
+  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(5, traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR;
   const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150) * W.m.upkeep;
   function production(W, u) {
@@ -154,26 +162,29 @@ function Core(PD, CARDS) {
       if (h == n.cap) { for (const k in CAPP) p[k] += CAPP[k]; } else { const t = TYPE[pr.t] || TYPE.P; for (const k in t.p) p[k] += t.p[k]; }
       if (pr.r) p.food += 5; if (pr.m) p.steel += 4; if (pr.co) p.goods += 3;
     }
-    const m = (1 + rankOf(n.xp) * .1) * (1 + n.infra * .05) * W.cfg.income;
+    const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income;
     for (const k in p) p[k] = Math.round(p[k] * m * (k === 'food' ? W.m.food : k === 'oil' ? W.m.oil : 1));
     return p;
   }
   const consumption = n => ({ food: Math.round(n.pop / 1000 * .25), oil: Math.round((n.troops || 0) / 100 * .5 + (n.ships || 0) * .5 + (n.air || 0) * .4 + n.infra * .5), steel: 0, goods: Math.round(n.pop / 1000 * .05) });
-  const popCap = (W, u) => hexesOf(W, u).length * 150000 * (1 + W.A[u].infra * .05);
+  const popCap = (W, u) => hexesOf(W, u).length * 150000 * (1 + soft(W.A[u].infra, 10) * .05);
   function prices(W) { const p = {}, since = W.now - 6 * HOUR, net = { food: 0, oil: 0, steel: 0, goods: 0 }; for (const n of Object.values(W.A)) for (const t of n.trades || []) if (t.t > since && net[t.r] != null) net[t.r] += t.q; for (const k in RES) p[k] = Math.round(RES[k].p * clamp(Math.exp(net[k] / 4000), .4, 3) * (W.m.price[k] || 1)); return p; }
   function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(5, traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1); const inf = Math.max(0, (n.infl || 0) - 3) / 200; return { buy: 1.08 + sp - tb - W.m.spread + inf, sell: .92 - sp + tb + W.m.spread }; }
   const maxBorrow = n => Math.max(0, (n.gdp || 0) * 1.2 - (n.debt || 0));
 
   // ---------- costs ----------
-  const recruitBatch = n => Math.max(20, Math.round(40 + n.pop * .0012));
+  const troopCap = n => Math.floor((n.pop || 0) * .04);
+  const recruitBatch = n => Math.max(20, Math.round(40 + soft(n.pop * .0012, 600))); // bigger nations recruit more, with diminishing returns
   const navyBatch = n => 2 + Math.floor(rankOf(n.xp) / 2);
   const airBatch = n => 3 + Math.floor(rankOf(n.xp) / 2);
   const spyCap = n => 5 + rankOf(n.xp) * 3;
   const expandCost = (W, u) => Math.round(8e4 * Math.pow(Math.max(1, hexesOf(W, u).length), 1.35));
-  const researchCost = (W, n) => Math.round(5e4 * (n.tech + 1) * (GOV[n.gov].res > 1 ? .85 : 1) * W.m.research);
+  const topTech = W => { let t = 0; for (const x of Object.values(W.A)) t = Math.max(t, x.tech || 0); return t; };
+  const catchUp = (W, n) => { const top = topTech(W); return n.tech < top ? .5 + .5 * (n.tech + 1) / (top + 1) : 1; }; // known technology is cheaper to copy
+  const researchCost = (W, n) => Math.round(5e4 * Math.pow(n.tech + 1, 1.6) * (GOV[n.gov].res > 1 ? .85 : 1) * W.m.research * catchUp(W, n));
   const maxTrain = n => 10 + rankOf(n.xp) * 5;
-  const infraCost = n => Math.round(6e4 * (n.infra + 1) * cheap(n));
-  const fortCost = n => Math.round(1e5 * (n.fort + 1) * cheap(n));
+  const infraCost = n => Math.round(6e4 * Math.pow(n.infra + 1, 1.5) * cheap(n));
+  const fortCost = n => Math.round(1e5 * Math.pow(n.fort + 1, 1.5) * cheap(n));
   const rallyCost = n => Math.round(2e4 + n.pop * .05);
   const campaignCost = n => Math.round(5e4 + n.pop * .1);
   const dailyGrant = n => 2e5 * (1 + rankOf(n.xp) * .5);
@@ -247,7 +258,7 @@ function Core(PD, CARDS) {
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + n.fort * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? 1.5 : 1);
+    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? 1.5 : 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const atkMult = n => techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n);
@@ -317,7 +328,7 @@ function Core(PD, CARDS) {
     let msg = '';
     if (k === 'tax') { const v = taxIncome(W, u); n.cash += v; n.rev = (n.rev || 0) + v; if (n.tax > 20) n.approval = clamp(n.approval - (n.tax - 20) * .1, 0, 100); msg = `Collected ${money(v)} in taxes.`; }
     else if (k === 'prod') { const p = production(W, u); for (const r in p) n.res[r] += p[r] * 2; msg = 'Production boosted: ' + Object.entries(p).filter(e => e[1]).map(([r, v]) => `+${v * 2} ${r}`).join(', ') + '.'; }
-    else if (k === 'recruit') { const b = recruitBatch(n), c = b * 150 * cheap(n), s = Math.ceil(b / 10); if (n.cash < c || n.res.steel < s) fail(`Requires ${money(c)} and ${s} steel.`); if (n.troops + b > n.pop * .05) fail('Your population cannot support more soldiers (limit: 5% of population).'); n.cash -= c; n.res.steel -= s; n.troops += b; n.approval = clamp(n.approval - .3, 0, 100); msg = `${num(b)} soldiers enlisted.`; }
+    else if (k === 'recruit') { const b = recruitBatch(n), c = b * 150 * cheap(n), s = Math.ceil(b / 10); if (n.cash < c || n.res.steel < s) fail(`Requires ${money(c)} and ${s} steel.`); if (n.troops + b > troopCap(n)) fail(`Your population cannot support more soldiers (limit: 4% of population, ${num(troopCap(n))}).`); n.cash -= c; n.res.steel -= s; n.troops += b; n.approval = clamp(n.approval - .3, 0, 100); msg = `${num(b)} soldiers enlisted.`; }
     else if (k === 'navy') { if (!hasCoast(W, u)) fail('You need a coastal province to build warships.'); const b = navyBatch(n), c = Math.round(b * 6e4 * cheap(n)), s = b * 30, o = b * 10; if (n.cash < c || n.res.steel < s || n.res.oil < o) fail(`Requires ${money(c)}, ${s} steel and ${o} oil.`); n.cash -= c; n.res.steel -= s; n.res.oil -= o; n.ships += b; msg = `${b} warships commissioned.`; }
     else if (k === 'air') { if (n.tech < 2) fail('Reach tech level 2 to build aircraft.'); const b = airBatch(n), c = Math.round(b * 4.5e4 * cheap(n)), g = b * 15, s = b * 10, o = b * 10; if (n.cash < c || n.res.goods < g || n.res.steel < s || n.res.oil < o) fail(`Requires ${money(c)}, ${g} goods, ${s} steel and ${o} oil.`); n.cash -= c; n.res.goods -= g; n.res.steel -= s; n.res.oil -= o; n.air += b; msg = `${b} aircraft delivered.`; }
     else if (k === 'expand') {
@@ -351,7 +362,7 @@ function Core(PD, CARDS) {
       else if (k === 'st') n.stability = clamp(n.stability + v, 0, 100);
       else if (k === 'pop') n.pop = Math.max(1000, n.pop * (1 + v / 100));
       else if (k === 'gdp') n.gdp = Math.max(1e5, n.gdp * (1 + v / 100));
-      else if (k === 'troops') n.troops = Math.max(0, Math.min(n.pop * .05, n.troops + v));
+      else if (k === 'troops') n.troops = Math.max(0, Math.min(troopCap(n), n.troops + v));
       else if (k === 'ships' || k === 'air' || k === 'spies') n[k] = Math.max(0, n[k] + v);
       else if (k === 'tech' || k === 'infra' || k === 'fort') n[k] = Math.max(0, n[k] + v);
       else if (k === 'train') n.train = clamp(n.train + v, 0, maxTrain(n));
@@ -558,7 +569,7 @@ function Core(PD, CARDS) {
     else { n.morale = clamp(n.morale - 6 * (1 - ratio), 0, 100); if (n.morale < 30) { n.troops = Math.floor(n.troops * (1 - .02 * (1 - ratio))); } }
     const pctGdp = k => b.spend * b[k] / 100;
     const drift = (k, tgt, rate) => { n[k] = n[k] + (clamp(tgt, 0, 100) - n[k]) * rate; };
-    drift('health', pctGdp('health') * 12, .03); drift('edu', pctGdp('edu') * 15, .03); drift('iq', pctGdp('infra') * 14 + n.infra * 2, .03);
+    drift('health', pctGdp('health') * 12, .03); drift('edu', pctGdp('edu') * 15, .03); drift('iq', pctGdp('infra') * 14 + soft(n.infra, 10) * 2, .03);
     // interest and bankruptcy
     const interest = n.debt * interestRate(W, n) / 100 / TICKS_PER_YEAR; if (interest > 0) { if (n.cash >= interest) n.cash -= interest; else n.debt += interest; }
     if (n.debt > n.gdp * 2 || n.cash < -n.gdp * .2) {
@@ -569,7 +580,7 @@ function Core(PD, CARDS) {
     const foodShort = short.includes('food'), goodsShort = short.includes('goods');
     // unemployment and inflation
     const deficit = (n.spent - n.rev) / Math.max(1, n.gdp) * TICKS_PER_YEAR / 144 * 100;
-    const uT = 12 - n.infra * .4 - n.edu * .04 - Math.min(5, traders(W, u).length) * .5 + w * 1.5 + (sanctioned(n) ? 4 : 0) + (n.infl > 10 ? 3 : 0) - (Math.min(b.spend, 30) - 15) * .15 + W.m.unemp;
+    const uT = 12 - soft(n.infra, 10) * .4 - n.edu * .04 - Math.min(5, traders(W, u).length) * .5 + w * 1.5 + (sanctioned(n) ? 4 : 0) + (n.infl > 10 ? 3 : 0) - (Math.min(b.spend, 30) - 15) * .15 + W.m.unemp;
     n.unemp = clamp(n.unemp + (clamp(uT, 1, 35) - n.unemp) * .05, 1, 40);
     const iT = 2 + Math.max(0, deficit) * .3 + debtRatio(n) * 3 + short.length * 2 - (n.tax - 20) * .05 + W.m.infl;
     n.infl = clamp(n.infl + (clamp(iT, -1, 60) - n.infl) * .04, -2, 80);
@@ -635,7 +646,7 @@ function Core(PD, CARDS) {
     }
   }
 
-  return { P, CN, land, sea, nbrs, pname, getCard, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, getCard, devAid, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
