@@ -51,7 +51,7 @@ if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 const health = { lastSave: 0, saveError: null, errors: [], reqs: new Map(), cmds: 0, pushes: 0 };
 let saveTimer = null;
 function writeNow() {
-  try { const tmp = FILE + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(S)); fs.renameSync(tmp, FILE); health.lastSave = Date.now(); health.saveError = null; }
+  try { const t0 = process.hrtime.bigint(), tmp = FILE + '.tmp', js = JSON.stringify(S); fs.writeFileSync(tmp, js); fs.renameSync(tmp, FILE); health.lastSave = Date.now(); health.saveMs = Number(process.hrtime.bigint() - t0) / 1e6; health.dataBytes = js.length; health.saveError = null; }
   catch (e) { health.saveError = e.message; logErr('Saving failed: ' + e.message); }
 }
 function persist(now) { if (now) { clearTimeout(saveTimer); saveTimer = null; return writeNow(); } if (!saveTimer) saveTimer = setTimeout(() => { saveTimer = null; writeNow(); }, 1500); }
@@ -170,6 +170,8 @@ function readBody(req, limit) {
 function cookies(req) { const out = {}; for (const p of (req.headers.cookie || '').split(';')) { const i = p.indexOf('='); if (i > 0) { try { out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); } catch (e) {} } } return out; }
 const isHttps = req => req.socket.encrypted || (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
 const sessionCookie = (req, token, maxAge) => `wp_s=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${isHttps(req) ? '; Secure' : ''}`;
+// Railway's edge strips any X-Forwarded-For the browser sent and puts the real client address first (per Railway support); the
+// rightmost entries can be Railway/CDN hops shared by many players, so they must not be used for rate limits
 const ipOf = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
 function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { return new URL(o).host === req.headers.host; } catch (e) { return false; } }
 function auth(req) {
@@ -364,6 +366,7 @@ function botPresence(W) {
   }
 }
 function worldLoop() {
+  const t0 = process.hrtime.bigint();
   try {
     const W = mkWorld(); const now = Date.now();
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
@@ -377,6 +380,7 @@ function worldLoop() {
     readyReminders(W); smartReminders(W); runSchedule();
     nightlyBackup(); if (now - lastSnap >= 10 * 60e3) takeSnap();
   } catch (e) { logErr('World update failed: ' + (e.stack || e)); }
+  health.loopMs = Number(process.hrtime.bigint() - t0) / 1e6;
 }
 setInterval(worldLoop, 30000).unref(); setTimeout(worldLoop, 1000);
 // remind players by push when their main operations are ready (at most once an hour, only if they were active today)
@@ -520,7 +524,7 @@ function overview() {
   const volume = process.env.RAILWAY_VOLUME_MOUNT_PATH || null;
   let dataBytes = 0; try { dataBytes = fs.statSync(FILE).size; } catch (e) {}
   return {
-    health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, saveError: health.saveError, dataDir: DATA_DIR,
+    health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, loopMs: health.loopMs, saveMs: health.saveMs, saveError: health.saveError, dataDir: DATA_DIR,
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackup || null, pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
     players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config,
@@ -804,11 +808,11 @@ async function handle(req, res) {
     if (p.startsWith('/api/admin/')) return adminRoute(p, req, res, me);
 
     if (p === '/api/stream' && req.method === 'GET') {
+      if (clients.size >= 5000) return send(res, 503, { error: 'The server is very busy. Try again shortly.' });
       touch(me.id, req);
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write('retry: 3000\n\n'); write({ res }, 'init', snapshot(me.id));
       const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { try { mine[0].res.end(); } catch (e) {} clients.delete(mine[0]); }
-      if (clients.size >= 5000) return send(res, 503, { error: 'The server is very busy. Try again shortly.' });
       const c = { res, uid: me.id }; clients.add(c); res.on('error', () => clients.delete(c)); req.on('close', () => clients.delete(c));
       return;
     }
