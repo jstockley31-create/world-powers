@@ -33,7 +33,7 @@ const ACTS = [
   { k: 'campaign', s: 'Campaign', n: 'Election Campaign', i: 'vote', cd: 30, xp: 5, dem: true },
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
-const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false };
+const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, nukeTest: false };
 // Chain events: a crisis that unfolds over several decisions. An option's third element names the next step.
 const CHAINS = {
   strike1: { t: 'General strike', d: 'The national federation of unions has called a general strike over wages and rising prices. Ports and factories are shutting down.', o: [['Open wage negotiations', { tr: -1, ap: 3 }, 'strike2a'], ['Declare the strike illegal', { st: -4, ap: -6 }, 'strike2b'], ['Wait it out', { gdp: -1, ap: -2 }, 'strike2c']] },
@@ -561,12 +561,14 @@ function Core(PD, CARDS) {
     for (const v of Object.keys(W.A)) if (v !== u) note(W, v, 'war', `☢ ${n.name} has tested a nuclear weapon.`);
     gainXP(W, u, 50); touch(W, u); return { msg: 'Your nuclear deterrent is operational.' };
   }
+  // admin "nuke test mode": no 24h wait, warheads arm in 1 minute, no 7-day lockout
+  const nkT = W => W.cfg.nukeTest ? { holdH: 0, buildH: 1 / 60, cdD: 0 } : WARHEAD;
   function canWarhead(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
     if (!n.nuke) return 'You need an operational nuclear deterrent first.';
     if (n.warhead) return n.warhead.ready > W.now ? `A warhead is already being assembled: ready in ${fmtT(n.warhead.ready - W.now)}.` : 'You already have an armed warhead.';
-    if (W.now - n.nuke < WARHEAD.holdH * HOUR) return `Your deterrent must be operational for ${WARHEAD.holdH} hours first: ${fmtT(WARHEAD.holdH * HOUR - (W.now - n.nuke))} left.`;
-    if (left(W, n, 'warhead')) return `After a launch, a new warhead takes time to approve: ${fmtT(left(W, n, 'warhead'))} left.`;
+    if (W.now - n.nuke < nkT(W).holdH * HOUR) return `Your deterrent must be operational for ${nkT(W).holdH} hours first: ${fmtT(nkT(W).holdH * HOUR - (W.now - n.nuke))} left.`;
+    if (left(W, n, 'warhead') && !W.cfg.nukeTest) return `After a launch, a new warhead takes time to approve: ${fmtT(left(W, n, 'warhead'))} left.`;
     if ((n.tech || 0) < WARHEAD.tech) return `A launchable warhead requires tech level ${WARHEAD.tech}.`;
     if (rankOf(n.xp) < WARHEAD.rank) return `A launchable warhead requires the rank of ${RANKS[WARHEAD.rank][1]}.`;
     if (n.cash < WARHEAD.cash || n.res.steel < WARHEAD.steel || n.res.oil < WARHEAD.oil || n.res.goods < WARHEAD.goods) return `Requires ${money(WARHEAD.cash)}, ${num(WARHEAD.steel)} steel, ${num(WARHEAD.oil)} oil and ${num(WARHEAD.goods)} goods.`;
@@ -575,13 +577,13 @@ function Core(PD, CARDS) {
   function buildWarhead(W, u) {
     const why = canWarhead(W, u); if (why) fail(why); const n = W.A[u];
     n.cash -= WARHEAD.cash; n.res.steel -= WARHEAD.steel; n.res.oil -= WARHEAD.oil; n.res.goods -= WARHEAD.goods;
-    n.warhead = { t: W.now, ready: W.now + WARHEAD.buildH * HOUR }; n.aggr = Math.min(100, (n.aggr || 0) + 20); rogueCheck(W, u);
+    n.warhead = { t: W.now, ready: W.now + nkT(W).buildH * HOUR }; n.aggr = Math.min(100, (n.aggr || 0) + 20); rogueCheck(W, u);
     news(W, u, `☢ Intelligence agencies report that ${n.name} is assembling a launchable nuclear warhead.`);
-    log(n, `Warhead assembly has begun. It will be armed in ${WARHEAD.buildH} hours.`, W);
-    for (const v of Object.keys(W.A)) if (v !== u && !W.A[v].ai) note(W, v, 'war', `☢ ${n.name} is assembling a launchable nuclear warhead. It will be armed in ${WARHEAD.buildH} hours.`);
-    touch(W, u); return { msg: `Warhead assembly begun — armed in ${WARHEAD.buildH} hours.` };
+    log(n, `Warhead assembly has begun. It will be armed in ${fmtT(nkT(W).buildH * HOUR)}.`, W);
+    for (const v of Object.keys(W.A)) if (v !== u && !W.A[v].ai) note(W, v, 'war', `☢ ${n.name} is assembling a launchable nuclear warhead. It will be armed in ${fmtT(nkT(W).buildH * HOUR)}.`);
+    touch(W, u); return { msg: `Warhead assembly begun — armed in ${fmtT(nkT(W).buildH * HOUR)}.` };
   }
-  const warheadReady = (W, n) => !!(n && n.warhead && (n.warhead === 2 || n.warhead.ready <= W.now));
+  const warheadReady = (W, n) => !!(n && n.warhead && (n.warhead === 2 || n.warhead.ready <= W.now || (W.cfg.nukeTest && n.warhead.t + 60e3 <= W.now)));
   function canLaunch(W, u, v) {
     const me = W.A[u], d = W.A[v]; if (!me) return 'Found a nation first.'; if (!d || v === u) return 'Unknown nation.';
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
@@ -609,7 +611,7 @@ function Core(PD, CARDS) {
       touch(W, x);
     }
     // the attacker becomes a pariah
-    me.warhead = null; me.cd.warhead = W.now + WARHEAD.cdD * 24 * HOUR; me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + 72 * HOUR);
+    me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR; me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + 72 * HOUR);
     for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after its nuclear strike.`); touch(W, a); }
     me.approval = clamp(me.approval - (me.gov === 'dic' ? 5 : 20), 0, 100);
     const sum = `${num(loss.pop)} people and ${num(loss.troops)} troops killed${loss.infra ? `, ${loss.infra} infrastructure level${loss.infra > 1 ? 's' : ''} destroyed` : ''}, GDP −40%, tax collection halted for ${WARHEAD.nukedH} hours`;
