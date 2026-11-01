@@ -76,16 +76,15 @@ td.r,th.r{text-align:right}
 .bar{height:6px;background:var(--bg);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac);border-radius:4px;transition:width .5s}
 .res{display:inline-flex;align-items:center;gap:6px}.res .ic{width:15px;height:15px}
 /* operations */
-.ops{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px}
-.op{background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);padding:8px 9px 10px;display:grid;grid-template-columns:30px minmax(0,1fr) 84px;align-items:center;gap:9px;position:relative;overflow:hidden}
+.ops{display:grid;grid-template-columns:repeat(auto-fill,minmax(355px,1fr));gap:6px}
+.op{background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);padding:8px 10px 10px;display:grid;grid-template-columns:30px minmax(0,1fr) 86px;align-items:center;gap:9px;position:relative;overflow:hidden}
 .op.rdy{border-color:#2c4a36}
-.op .ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--s3);color:var(--ac)}.op .ico .ic{width:18px;height:18px}
-.op .tx{min-width:0}.op .tx b{font-size:13.5px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.op .tx small{color:var(--ac);font-size:11px;margin-right:5px;white-space:nowrap;opacity:.85}
-.op .d{color:#aab5c0;font-size:12.5px;line-height:1.35;margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
-.op .cost{font-size:12px;color:var(--mu)}
+.op .ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--s3);color:var(--ac)}.op .ico .ic{width:17px;height:17px}
+.op .tx{min-width:0;line-height:1.35}.op .nm{display:flex;align-items:baseline;gap:8px}.op .nm b{font-size:14px;font-weight:600;white-space:nowrap}.op .nm small{color:var(--mu);font-size:11px;white-space:nowrap}
+.op .ef{font-size:12.5px;margin-top:1px}.op .gn{color:#8fdca6}.op .cs{color:var(--mu)}
 .op .prog{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--bg);overflow:hidden}.op .prog i{display:block;height:100%;background:var(--bl)}
 .op .btn{width:100%;padding-left:6px;padding-right:6px;font-variant-numeric:tabular-nums}.op .btn:disabled{background:var(--s3);border-color:var(--bd2);color:var(--mu);opacity:1}
-@media(max-width:820px){.ops{grid-template-columns:1fr}.op{grid-template-columns:30px minmax(0,1fr) 96px}.op .ico{width:30px;height:30px}}
+@media(max-width:820px){.ops{grid-template-columns:1fr}.op{grid-template-columns:28px minmax(0,1fr) 90px}.op .ico{width:28px;height:28px}}
 .nkflash{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:radial-gradient(circle at 50% 45%,rgba(255,250,220,.95),rgba(255,140,40,.55) 35%,rgba(40,8,0,.88) 75%);animation:nkf 1.6s ease-out;transition:opacity 2s}
 .nkflash.fade{opacity:0}@keyframes nkf{0%{background:#fff}12%{background:#fff}100%{}}
 .nkbox{text-align:center;color:#fff;max-width:520px;padding:24px;text-shadow:0 2px 12px rgba(0,0,0,.6)}.nkic{font-size:72px;line-height:1;color:#ffe066;animation:nkp 1.2s ease-in-out infinite alternate}@keyframes nkp{to{transform:scale(1.12);color:#ff7a1a}}
@@ -367,6 +366,7 @@ function connect(){const es=new EventSource('/api/stream');
  es.addEventListener('doc',e=>{const d=JSON.parse(e.data);if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
  es.addEventListener('user',e=>{const d=JSON.parse(e.data);if(d.name==null)delete st.users[d.id];else st.users[d.id]=d.name});
  es.addEventListener('config',e=>setCfg(JSON.parse(e.data)));
+ es.addEventListener('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
  es.addEventListener('nuke',e=>window.dispatchEvent(new CustomEvent('wp-nuke',{detail:JSON.parse(e.data)})));
  es.addEventListener('announce',e=>window.dispatchEvent(new CustomEvent('wp-announce',{detail:JSON.parse(e.data)})));
  let downT=null,wasDown=false;const nb=(t,ok)=>{const b=document.getElementById('netbar');if(!b)return;b.querySelector('span').textContent=t;b.classList.toggle('ok',!!ok);b.classList.add('on')};
@@ -481,6 +481,22 @@ const ACTD={
  rally:n=>`A national address lifts approval by 6 points. Costs ${money(C.rallyCost(n))}.`,
  campaign:n=>`Hold campaign rallies: +3% projected vote (up to +12%). Opens 24 hours before the election. ${money(C.campaignCost(n))}.`,
  daily:n=>{const st=n.streak&&Date.now()-n.streak.t<48*HOUR?n.streak.c:0;const m=C.streakMult(st+1);return`Once per day: a development grant of ${money(C.dailyGrant(n)*m)} plus supplies. Login streak: day ${st+1} (×${m.toFixed(2)}). Come back every day — day 7 pays ×2.5.`}};
+// short, complete summaries for the Operations page: [what you get, what it costs]
+const ACTG={
+ tax:n=>[`+${moneyS(taxIncome())} revenue`,`${n.tax}% tax rate${n.tax>20?' · lowers approval':''}`],
+ prod:n=>['2 extra rounds of output','Free'],
+ recruit:n=>{const b=C.recruitBatch(n);return[`+${num(b)} soldiers`,`${moneyS(b*150*C.cheap(n))} · ${Math.ceil(b/10)} steel`]},
+ navy:n=>{const b=C.navyBatch(n);return C.hasCoast(W,uid)?[`+${b} warships`,`${moneyS(b*6e4*C.cheap(n))} · ${b*30} steel · ${b*10} oil`]:['Warships for sea invasions','Needs a coastal province']},
+ air:n=>{const b=C.airBatch(n);return n.tech<2?['Aircraft for attack & defense','Needs tech level 2']:[`+${b} aircraft`,`${moneyS(b*4.5e4*C.cheap(n))} · ${b*15} goods · ${b*10} steel · ${b*10} oil`]},
+ expand:n=>[`+1 province (${myHexes().length}/${maxHex(n)})`,`${moneyS(expandCost())} · 40 food`],
+ research:n=>[`Tech level ${n.tech+1}`,`${moneyS(C.researchCost(W,n))} · ${10+n.tech*5} goods`],
+ drill:n=>[`Training ${n.train+1}/${C.maxTrain(n)} · +morale`,`${10+n.train*2} oil`],
+ infra:n=>[`Infrastructure ${n.infra+1} · +output, −unemployment`,`${moneyS(C.infraCost(n))} · ${20+n.infra*10} steel`],
+ fort:n=>[`Fortifications ${n.fort+1} · +defense`,`${moneyS(C.fortCost(n))} · ${30+n.fort*15} steel`],
+ spies:n=>[`+2 agents (${n.spies}/${C.spyCap(n)})`,moneyS(8e4)],
+ rally:n=>['+6 approval',moneyS(C.rallyCost(n))],
+ campaign:n=>['+3% projected vote (max +12%)',`${moneyS(C.campaignCost(n))} · opens 24h before election`],
+ daily:n=>{const st=n.streak&&Date.now()-n.streak.t<48*HOUR?n.streak.c:0;const m=C.streakMult(st+1);return[`+${moneyS(C.dailyGrant(n)*m)} grant + supplies`,`Streak day ${st+1} · ×${m.toFixed(2)} (day 7 = ×2.5)`]}};
 // ================= sounds (synthesized, optional) =================
 const SND=(()=>{let ctx=null,on=false;try{on=localStorage.getItem('wp_sound')==='1'}catch(e){}
  const tone=(f,d,type='sine',v=.08,delay=0)=>{if(!on)return;try{ctx=ctx||new (window.AudioContext||window.webkitAudioContext)();const t=ctx.currentTime+delay,o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g).connect(ctx.destination);o.start(t);o.stop(t+d+.02)}catch(e){}};
@@ -677,8 +693,8 @@ function pOverview(){const n=me,p=production(),c=consumption(n),w=wars(uid);
  ${panel('Indicators',`<div class="stats">${stat('Rank',esc(rankName(n)),'ac',rankOf(n.xp)<RANKS.length-1?`${num(n.xp)} / ${num(RANKS[rankOf(n.xp)+1][0])} XP`:num(n.xp)+' XP')}${stat('Military power',num(power(uid)))}${stat('Health',Math.round(n.health))}${stat('Education',Math.round(n.edu))}${stat('Tech level',n.tech)}${stat('Aggression',Math.round(n.aggr||0),sanctioned(n)||isRogue(uid)?'rd':'',isRogue(uid)?'☠ Rogue state':sanctioned(n)?'Sanctioned · rogue state at 75':'Sanctions at 50 · rogue at 75')}</div>`)}
  ${panel('The World Times',(()=>{const nw=worldNews()[0];return nw?`<p style="font-family:Georgia,serif;font-size:16px;margin:0 0 6px">${esc(nw.x)}</p><a data-act="page" data-a="times">Read today's paper →</a>`:'<a data-act="page" data-a="times">Read today\'s paper →</a>'})(),'','book')}
  ${panel('Recent events',`<div class="log">${(n.log||[]).slice(0,14).map(l=>`<div><time>${ago(l.t)}</time><span>${esc(l.x)}</span></div>`).join('')||'<p class="mu">Nothing yet.</p>'}</div>`)}</div></div>`}
-function pOps(){return`<h1 class="pg">Operations</h1><p class="pgsub">Each operation earns experience toward promotion. Hover a card for full details.</p>
- <div class="ops">${myActs().map(a=>`<div class="op" data-cd="${a.k}" title="${esc(ACTD[a.k](me))}"><div class="ico">${I(a.i)}</div><div class="tx"><b>${a.n}</b><div class="d"><small>${a.cd>=60?a.cd/60+'h':a.cd+'m'} · +${a.xp}XP</small>${esc(ACTD[a.k](me))}</div></div><button class="btn ok" data-act="do" data-a="${a.k}">Execute</button><div class="prog"><i></i></div></div>`).join('')}</div>
+function pOps(){return`<h1 class="pg">Operations</h1><p class="pgsub">Each operation earns experience toward promotion. Green is what you get; grey is what it costs.</p>
+ <div class="ops">${myActs().map(a=>{const g=(ACTG[a.k]||(()=>[ACTD[a.k](me),'']))(me);return`<div class="op" data-cd="${a.k}"><div class="ico">${I(a.i)}</div><div class="tx"><div class="nm"><b>${a.n}</b><small>${a.cd>=60?a.cd/60+' h':a.cd+' min'} · +${a.xp} XP</small></div><div class="ef"><span class="gn">${esc(g[0])}</span>${g[1]?` <span class="cs">· ${esc(g[1])}</span>`:''}</div></div><button class="btn ok" data-act="do" data-a="${a.k}">Execute</button><div class="prog"><i></i></div></div>`}).join('')}</div>
  <div style="height:16px"></div>${panel('Ranks',`<table><thead><tr><th>Rank</th><th class="r">Experience</th><th class="r">Province limit</th><th class="r">Output bonus</th><th>Notes</th></tr></thead><tbody>${RANKS.map((r,j)=>`<tr style="${j===rankOf(me.xp)?'background:#1f1a10':''}"><td>${j===rankOf(me.xp)?'<b class="ac">'+r[1]+'</b>':r[1]}</td><td class="r num">${num(r[0])}</td><td class="r num">${3+j*4}</td><td class="r num">+${j*10}%</td><td class="mu">${j===2?'May wage war and propose Council resolutions':''}${j===rankOf(me.xp)?' Current rank':''}</td></tr>`).join('')}</tbody></table>`,'','trophy')}`}
 function pWorld(){return`<h1 class="pg">World</h1><p class="pgsub">Drag to rotate, scroll or pinch to zoom, tap a province for details. Dashed outlines mark land you can settle.</p><div class="cols" style="grid-template-columns:minmax(0,1fr) 340px"><div>${globeSlot('world','min(72vh,720px)')}</div><div>${panel('Province',`<div id="pinfo" class="pinfo">${provInfo()}</div>`,'','pin')}${panel('Nations',Object.keys(A).sort((a,b)=>score(b)-score(a)).map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer" data-act="fly" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span><span>${esc(A[u].name)}${aiTag(u)}</span><span class="mu" style="margin-left:auto;font-size:12px">${hexesOf(u).length} prov.</span></div>`).join('')||'<p class="mu">None yet.</p>')}</div></div>`}
 function provInfo(){const h=selHex;if(h==null)return'<p class="mu" style="margin:0">Select a province on the globe.</p>';const p=P[h],t=TYPE[p.t],u=owner(h);
