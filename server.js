@@ -34,7 +34,7 @@ let S = { users: {}, sessions: {}, docs: {}, meta: {}, flags: [], audit: [], con
 try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { if (e.code !== 'ENOENT') { console.error('Could not read', FILE, e.message); process.exit(1); } }
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats']) S[k] = S[k] || {};
-for (const k of ['flags', 'audit', 'reports']) S[k] = S[k] || [];
+for (const k of ['flags', 'audit', 'reports', 'fallen']) S[k] = S[k] || [];
 S.council = S.council || { props: [], active: {} };
 if (S.mapVersion !== MAP_VERSION) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/') || k.startsWith('online/') || (k.startsWith('chat/') && k !== 'chat/_system')) delete S.docs[k];
@@ -88,7 +88,7 @@ const STATIC = {};
 function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
-STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache');
+STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
 STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=604800');
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
@@ -153,7 +153,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 // ---------- what other players may see ----------
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
+    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, lastStand: n.lastStand || 0, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
 }
@@ -177,7 +177,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { cols, users, config: S.config, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0 };
+  return { cols, users, config: S.config, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30) };
 }
 setInterval(() => { for (const c of clients) { try { c.res.write(': ping\n\n'); } catch (e) {} } }, 25000).unref();
 function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 300) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
@@ -200,6 +200,14 @@ async function pushTo(uid, data) {
 function nationsMap() { const A = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) A[k.slice(8)] = core.normalize(d); return A; }
 const mkWorld = () => core.world(nationsMap(), S.config, Date.now(), S.event, S.council);
 function commit(W) {
+  for (const f of W.fallen || []) {
+    delete S.docs['nations/' + f.id];
+    const rec = { t: f.t, id: f.id, name: f.name, color: f.color, by: f.by, byName: f.byName, days: Math.round(f.days * 10) / 10, rank: f.peakRank, leader: BOTS.isBot(f.id) ? null : (S.users[f.id] || {}).name || null, ai: BOTS.isBot(f.id) };
+    S.fallen.unshift(rec); S.fallen = S.fallen.slice(0, 100);
+    if (!BOTS.isBot(f.id)) { meta(f.id).fallen = rec; sendTo(f.id, 'fallen', rec); addNote(f.id, 'attack', `${f.name} has fallen. ${f.byName} captured your capital. You can found a new nation at any time.`); }
+    sendNation(f.id);
+    broadcast('announce', { text: `${f.name} has fallen to ${f.byName}.` }); broadcast('fallenlist', S.fallen.slice(0, 30));
+  }
   for (const u of W.changed) { if (W.A[u]) S.docs['nations/' + u] = W.A[u]; sendNation(u); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
@@ -464,7 +472,8 @@ async function adminRoute(p, req, res, me) {
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
-      for (const k of ['war', 'signups', 'botRetire', 'eventsOn']) if (c[k] != null) nc[k] = !!c[k];
+      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest']) if (c[k] != null) nc[k] = !!c[k];
+      if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 300);
       if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
       if (['yes', 'retaliate', 'no'].includes(c.botWar)) nc.botWar = c.botWar;

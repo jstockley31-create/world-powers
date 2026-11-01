@@ -33,7 +33,7 @@ const ACTS = [
   { k: 'campaign', s: 'Campaign', n: 'Election Campaign', i: 'vote', cd: 30, xp: 5, dem: true },
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
-const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true };
+const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 6 };
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
 const COVERT = {
@@ -105,7 +105,7 @@ function Core(PD, CARDS) {
     if (on('peacekeeping')) { m.mobilize = 30; m.aggrPerAttack = 40; }
     return m;
   }
-  function world(A, cfg, now, ev, council) { now = now || Date.now(); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, changed: new Set(), news: [], notes: [] }; W.m = mods(ev, council, now); W.OWN = computeOwn(A); return W; }
+  function world(A, cfg, now, ev, council) { now = now || Date.now(); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, changed: new Set(), news: [], notes: [], fallen: [] }; W.m = mods(ev, council, now); W.OWN = computeOwn(A); return W; }
   const owner = (W, h) => W.OWN[h] && W.OWN[h].u;
   const hexesOf = (W, u) => Object.keys(W.OWN).filter(h => W.OWN[h].u === u).map(Number);
   const rankOf = xp => { let i = 0; for (let j = 0; j < RANKS.length; j++) if ((xp || 0) >= RANKS[j][0]) i = j; return i; };
@@ -188,7 +188,13 @@ function Core(PD, CARDS) {
   function canAttack(W, u, h) {
     const me = W.A[u]; if (!me) return 'Found a nation first.'; if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     const v = owner(W, h); if (!v || v === u) return 'Not a foreign province.'; const n = W.A[v];
-    if (W.OWN[h].cap) return 'Capitals cannot be captured.';
+    if (W.OWN[h].cap) {
+      if (!W.cfg.conquest) return 'Capitals cannot be captured.';
+      if (Object.keys(n.hexes || {}).length > 1) return `${n.name}'s capital can only be besieged once it has lost all its other provinces.`;
+      const ls = (n.lastStand || 0) + (W.cfg.lastStandH || 6) * HOUR;
+      if (!n.lastStand) return 'Capitals cannot be captured.';
+      if (W.now < ls) return `${n.name} is making its last stand. The capital can be besieged in ${fmtT(ls - W.now)}.`;
+    }
     const rt = route(W, u, h); if (!rt) return 'Only provinces bordering your territory (by land or by sea from a coastal province) can be invaded.';
     if (rt === 'sea' && !(me.ships > 0)) return 'This province can only be reached by sea. Build warships first.';
     if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
@@ -196,7 +202,8 @@ function Core(PD, CARDS) {
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     const theyHitMe = (n.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR);
     if (!theyHitMe && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
-    if (!theyHitMe && score(W, v) < score(W, u) * .4) return `${n.name} is far weaker than you. Attacking them is not permitted.`;
+    const fairWar = (R(W, u, v).fair || 0) === 1;
+    if (!theyHitMe && !fairWar && score(W, v) < score(W, u) * .4) return `${n.name} is far weaker than you. Attacking them is not permitted.`;
     if (left(W, me, 'attack')) return `Your forces are regrouping: ${fmtT(left(W, me, 'attack'))}.`;
     return null;
   }
@@ -204,7 +211,7 @@ function Core(PD, CARDS) {
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + n.fort * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1);
+    return t * techF(n) * (1 + n.fort * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? 1.5 : 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const atkMult = n => techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n);
@@ -230,11 +237,19 @@ function Core(PD, CARDS) {
   const note = (W, u, kind, text) => { if (W.A[u]) W.notes.push({ u, kind, text }); };
   function gainXP(W, u, x) { const n = W.A[u]; const b = rankOf(n.xp); n.xp = (n.xp || 0) + Math.round(x * W.cfg.xp); const a = rankOf(n.xp); if (a > b) { news(W, u, `${n.name} has risen to the rank of ${RANKS[a][1]}.`); W.promoted = RANKS[a][1]; note(W, u, 'rank', `You have been promoted to ${RANKS[a][1]}.`); } }
   const touch = (W, ...us) => us.forEach(u => W.changed.add(u));
+  // a nation is conquered: remove it and every reference to it; the server deletes the document and tells the player
+  function fallNation(W, v, info) {
+    const d = W.A[v]; if (!d) return;
+    delete W.A[v]; W.changed.delete(v);
+    for (const [u, n] of Object.entries(W.A)) if (n.rel && n.rel[v]) { delete n.rel[v]; W.changed.add(u); }
+    W.OWN = computeOwn(W.A); W.fallen.push({ id: v, t: W.now, ...info });
+  }
   function setRel(n, v, k, t) { n.rel = n.rel || {}; n.rel[v] = { ...(n.rel[v] || {}), [k]: t }; }
 
   function normalize(n) {
     for (const k of ['cards', 'log', 'out', 'trades', 'seen', 'gdpHist']) if (!Array.isArray(n[k])) n[k] = [];
     for (const k of ['cd', 'hexes', 'rel', 'cnt']) if (!n[k] || typeof n[k] !== 'object') n[k] = {};
+    for (const k of ['fort', 'train', 'infra', 'tech']) if (!Number.isFinite(n[k])) n[k] = 0;
     n.res = { food: 0, oil: 0, steel: 0, goods: 0, ...(n.res || {}) }; n.budget = budget(n);
     for (const [k, v] of [['ships', 0], ['air', 0], ['spies', 0], ['debt', 0], ['unemp', 6], ['infl', 2], ['health', 50], ['edu', 50], ['iq', 50], ['morale', 70]]) if (typeof n[k] !== 'number' || !isFinite(n[k])) n[k] = v;
     return n;
@@ -276,7 +291,7 @@ function Core(PD, CARDS) {
       let h = (arg != null && ts.includes(Number(arg))) ? Number(arg) : null;
       if (arg != null && h == null) fail('That province cannot be settled.');
       if (h == null) { const pref = ts.filter(x => !['P', 'D'].includes(P[x].t)); const pool = pref.length ? pref : ts; h = pool[Math.floor(rng() * pool.length)]; }
-      n.cash -= c; n.res.food -= 40; n.hexes[h] = W.now; W.OWN[h] = { u, ts: W.now }; msg = `Settled ${pname(h)} (${(TYPE[P[h].t] || TYPE.P).n.toLowerCase()}).`; W.selHex = h;
+      n.cash -= c; n.res.food -= 40; n.hexes[h] = W.now; n.lastStand = 0; W.OWN[h] = { u, ts: W.now }; msg = `Settled ${pname(h)} (${(TYPE[P[h].t] || TYPE.P).n.toLowerCase()}).`; W.selHex = h;
     }
     else if (k === 'research') { const c = researchCost(W, n), g = 10 + n.tech * 5; if (n.cash < c || n.res.goods < g) fail(`Requires ${money(c)} and ${g} goods.`); n.cash -= c; n.res.goods -= g; n.tech++; msg = `Tech level ${n.tech} reached.`; }
     else if (k === 'drill') { if (n.train >= maxTrain(n)) fail('Training is at the cap for your rank.'); const o = 10 + n.train * 2; if (n.res.oil < o) fail(`Requires ${o} oil.`); n.res.oil -= o; n.train++; n.morale = clamp(n.morale + 3, 0, 100); msg = `Training raised to ${n.train}.`; }
@@ -362,10 +377,20 @@ function Core(PD, CARDS) {
     const airLostA = Math.min(AIR, Math.round(AIR * ra * .3)), airLostD = Math.min(d.air, Math.round(d.air * .5 * (1 - ra) * .3));
     me.troops -= lossA; me.air -= airLostA; d.troops = Math.max(0, d.troops - lossD); d.air -= airLostD;
     let loot = 0;
-    if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; me.hexes[h] = W.now; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40); }
+    const isCap = !!(W.OWN[h] && W.OWN[h].cap);
+    if (win && isCap) { result.conquered = true; loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
+    else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
+      if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH || 6} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH || 6} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
     Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) });
     pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: rt === 'sea' ? 1 : 0 });
+    if (result.conquered) {
+      const days = Math.max(0, (W.now - (d.created || W.now)) / 864e5);
+      news(W, u, `${me.name} has conquered ${d.name}. ${d.name} has fallen after ${days < 1 ? 'less than a day' : Math.floor(days) + ' day' + (Math.floor(days) === 1 ? '' : 's')}.`);
+      log(me, `You conquered ${d.name}, seizing ${pname(h)}, ${money(loot)} and half its stockpiles.`, W);
+      fallNation(W, v, { by: u, byName: me.name, h, days, peakRank: rankName(d), xp: d.xp, name: d.name, color: d.color });
+      touch(W, u); return { msg: 'Conquest.', battle: result };
+    }
     const how = rt === 'sea' ? 'an amphibious assault on' : 'an invasion of';
     log(d, win ? `${me.name} captured ${pname(h)} in ${how.replace('an ', '')}. Losses: ${num(lossD)} troops${loot ? ', ' + money(loot) : ''}.` : `Your forces repelled ${how} ${pname(h)} by ${me.name}. Losses: ${num(lossD)} troops.`, W);
     note(W, v, 'attack', win ? `${me.name} captured ${pname(h)}!` : `You repelled ${how} ${pname(h)} by ${me.name}.`);
@@ -381,7 +406,7 @@ function Core(PD, CARDS) {
       if (!W.cfg.war) fail('Warfare is currently disabled by the administrators.');
       if (rankOf(me.xp) < 2) fail('You must reach the rank of Mayor to declare war.');
       if (atWar(W, u, v)) fail('You are already at war.');
-      setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t);
+      setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
       news(W, u, `${me.name} has declared war on ${them.name}.`); log(them, `${me.name} has declared war on you.`, W); note(W, v, 'war', `${me.name} has declared war on you!`);
     } else if (kind === 'peace') {
       if (!atWar(W, u, v)) fail('You are not at war with them.');
