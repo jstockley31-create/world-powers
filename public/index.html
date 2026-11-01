@@ -111,7 +111,14 @@ td.r,th.r{text-align:right}
 .dockh{display:flex;align-items:center;gap:12px;padding:7px 16px;border-bottom:1px solid var(--bd);font-size:12px;color:var(--mu);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
 .dockh .live{width:7px;height:7px;border-radius:50%;background:var(--gn);box-shadow:0 0 8px var(--gn)}
 .dockh .sp{margin-left:auto}
-.dockb{display:grid;grid-template-columns:1fr 270px;height:150px}
+.dockb{display:grid;grid-template-columns:1fr;height:150px}#onl{display:none!important}
+#onlstrip{background:#070a0e;border-bottom:1px solid var(--bd);padding:7px 16px 8px;text-align:center;max-height:96px;overflow-y:auto}
+#onlstrip .oh{color:#fff;font-weight:600;font-size:13.5px;margin-bottom:3px;letter-spacing:.01em}
+#onlstrip .names{line-height:1.65}
+#onlstrip a{display:inline-block;margin:0 8px;font-size:14px;cursor:pointer;text-decoration:none;white-space:nowrap}
+#onlstrip a:hover{filter:brightness(1.3)}
+#onlstrip a.on{font-weight:700}#onlstrip a.idle{font-style:italic;opacity:.55}#onlstrip a.ally{text-decoration:underline;text-underline-offset:3px}#onlstrip a.me{text-decoration:underline dotted;text-underline-offset:3px}
+#onlstrip .legend{color:var(--mu2);font-size:11px;margin-top:2px}
 #dock.min .dockb{display:none}
 .chatcol{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--bd)}
 #chat{flex:1;min-height:0;overflow-y:auto;padding:8px 16px;font-size:13px}
@@ -160,7 +167,7 @@ td.r,th.r{text-align:right}
  .gwrap{height:62vh!important}.glegend{display:none}
  #dock{display:none}
  body.chatopen #dock{display:flex;position:fixed;left:0;right:0;top:0;bottom:calc(62px + env(safe-area-inset-bottom));z-index:15;border-top:0}
- body.chatopen .dockb{grid-template-columns:1fr;flex:1;height:auto;min-height:0}body.chatopen #onl{display:block;max-height:none;border-top:1px solid var(--bd);order:-1;max-height:30vh}
+ body.chatopen .dockb{grid-template-columns:1fr;flex:1;height:auto;min-height:0}body.chatopen #onlstrip{max-height:28vh}
  body.chatopen .chatcol{min-height:0;border-right:0}#dockBtn{display:none}
  #chatin input{font-size:16px}
  #toast{bottom:calc(80px + env(safe-area-inset-bottom))}
@@ -225,6 +232,7 @@ td.r,th.r{text-align:right}
 <div id="app"><nav id="side"></nav><main id="main"><div class="wrap"><p class="mu">Connecting to the world…</p></div></main></div>
 <section id="dock">
  <div class="dockh"><span class="live"></span><span>World Chat</span><span id="onlCount" style="text-transform:none;letter-spacing:0;font-weight:500"></span><button class="btn sm ghost sp" data-act="dock" id="dockBtn">Hide</button></div>
+ <div id="onlstrip"></div>
  <div class="dockb"><div class="chatcol"><div id="chat"></div><form id="chatin" autocomplete="off"><input id="cin" maxlength="200" placeholder="Message the world…"><button class="btn sm pri">Send</button></form></div><div id="onl"></div></div>
 </section>
 <div id="mod"></div><div id="toast"></div><div id="tip"></div>
@@ -504,9 +512,14 @@ function pHelp(){const step=(t,d)=>`<div class="chk"><span class="cb" style="bor
 function worldNews(){const r=[];for(const n of Object.values(A))for(const e of n.out||[])if(e.type==='news')r.push(e);return r.sort((a,b)=>b.t-a.t)}
 // ================= chat & online =================
 function onlineSet(){const s=new Set();const now=Date.now();for(const[u,o]of Object.entries(ON))if(o&&now-o.t<5*MIN&&A[u])s.add(u);if(me&&!document.hidden)s.add(uid);return s}
-function renderOnline(){const s=onlineSet();const idle=Object.entries(ON).filter(([u,o])=>A[u]&&!s.has(u)&&Date.now()-o.t<60*MIN).map(e=>e[0]);$('onlCount').textContent=`· ${s.size} online`;
- const row=(u,cls)=>`<div class="o ${cls}" data-act="prof" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span><span>${esc(A[u].name)}</span><small>${cls?ago(ON[u].t):esc(rankName(A[u]))}</small></div>`;
- $('onl').innerHTML=`<div class="lbl2">Online now — ${s.size}</div>${[...s].map(u=>row(u,'')).join('')||'<div class="mu" style="padding:4px 8px;font-size:12.5px">Nobody</div>'}${idle.length?`<div class="lbl2">Recently active</div>${idle.map(u=>row(u,'idle')).join('')}`:''}`}
+function renderOnline(){const now=Date.now();const on=[],idle=[];
+ for(const[u,o]of Object.entries(ON)){if(!o||!(A[u]||names[u]))continue;const d=now-o.t;if(d<5*MIN&&u!==uid)on.push(u);else if(d<30*MIN&&u!==uid)idle.push(u)}
+ if(uid&&(A[uid]||names[uid])&&!document.hidden)on.unshift(uid);
+ const allies=uid&&A[uid]?new Set(C.allies(W,uid)):new Set();
+ const label=u=>names[u]||(A[u]?A[u].name:'Leader');
+ const item=(u,st)=>{const n=A[u];const cls=[st,allies.has(u)?'ally':'',u===uid?'me':''].join(' ');const col=n?n.color:'#8b98a5';const tip=n?`${n.name} — ${rankName(n)}${allies.has(u)?' · your ally':''}${st==='idle'?' · active '+ago(ON[u].t):''}`:'No nation yet';return`<a class="${cls}" style="color:${esc(col)}" ${n?`data-act="prof" data-a="${esc(u)}"`:''} title="${esc(tip)}">${st==='idle'?'*':''}${esc(label(u))}</a>`};
+ const total=on.length+idle.length;$('onlCount').textContent=`· ${on.length} online`;
+ $('onlstrip').innerHTML=`<div class="oh">${total} Leader${total===1?'':'s'} online in the past 30 minutes:</div><div class="names">${on.map(u=>item(u,'on')).join('')}${idle.map(u=>item(u,'idle')).join('')||''}</div>${total?'<div class="legend"><b>Bold</b> online now · <i>*Italic</i> recently active · <u>Underlined</u> your allies</div>':''}`}
 let lastChatKey='';
 function renderChat(force){const msgs=[];for(const[u,c]of Object.entries(CH)){if(u==='_system'){for(const m of c.m||[])msgs.push({s:1,t:m.t,x:m.x});continue}if(!A[u])continue;for(const m of c.m||[])msgs.push({u,t:m.t,x:m.x})}
  for(const e of worldNews().slice(0,25))if(!/^A new nation has been founded/.test(e.x))msgs.push({n:1,t:e.t,x:e.x});msgs.sort((a,b)=>a.t-b.t);const show=msgs.slice(-150);const key=show.length+':'+(show.at(-1)?.t||0)+':'+Object.keys(A).length;if(!force&&key===lastChatKey)return;lastChatKey=key;
@@ -566,9 +579,9 @@ refreshW();
   if(N[uid])hadMine=true;else if(hadMine){hadMine=false;toast('Your nation was reset by an administrator.')}
   refresh();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
  db.collection('chat').onSnapshot(s=>{CH={};s.docs.forEach(d=>{if(d.exists)CH[d.id]=d.data()});if(uid&&CH[uid]&&!gotC)myChat=(CH[uid].m||[]).slice();gotC=true;if(uid&&myChat.length&&CH[uid])CH[uid]={m:myChat};renderChat();if(page==='chat')markChatSeen();renderSide()},()=>{});
- db.collection('online').onSnapshot(s=>{ON={};s.docs.forEach(d=>{if(d.exists)ON[d.id]=d.data()});renderOnline()},()=>{});
+ db.collection('online').onSnapshot(s=>{ON={};s.docs.forEach(d=>{if(d.exists)ON[d.id]=d.data()});loadNames();renderOnline()},()=>{});
 })();
-let nameKey='';async function loadNames(){if(!U)return;const ids=[...new Set([...Object.keys(A),uid].filter(Boolean))];const k=ids.sort().join(',');if(k===nameKey)return;nameKey=k;try{const ps=await U.profiles(ids);for(const id of ids)names[id]=(ps&&ps[id]&&ps[id].name)||'';render();renderOnline()}catch(e){}}
+let nameKey='';async function loadNames(){if(!U)return;const ids=[...new Set([...Object.keys(A),...Object.keys(ON),uid].filter(Boolean))];const k=ids.sort().join(',');if(k===nameKey)return;nameKey=k;try{const ps=await U.profiles(ids);for(const id of ids)names[id]=(ps&&ps[id]&&ps[id].name)||'';render();renderOnline()}catch(e){}}
 
 </script>
 </body></html>
