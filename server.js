@@ -172,8 +172,8 @@ function publicView(n) {
 
 // ---------- live stream ----------
 const clients = new Set();
-function write(c, event, data) { try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
-function writeRaw(c, str) { try { c.res.write(str); } catch (e) {} }
+function write(c, event, data) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
+function writeRaw(c, str) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { c.res.write(str); } catch (e) {} }
 function broadcast(event, data) { if (!clients.size) return; const str = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const c of clients) writeRaw(c, str); }
 function sendTo(uid, event, data) { for (const c of clients) if (c.uid === uid) write(c, event, data); }
 const isOnline = uid => [...clients].some(c => c.uid === uid);
@@ -191,7 +191,7 @@ function snapshot(uid) {
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
   return { cols, users, config: S.config, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30) };
 }
-setInterval(() => { for (const c of clients) { try { c.res.write(': ping\n\n'); } catch (e) {} } }, 25000).unref();
+setInterval(() => { for (const c of clients) writeRaw(c, ': ping\n\n'); }, 25000).unref();
 function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 300) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
 
 // ---------- notifications (in-game bell + phone/desktop push) ----------
@@ -326,7 +326,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, S.config); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
-    botVotes(W); councilResolve(W); botPresence(W);
+    botVotes(W); councilResolve(W);
     W.welcome = null; commit(W);
     // world events
     if (S.event && now >= S.event.end) endEvent();
@@ -639,7 +639,7 @@ async function handle(req, res) {
       res.write('retry: 3000\n\n'); write({ res }, 'init', snapshot(me.id));
       const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { try { mine[0].res.end(); } catch (e) {} clients.delete(mine[0]); }
       if (clients.size >= 5000) return send(res, 503, { error: 'The server is very busy. Try again shortly.' });
-      const c = { res, uid: me.id }; clients.add(c); req.on('close', () => clients.delete(c));
+      const c = { res, uid: me.id }; clients.add(c); res.on('error', () => clients.delete(c)); req.on('close', () => clients.delete(c));
       return;
     }
 

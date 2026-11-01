@@ -183,7 +183,7 @@ function Core(PD, CARDS) {
   function startOk(W, h) { if (!P[h] || W.OWN[h]) return false; const seen = new Set([h]); let fr = [h]; for (let d = 0; d < 2; d++) { const nx = []; for (const x of fr) for (const k of nbrs(x)) if (!seen.has(k)) { seen.add(k); nx.push(k); } fr = nx; } for (const k of seen) if (W.OWN[k]) return false; return true; }
   function hexAge(W, h) { const o = W.OWN[h]; if (!o) return 0; const ts = o.cap ? W.A[o.u].created : o.ts; return (W.now - ts) / (24 * HOUR); }
   // how an attacker can reach a province: by land, by sea (needs warships), or not at all
-  function route(W, u, h) { if (land(h).some(k => owner(W, k) === u)) return 'land'; if (isCoastal(h) && sea(h).some(k => owner(W, k) === u && isCoastal(k))) return 'sea'; return null; }
+  function route(W, u, h) { if (land(h).some(k => owner(W, k) === u)) return 'land'; if (isCoastal(h) && sea(h).some(k => owner(W, k) === u && isCoastal(k))) return 'sea'; if (isCoastal(h) && hasCoast(W, u)) return 'ocean'; return null; }
   const fmtT = ms => { const s = Math.ceil(ms / 1e3); if (s >= 3600) return Math.floor(s / 3600) + 'h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + 'm'; return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   function canAttack(W, u, h) {
     const me = W.A[u]; if (!me) return 'Found a nation first.'; if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
@@ -197,8 +197,10 @@ function Core(PD, CARDS) {
       const ls = start + (W.cfg.lastStandH ?? 24) * HOUR;
       if (W.now < ls) return `${n.name} is making its last stand. The capital can be besieged in ${fmtT(ls - W.now)}.`;
     }
-    const rt = route(W, u, h); if (!rt) return 'Only provinces bordering your territory (by land or by sea from a coastal province) can be invaded.';
+    const rt = route(W, u, h); if (!rt) return !isCoastal(h) ? 'This province is inland. Capture a province on its coast or border first, then advance by land.' : 'You need a coastal province of your own to launch an invasion by sea.';
     if (rt === 'sea' && !(me.ships > 0)) return 'This province can only be reached by sea. Build warships first.';
+    if (rt === 'ocean' && (me.tech || 0) < 3) return 'Overseas invasions require tech level 3.';
+    if (rt === 'ocean' && (me.ships || 0) < 10) return `Overseas invasions need a fleet of at least 10 warships. You have ${me.ships || 0}.`;
     if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war from Diplomacy.`;
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
@@ -352,29 +354,29 @@ function Core(PD, CARDS) {
     X = Math.floor(Number(X)); AIR = Math.max(0, Math.floor(Number(AIR) || 0));
     if (!(X >= 10) || X > me.troops) fail('Commit at least 10 troops, and no more than you have.');
     if (AIR > me.air) fail('You do not have that many aircraft.');
-    const rt = route(W, u, h), shipsNeeded = rt === 'sea' ? Math.ceil(X / 100) : 0;
-    if (shipsNeeded > me.ships) fail(`A sea invasion of ${num(X)} troops needs ${shipsNeeded} warships to carry them. You have ${me.ships}.`);
-    const c = atkCost(W, X); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${c.oil + AIR * 2} oil and ${c.food} food.`);
+    const rt = route(W, u, h), SEA = rt === 'sea' || rt === 'ocean', OCEAN = rt === 'ocean', perShip = OCEAN ? 75 : 100, shipsNeeded = SEA ? Math.ceil(X / perShip) : 0;
+    if (shipsNeeded > me.ships) fail(`${OCEAN ? 'An overseas' : 'A sea'} invasion of ${num(X)} troops needs ${shipsNeeded} warships to carry them (${perShip} troops each). You have ${me.ships}.`);
+    const c = atkCost(W, X); if (OCEAN) { c.cash *= 3; c.oil *= 3; c.food *= 3; } if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${c.oil + AIR * 2} oil and ${c.food} food.`);
     const v = owner(W, h), d = W.A[v];
-    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + 30 * MIN; me.aggr = Math.min(100, (me.aggr || 0) + W.m.aggrPerAttack);
+    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN ? 60 : 30) * MIN; me.aggr = Math.min(100, (me.aggr || 0) + W.m.aggrPerAttack);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 6 : me.gov === 'dic' ? 1 : 3), 0, 100); me.stability = clamp(me.stability - 2, 0, 100);
     const result = { h, X, air: AIR, route: rt, naval: null };
     // 1) naval battle for sea invasions
-    if (rt === 'sea' && d.ships > 0) {
+    if (SEA && d.ships > 0) {
       const atkN = me.ships * 25 * techF(me) * (.85 + rng() * .3), defN = navalDefense(W, h) * (.9 + rng() * .2), rn = defN / (atkN + defN);
       const lostA = Math.min(me.ships, Math.round(me.ships * rn * .4)), lostD = Math.min(d.ships, Math.round(d.ships * (1 - rn) * .4));
       me.ships -= lostA; d.ships -= lostD; result.naval = { win: atkN > defN, atk: Math.round(atkN), def: Math.round(defN), lostA, lostD };
       if (atkN <= defN) {
         const drowned = Math.round(X * .2); me.troops -= drowned;
         Object.assign(result, { win: false, atk: 0, def: Math.round(defN), lossA: drowned, lossD: 0, loot: 0, airLostA: 0, airLostD: 0 });
-        pushOut(W, u, { type: 'battle', to: v, h, X, win: false, lossA: drowned, lossD: 0, loot: 0, sea: 1 });
-        log(d, `Your navy turned back a sea invasion of ${pname(h)} by ${me.name}.`, W); note(W, v, 'attack', `Your navy repelled a sea invasion of ${pname(h)} by ${me.name}.`);
+        pushOut(W, u, { type: 'battle', to: v, h, X, win: false, lossA: drowned, lossD: 0, loot: 0, sea: 1, ocean: OCEAN ? 1 : 0 });
+        log(d, `Your navy turned back ${OCEAN ? 'an overseas' : 'a sea'} invasion of ${pname(h)} by ${me.name}.`, W); note(W, v, 'attack', `Your navy repelled a sea invasion of ${pname(h)} by ${me.name}.`);
         news(W, u, `${d.name}'s navy repelled a sea invasion of ${pname(h)} by ${me.name}.`); gainXP(W, u, 5); touch(W, u, v);
         result.sanctioned = sanctioned(me); return { msg: 'Defeat at sea.', battle: result };
       }
     }
     // 2) land battle with air support
-    const atk = (X + AIR * 20) * atkMult(me) * (rt === 'sea' ? .8 : 1) * (.85 + rng() * .3), def = defense(W, h, u) * (.9 + rng() * .2); const win = atk > def, ra = def / (atk + def);
+    const atk = (X + AIR * 20) * atkMult(me) * (OCEAN ? .65 : rt === 'sea' ? .8 : 1) * (.85 + rng() * .3), def = defense(W, h, u) * (.9 + rng() * .2); const win = atk > def, ra = def / (atk + def);
     const lossA = Math.min(X, Math.round(X * ra * .6)), lossD = Math.min(d.troops, Math.round(d.troops * .5 * (1 - ra) * .5));
     const airLostA = Math.min(AIR, Math.round(AIR * ra * .3)), airLostD = Math.min(d.air, Math.round(d.air * .5 * (1 - ra) * .3));
     me.troops -= lossA; me.air -= airLostA; d.troops = Math.max(0, d.troops - lossD); d.air -= airLostD;
@@ -385,7 +387,7 @@ function Core(PD, CARDS) {
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
     Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) });
-    pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: rt === 'sea' ? 1 : 0 });
+    pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0 });
     if (result.conquered) {
       const days = Math.max(0, (W.now - (d.created || W.now)) / 864e5);
       news(W, u, `${me.name} has conquered ${d.name}. ${d.name} has fallen after ${days < 1 ? 'less than a day' : Math.floor(days) + ' day' + (Math.floor(days) === 1 ? '' : 's')}.`);
@@ -393,10 +395,10 @@ function Core(PD, CARDS) {
       fallNation(W, v, { by: u, byName: me.name, h, days, peakRank: rankName(d), xp: d.xp, name: d.name, color: d.color });
       touch(W, u); return { msg: 'Conquest.', battle: result };
     }
-    const how = rt === 'sea' ? 'an amphibious assault on' : 'an invasion of';
+    const how = OCEAN ? 'an overseas invasion of' : rt === 'sea' ? 'an amphibious assault on' : 'an invasion of';
     log(d, win ? `${me.name} captured ${pname(h)} in ${how.replace('an ', '')}. Losses: ${num(lossD)} troops${loot ? ', ' + money(loot) : ''}.` : `Your forces repelled ${how} ${pname(h)} by ${me.name}. Losses: ${num(lossD)} troops.`, W);
     note(W, v, 'attack', win ? `${me.name} captured ${pname(h)}!` : `You repelled ${how} ${pname(h)} by ${me.name}.`);
-    news(W, u, win ? `${me.name} captured ${pname(h)} from ${d.name}${rt === 'sea' ? ' in an amphibious assault' : ''}.` : `${d.name} repelled ${how} ${pname(h)} by ${me.name}.`);
+    news(W, u, win ? `${me.name} captured ${pname(h)} from ${d.name}${OCEAN ? ' in an overseas invasion' : rt === 'sea' ? ' in an amphibious assault' : ''}.` : `${d.name} repelled ${how} ${pname(h)} by ${me.name}.`);
     touch(W, u, v);
     return { msg: win ? 'Victory.' : 'Defeat.', battle: result };
   }
