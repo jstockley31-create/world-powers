@@ -35,20 +35,20 @@ let S = { users: {}, sessions: {}, docs: {}, meta: {}, flags: [], audit: [], con
 try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { if (e.code !== 'ENOENT') { console.error('Could not read', FILE, e.message); process.exit(1); } }
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
-for (const k of ['meta', 'mail', 'notes', 'push', 'stats']) S[k] = S[k] || {};
-for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule']) S[k] = S[k] || [];
+for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
+for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes']) S[k] = S[k] || [];
 S.council = S.council || { props: [], active: {} };
 if (S.mapVersion !== MAP_VERSION) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/') || k.startsWith('online/') || (k.startsWith('chat/') && k !== 'chat/_system')) delete S.docs[k];
   S.council = { props: [], active: {} }; S.event = null; S.mapVersion = MAP_VERSION;
 }
 // every id-keyed map gets no prototype, so ids like "__proto__" or "constructor" can never match anything
-for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats']) S[k] = Object.assign(Object.create(null), S[k]);
+for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = Object.assign(Object.create(null), S[k]);
 if (!S.adminPath) S.adminPath = '/hq-' + crypto.randomBytes(12).toString('hex');
 if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 // ---------- fair play: a fingerprint of the exact game code running, its release history, and a public log of admin game actions ----------
-const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation']);
+const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot']);
 const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
 const CODE = CODE_FILES.filter(f => fs.existsSync(path.join(__dirname, f))).map(f => ({ name: f, sha: crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, f))).digest('hex') }));
 const FINGERPRINT = crypto.createHash('sha256').update(CODE.map(c => c.name + ':' + c.sha).join('\n')).digest('hex');
@@ -278,7 +278,7 @@ function commit(W) {
   for (const u of W.changed) { if (W.A[u]) S.docs['nations/' + u] = W.A[u]; sendNation(u); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
-  for (const fx of W.nukeFx || []) { const t = `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`; systemMessage(t); broadcast('nuke', fx); }
+  for (const fx of W.nukeFx || []) { const t = `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`; systemMessage(t); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50); persist(); }
   if (W.welcome) { systemMessage(W.welcome); broadcast('announce', { text: W.welcome }); }
 }
 const humans = W => Object.keys(W.A).filter(u => !BOTS.isBot(u));
@@ -491,7 +491,7 @@ function nightlyBackup() {
   const now = new Date(); if (now.getUTCHours() < 9) return; // after ~3 AM US Mountain time
   const day = today(); if (S.lastBackup === day) return;
   try {
-    fs.writeFileSync(path.join(BACKUP_DIR, `world-${day}.json`), JSON.stringify(S)); S.lastBackup = day; persist();
+    fs.writeFileSync(path.join(BACKUP_DIR, `world-${day}.json`), JSON.stringify(S)); S.lastBackup = day; S.lastBackupT = Date.now(); persist();
     const files = fs.readdirSync(BACKUP_DIR).filter(f => /^world-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
     for (const f of files.slice(0, Math.max(0, files.length - 7))) fs.unlinkSync(path.join(BACKUP_DIR, f));
     // trim analytics to 60 days
@@ -529,8 +529,91 @@ function wipeUser(id) {
   for (const [t, s] of Object.entries(S.sessions)) if (s.uid === id) delete S.sessions[t];
   for (const c of clients) if (c.uid === id) { try { c.res.end(); } catch (e) {} }
   for (const k of Object.keys(S.mail)) S.mail[k] = (S.mail[k] || []).filter(m => m.from !== id && m.to !== id);
-  delete S.users[id]; delete S.meta[id]; delete S.mail[id]; delete S.notes[id]; delete S.push[id]; broadcast('user', { id, name: null }); persist();
+  delete S.users[id]; delete S.meta[id]; delete S.actlog[id]; delete S.mail[id]; delete S.notes[id]; delete S.push[id]; broadcast('user', { id, name: null }); persist();
 }
+// per-player action history for the admin "what happened" timeline (last 150 commands, including refused ones)
+const ACT_SKIP = new Set(['seen', 'ping', 'readlog']);
+function actLog(uid, W, b, ok, msg) {
+  if (!b || typeof b.c !== 'string' || ACT_SKIP.has(b.c)) return;
+  const tv = typeof b.v === 'string' && W.A[b.v] ? W.A[b.v].name : null;
+  const brief = x => { try { return JSON.stringify(x).slice(0, 80); } catch (e) { return '?'; } };
+  const extra = ['k', 'kind', 'op', 'r', 'q', 'buy', 'h', 'x', 'air', 'i', 'on', 't', 'g', 'amt', 'repay', 'give', 'want', 'b'].filter(k => b[k] != null && b[k] !== '').map(k => `${k}=${typeof b[k] === 'object' ? brief(b[k]) : String(b[k]).slice(0, 24)}`).join(' ');
+  const L = S.actlog[uid] = S.actlog[uid] || [];
+  L.unshift({ t: Date.now(), c: b.c.slice(0, 24), v: tv, x: extra || null, ok, m: String(msg || '').replace(/<[^>]*>/g, '').slice(0, 180) });
+  if (L.length > 150) L.length = 150;
+}
+// a light summary of one nation in each snapshot, for the admin timeline chart (cached; snapshots never change)
+const snapCache = new Map(), provCount = n => new Set([...Object.keys(n.hexes || {}), String(n.cap)]).size;
+// strikes from before the launch history existed: rebuild them from the ruins they left
+if (!S.nukesBackfilled) {
+  for (const [k, n] of Object.entries(S.docs)) if (k.startsWith('nations/') && n && n.nuked && n.nuked.h != null && !S.nukes.some(x => x.t === n.nuked.t)) {
+    const by = S.docs['nations/' + n.nuked.by]; S.nukes.push({ by: n.nuked.by, byName: n.nuked.byName, to: k.slice(8), toName: n.name, from: by ? by.cap : null, h: n.nuked.h, place: core.pname(n.nuked.h), retaliation: false, t: n.nuked.t });
+  }
+  S.nukes.sort((a, b) => b.t - a.t); S.nukesBackfilled = true;
+}
+function snapSummary(sn) {
+  if (snapCache.has(sn.name)) return snapCache.get(sn.name);
+  let out = null;
+  try {
+    const st = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(SNAP_DIR, sn.name)))); out = {};
+    for (const [id, n] of Object.entries(st.nations || {})) out[id] = { name: n.name, cash: Math.round(n.cash || 0), debt: Math.round(n.debt || 0), prov: provCount(n), troops: n.troops || 0, ships: n.ships || 0, air: n.air || 0, pop: Math.round(n.pop || 0), ap: Math.round(n.approval || 0), st: Math.round(n.stability || 0), food: Math.round((n.res || {}).food || 0), oil: Math.round((n.res || {}).oil || 0), steel: Math.round((n.res || {}).steel || 0), goods: Math.round((n.res || {}).goods || 0) };
+  } catch (e) { out = null; }
+  snapCache.set(sn.name, out); if (snapCache.size > 200) snapCache.delete(snapCache.keys().next().value);
+  return out;
+}
+function timeline(id) {
+  const u = S.users[id], n = S.docs['nations/' + id], names = new Set([u && u.name, n && n.name].filter(Boolean)), ev = [];
+  for (const a of S.actlog[id] || []) ev.push({ t: a.t, k: a.ok ? 'action' : 'refused', x: `${a.c}${a.v ? ' → ' + a.v : ''}${a.x ? ' (' + a.x + ')' : ''}${a.m ? ': ' + a.m : ''}` });
+  for (const l of (n && n.log) || []) ev.push({ t: l.t, k: 'game', x: String(l.x) });
+  for (const o of S.notes[id] || []) ev.push({ t: o.t, k: 'note', x: `[${o.kind}] ${o.text}` });
+  for (const f of S.flags) if (f.uid === id) ev.push({ t: f.t, k: 'flag', x: f.r });
+  for (const r of S.reports) if (r.about === id) ev.push({ t: r.t, k: 'report', x: `Reported by ${r.byName || '?'}: ${r.reason}` });
+  for (const a of S.audit) if (a.target && names.has(a.target)) ev.push({ t: a.t, k: 'admin', x: `${a.by}: ${a.action}${a.detail ? ' — ' + a.detail : ''}` });
+  for (const x of S.nukes) if (x.by === id || x.to === id) ev.push({ t: x.t, k: 'nuke', x: `${x.byName} ${x.retaliation ? 'retaliated against' : 'struck'} ${x.toName} at ${x.place}` });
+  for (const m of (S.docs['chat/' + id] || {}).m || []) ev.push({ t: m.t, k: 'chat', x: String(m.x || '') });
+  ev.sort((a, b) => b.t - a.t);
+  // one point per hour from the rollback snapshots
+  const snaps = listSnaps().filter(x => x.tag !== 'undo'), hist = []; let lastH = -1;
+  for (const sn of snaps.slice().reverse()) { const hr = Math.floor(sn.t / HOUR); if (hr === lastH) continue; lastH = hr; const sm = snapSummary(sn); if (sm) hist.push({ t: sn.t, snap: sn.name, ...(sm[id] || { gone: true }) }); }
+  if (n) hist.push({ t: Date.now(), now: true, cash: Math.round(n.cash || 0), debt: Math.round(n.debt || 0), prov: provCount(n), troops: n.troops || 0, ships: n.ships || 0, air: n.air || 0, pop: Math.round(n.pop || 0), ap: Math.round(n.approval || 0), st: Math.round(n.stability || 0) });
+  return { events: ev.slice(0, 600), hist, snaps: snaps.map(x => ({ name: x.name, t: x.t })) };
+}
+// put one nation back the way it was in a snapshot without touching anyone else. Its relations, open deals, laws, wonders and
+// warhead stay as they are now (those involve other nations); provinces another nation holds now are left with that nation.
+const RESTORE_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl', 'health', 'edu', 'morale', 'gdp', 'gdpHist', 'budget', 'cards', 'nextCard', 'cnt', 'laws', 'exped', 'mis', 'proj', 'gov', 'nextElection'];
+function restoreNation(id, snapName, by) {
+  const sn = listSnaps().find(x => x.name === snapName); if (!sn) throw Object.assign(new Error('That snapshot no longer exists.'), { status: 404 });
+  const st = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(SNAP_DIR, sn.name)))), old = (st.nations || {})[id];
+  if (!old) throw Object.assign(new Error('This player had no nation at that time.'), { status: 400 });
+  const W = mkWorld(), cur = W.A[id], OWN = core.computeOwn(W.A), mine = h => !OWN[h] || OWN[h].u === id;
+  if (cur && cur.created !== old.created) throw Object.assign(new Error(`They founded ${cur.name} after that time, so that is a different nation. To bring the old one back, reset their current nation first, then restore.`), { status: 400 });
+  if (!cur && !mine(old.cap)) throw Object.assign(new Error(`Their old capital now belongs to ${W.A[OWN[old.cap].u].name}, so the nation cannot be brought back. Try an earlier snapshot or reset them.`), { status: 400 });
+  takeSnap('undo');
+  let kept = 0, skipped = 0; const hexes = {};
+  for (const [h, v] of Object.entries(old.hexes || {})) { if (mine(h)) { hexes[h] = v; kept++; } else skipped++; }
+  if (cur) for (const [h, v] of Object.entries(cur.hexes || {})) if (!(h in hexes)) hexes[h] = v; // never take away land they hold now
+  let n;
+  if (cur) { // offers made after the snapshot hold goods the snapshot's stockpiles still include: drop them without a refund
+    const had = new Set((old.offOut || []).map(o => o.id));
+    for (const o of [...(cur.offOut || [])]) if (!had.has(o.id)) { cur.offOut = cur.offOut.filter(x => x.id !== o.id); const t = W.A[o.to]; if (t) { t.offIn = (t.offIn || []).filter(x => x.id !== o.id); W.changed.add(o.to); } }
+  }
+  if (cur) { n = cur; for (const k of RESTORE_FIELDS) if (old[k] !== undefined) n[k] = JSON.parse(JSON.stringify(old[k])); n.res = { ...(old.res || {}) }; n.hexes = hexes; }
+  else {
+    n = JSON.parse(JSON.stringify(old)); n.hexes = hexes; n.rel = {}; n.offOut = []; n.offIn = []; n.warhead = null;
+    for (const [v, x] of Object.entries(W.A)) if (x.rel && x.rel[id]) { delete x.rel[id]; W.changed.add(v); } // a clean diplomatic slate: no leftover wars
+    const held = new Set(); for (const x of Object.values(W.A)) for (const k of Object.keys(x.wonders || {})) held.add(k);
+    for (const k of Object.keys(n.wonders || {})) if (held.has(k)) delete n.wonders[k];
+    S.fallen = S.fallen.filter(f => !(f.id === id && f.t >= sn.t)); delete meta(id).fallen;
+  }
+  if (n.proj && core.wonderHolder(W, n.proj.k) && core.wonderHolder(W, n.proj.k) !== id) n.proj = null; // someone else finished that wonder since
+  n.cd = {}; n.lastTick = Date.now(); W.A[id] = n; W.changed.add(id); W.OWN = core.computeOwn(W.A); commit(W);
+  const when = new Date(sn.t).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  if (!cur) sendTo(id, 'reload', { t: Date.now() });
+  addNote(id, 'admin', `An administrator restored your nation to how it was at ${when} (Mountain time).`);
+  audit(by, 'Restored nation from snapshot', (S.users[id] || {}).name, `${n.name} to ${when}${skipped ? `; ${skipped} province(s) now held by others were left with them` : ''}`);
+  return { kept, skipped, revived: !cur };
+}
+
 // invite rewards: both players gain when an invited friend founds a nation (not for the same network, max 20 per inviter)
 function inviteReward(W, id) {
   const u = S.users[id]; if (!u || !u.ref || u.refDone) return; u.refDone = true; const inv = u.ref, im = meta(inv);
@@ -570,8 +653,8 @@ function overview() {
   return {
     health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, loopMs: health.loopMs, saveMs: health.saveMs, saveError: health.saveError, dataDir: DATA_DIR,
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
-      node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackup || null, pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
-    players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config,
+      node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackupT || (S.lastBackup ? Date.parse(S.lastBackup + 'T09:00:00Z') : null), pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
+    players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50),
     analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.slice(0, 100), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView()
   };
 }
@@ -681,6 +764,11 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); broadcast('council', councilView()); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/timeline': { if (!u) return send(res, 404, { error: 'Unknown player.' }); return send(res, 200, timeline(b.id)); }
+    case '/api/admin/restore-nation': {
+      if (!u) return send(res, 404, { error: 'Unknown player.' }); if (b.confirm !== 'RESTORE') return send(res, 400, { error: 'Type RESTORE to confirm.' });
+      try { return send(res, 200, { ok: true, ...restoreNation(b.id, String(b.snap || ''), me.name) }); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+    }
     case '/api/admin/rollback': {
       if (b.confirm !== 'ROLLBACK') return send(res, 400, { error: 'Type ROLLBACK to confirm.' });
       let name = String(b.snap || ''); const snaps = listSnaps();
@@ -733,6 +821,7 @@ async function handle(req, res) {
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? GAME : LANDING);
     if (req.method === 'GET' && STATIC[p]) return serveStatic(req, res, STATIC[p]);
     if (req.method === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
+    if (req.method === 'GET' && p === '/api/nukes') return send(res, 200, { nukes: S.nukes.slice(0, 50) });
     if (req.method === 'GET' && p === '/api/fairplay') {
       const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
       return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500), logTotal: S.fairlog.length,
@@ -879,7 +968,8 @@ async function handle(req, res) {
       if (b.c === 'offer' && b.v && S.users[b.v] && sharesNetwork(me.id, b.v)) flag(me.id, `Sent a trade offer to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       let r;
       try { r = core.exec(W, me.id, b, rng); }
-      catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+      catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
+      actLog(me.id, W, b, true, r.msg);
       if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
       commit(W);
       return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok });

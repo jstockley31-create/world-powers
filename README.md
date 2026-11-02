@@ -4,23 +4,16 @@ A multiplayer nation-building game you host yourself. Players sign up with an em
 
 No extra packages needed — only **Node.js 18 or newer**.
 
-## What's in version 4
+## What's in the game
 
-- **Home page** at `/` for visitors (the game itself is at `/play`; signed-in players go straight to the game). Also `/terms` and `/privacy`.
-- **Mail**: private messages between leaders, with reply, delete and report.
-- **Notifications**: the bell in the header, plus optional phone/desktop push (works on Android, Windows, Mac; on iPhone after "Add to Home Screen"). Each player chooses which kinds they get.
-- **Real economy**: GDP, unemployment, inflation, national debt, government bonds, credit ratings, default/bankruptcy, and a budget split across military, health, education and infrastructure.
-- **Geography**: resources follow the real world (oil in the Gulf, Russia and Texas; farmland on the plains; deserts), mountains (+25% defense), rivers (+15%), coasts.
-- **Navy and air force**: islands and overseas land can only be invaded by sea after winning a naval battle; aircraft support attack and defense.
-- **Elections** for democracies every 72 hours (adjustable). Losing resets your policies; a landslide loss purges ministries.
-- **Intelligence**: steal technology, sabotage, stir unrest, rig elections — with a real chance of being caught publicly.
-- **World events** (recessions, pandemics, oil shocks and more) hit every nation at once, every 10–18 hours.
-- **World Council**: propose and vote on sanctions, embargoes, condemnations and global treaties.
-- **Moderation**: automatic profanity filter, per-player mute and report; admins can mute, kick and delete chat.
-- **Admin**: Analytics tab (daily active players, sign-ups, day-1 retention), Moderation tab, World tab (start/end events, cancel council votes), nightly backups kept for 7 days.
-- Optional sound effects (bell menu), loading spinners, battle animations and promotion celebrations. The logo links to the home page.
+- **Home page** at `/` for visitors (the game is at `/play`), plus `/faq`, `/fair` (fair play: a fingerprint of the running code and a public log of admin game actions), `/terms` and `/privacy`.
+- **Economy**: GDP, taxes (with automatic collection), unemployment, inflation, debt and bonds, budget, a shared world market priced along the order so big orders can't move prices for free, and automatic trade between allies.
+- **War**: a war planner, navy and air force, sieges of capitals, last stands, AI nations that fight back, rogue-state rules, and the World Council (manual and automatic sanctions, embargoes and condemnations).
+- **Nuclear weapons**: very hard to get, a warhead that takes time to arm, a missile you can watch cross the globe with a siren, fallout, nuclear winter and automatic retaliation.
+- **Things to do between timers**: laws, wonders, expeditions, daily missions, achievements, deals (escrowed trade offers), and a custom flag and motto.
+- **Social**: World Chat with unread counts, mail, notifications (bell plus optional push), reports and a profanity filter.
 
-**Note:** deploying version 4 starts a fresh world (the map changed). Accounts, passwords and the admin link are kept; everyone founds a new nation.
+**World resets:** the world only resets when `MAP_VERSION` in `server.js` changes. Normal updates keep every nation, and players stay signed in.
 
 ## Run it
 
@@ -65,8 +58,12 @@ What's inside:
 
 - **Dashboard** — server health (saving, storage volume, memory, errors), player counts, who's online, and anything that needs attention.
 - **Players** — search everyone; click a player to edit any number in their nation, reset cooldowns, reset their nation, set a new password, ban/unban, or delete the account.
+  - **What happened** (in the player panel) — one timeline of everything about that player: every action they took, including the ones the game refused and the reason it gave, their nation's news, notifications, chat, admin edits, flags and nukes. It has filters, search, charts of cash, provinces, troops and approval over the last 26 hours, and an hourly table where big drops are shown in red.
+  - **Restore** (in that hourly table) — puts just that one nation back to an earlier hour (cash, stockpiles, army, stats and any provinces nobody else holds now). Nobody else is touched. It is logged on the fair play page and can be undone with the Undo button under Game settings → Roll back the world.
 - **Cheat watch** — flags bots clicking faster than a person can, accounts that share a network (possible duplicates), and aid sent between them.
 - **Game settings** — speed, income and XP multipliers, new-player protection, turn war on/off, open/close sign-ups, a banner message, chat announcements, clear chat, wipe the world (auto-backup first), download a full backup, and change the secret admin link.
+- **World** — world events, scheduled boosts, Council votes, and **☢ Nuclear launches**: every strike with a *Watch replay* button, plus a *Preview* that flies a missile between any two nations on your screen only.
+- **Roll back the world** (Game settings) — 30 min to 1 day back, or any 10-minute snapshot from the last 26 hours, with one-click undo. Nobody is logged out.
 - **Activity log** — every admin action and recent server errors.
 
 From the server's command line:

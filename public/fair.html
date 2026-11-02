@@ -33,7 +33,7 @@ details summary{cursor:pointer;color:#8b98a5;font-size:14px}ul{padding-left:20px
 <h2>What this page proves — and what it can't</h2>
 <div class="card"><ul>
 <li><b>The code fingerprint</b> is calculated by the server from its own files every time it starts. If a single character of the game rules changes, the fingerprint changes and a new entry appears under “Game updates” with the date and time.</li>
-<li><b>Admin actions</b> that affect the game — editing a nation, changing settings, rolling back the world, starting events, adding or removing AI — are written to this log automatically, with exactly what changed. There is no button to hide or delete entries.</li>
+<li><b>Admin actions</b> that affect the game — editing or restoring a nation, changing settings, rolling back the world, starting events, adding or removing AI — are written to this log automatically, with exactly what changed. There is no button to hide or delete entries.</li>
 <li><b>Settings</b> are shown live. Anything different from the standard rules is highlighted.</li>
 <li><b>Every game action is checked by the server.</b> Your browser only asks; the server applies the rules, so players can't edit their own money, troops or timers. Suspicious activity (like actions faster than a person can click) is flagged for review.</li>
 <li><b>Honest limit:</b> this is a transparency record kept by the game's server. The people who run the server could, in principle, change the server itself. The record makes that visible rather than impossible — any code change shows up as a new fingerprint and date.</li>
@@ -45,11 +45,11 @@ const when=t=>new Date(t).toLocaleString([], {year:'numeric',month:'short',day:'
 const ago=t=>{const s=(Date.now()-t)/1e3;return s<90?'just now':s<5400?Math.round(s/60)+' min ago':s<172800?Math.round(s/3600)+' h ago':Math.round(s/86400)+' days ago'};
 const LABEL={cd:'Operation timer speed',income:'Income multiplier',xp:'XP multiplier',protectH:'New-nation protection (h)',lastStandH:'Capital protection (h)',war:'Warfare',conquest:'Conquest (nations can fall)',weakRule:'Protect much weaker players',councilAuto:'World Council acts on its own',nukeTest:'Nuke test mode',bots:'AI nations',botWar:'AI can attack players',electionH:'Hours between elections',eventsOn:'World events',signups:'Sign-ups'};
 const fmt=(k,v)=>typeof v==='boolean'?(v?'On':'Off'):k==='cd'||k==='income'||k==='xp'?('×'+v):k==='botWar'?({yes:'Yes',retaliate:'Only in retaliation',no:'No'}[v]||v):v;
-const KIND={'Edited nation':'r','Rolled back the world':'r','Wiped the world':'r','Reset nation':'r','Changed game settings':'y','Scheduled':'y','Cancelled scheduled event':'y','Started world event':'g','Ended world event':'g','Added AI nation':'','Removed AI nation':'','Cancelled council vote':'y'};
+const KIND={'Edited nation':'r','Restored nation from snapshot':'r','Rolled back the world':'r','Wiped the world':'r','Reset nation':'r','Changed game settings':'y','Scheduled':'y','Cancelled scheduled event':'y','Started world event':'g','Ended world event':'g','Added AI nation':'','Removed AI nation':'','Cancelled council vote':'y'};
 let D=null,filter='all';
 function render(){if(!D)return;const changed=Object.keys(D.settings).filter(k=>D.settings[k]!==D.defaults[k]&&k!=='bots');
- const log=D.log.filter(e=>filter==='all'||(filter==='edits'?/Edited nation|Reset nation/.test(e.action):filter==='world'?/Rolled back|Wiped/.test(e.action):filter==='settings'?/settings|Scheduled|scheduled/.test(e.action):true));
- const last=D.log[0],edits30=D.log.filter(e=>/Edited nation/.test(e.action)&&Date.now()-e.t<30*864e5).length;
+ const log=D.log.filter(e=>filter==='all'||(filter==='edits'?/Edited nation|Reset nation|Restored nation/.test(e.action):filter==='world'?/Rolled back|Wiped/.test(e.action):filter==='settings'?/settings|Scheduled|scheduled/.test(e.action):true));
+ const last=D.log[0],edits30=D.log.filter(e=>/Edited nation|Restored nation/.test(e.action)&&Date.now()-e.t<30*864e5).length;
  document.getElementById('app').innerHTML=`
  <div class="card seal"><div class="ic">✓</div><div><b>Game code fingerprint ${esc(D.fingerprint.slice(0,12))}</b><div class="mu" style="font-size:14px">Running unchanged since <b style="color:#e6edf3">${when(D.releases[0].t)}</b> (${ago(D.releases[0].t)}). Server last restarted ${ago(D.live)}.</div></div></div>
  <div class="grid" style="margin-top:8px">
