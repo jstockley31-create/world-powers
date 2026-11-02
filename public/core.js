@@ -634,7 +634,7 @@ function Core(PD, CARDS) {
     note(W, v, 'attack', `☢ ${me.name} launched a nuclear strike on ${pname(h)}. ${sum}.`);
     news(W, u, `☢ ${retaliation ? 'RETALIATION — ' : ''}${me.name} has launched a nuclear strike on ${d.name}. ${pname(h)} is in ruins and fallout is spreading.`);
     for (const x of Object.keys(W.A)) if (x !== u && x !== v && !W.A[x].ai && !hit.includes(x)) note(W, x, 'war', `☢ ${me.name} has launched a nuclear strike on ${d.name}. The world enters a nuclear winter for ${WARHEAD.winterH} hours.`);
-    (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, h: +h, place: pname(h), retaliation: !!retaliation, t: W.now });
+    (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, t: W.now });
     touch(W, u, v); return sum;
   }
   function launchNuke(W, u, v, h) {
