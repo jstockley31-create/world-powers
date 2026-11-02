@@ -732,6 +732,14 @@ function Core(PD, CARDS) {
       setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
       news(W, u, `${me.name} has declared war on ${them.name}.`); log(them, `${me.name} has declared war on you.`, W); note(W, v, 'war', `${me.name} has declared war on you!`);
       if (W.cfg.conquest && !them.ai && Object.keys(them.hexes || {}).length === 1) { const hrs = W.cfg.lastStandH ?? 24; log(them, `You hold only your capital. ${me.name} can besiege it in ${hrs} hours — make peace, rally allies, fortify or expand.`, W); note(W, v, 'attack', `LAST STAND: ${me.name} can besiege your capital in ${hrs} hours.`); }
+    } else if (kind === 'noally' || kind === 'notrade' || kind === 'nopeace') {
+      // decline a proposal another nation made to you
+      const what = kind.slice(2), R_ = R(W, v, u);
+      if (what === 'peace') { if (!atWar(W, u, v) || !((R_.peace || 0) > warSince(W, u, v))) fail('There is no peace offer to decline.'); setRel(them, u, 'peace', 0); }
+      else { if (!offered(W, v, u, what)) fail(`There is no ${what === 'ally' ? 'alliance' : 'trade'} proposal to decline.`); setRel(me, v, 'un' + what, t); }
+      const label = { ally: 'alliance proposal', trade: 'trade agreement', peace: 'peace offer' }[what];
+      note(W, v, 'diplo', `${me.name} declined your ${label}.`); log(me, `Declined ${them.name}'s ${label}.`, W); log(them, `${me.name} declined your ${label}.`, W);
+      touch(W, u, v); return { msg: `You declined ${them.name}'s ${label}.` };
     } else if (kind === 'peace') {
       if (!atWar(W, u, v)) fail('You are not at war with them.');
       if ((R(W, u, v).peace || 0) > warSince(W, u, v)) fail(`You have already offered peace to ${them.name}. Waiting for their answer.`);
