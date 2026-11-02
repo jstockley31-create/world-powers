@@ -36,7 +36,7 @@ try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { 
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
-for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes']) S[k] = S[k] || [];
+for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes']) S[k] = S[k] || [];
 S.council = S.council || { props: [], active: {} };
 if (S.mapVersion !== MAP_VERSION) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/') || k.startsWith('online/') || (k.startsWith('chat/') && k !== 'chat/_system')) delete S.docs[k];
@@ -231,12 +231,12 @@ function sendNation(id) {
   let own = null; for (const c of clients) { if (c.uid === id && n != null) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } else writeRaw(c, pub); }
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
-const councilView = () => ({ props: S.council.props.slice(0, 40), active: S.council.active });
+const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, ...p }) => p), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
 function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { cols, users, config: effCfg(), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30) };
+  return { cols, users, config: effCfg(), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 15 * 60e3) };
 }
 setInterval(() => { for (const c of clients) writeRaw(c, ': ping\n\n'); }, 25000).unref();
 function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 300) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
@@ -256,7 +256,7 @@ async function pushTo(uid, data) {
 }
 
 // ---------- the game world ----------
-function nationsMap() { const A = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) A[k.slice(8)] = core.normalize(d); return A; }
+function nationsMap() { const A = Object.create(null); /* no prototype: ids like "__proto__" can never match a nation */ for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) A[k.slice(8)] = core.normalize(d); return A; }
 // game settings as they apply right now, including any scheduled boost (double XP, double income, faster timers)
 const BOOSTS = { xp2: 'Double XP', income2: 'Double income', cd50: 'Operations twice as fast' };
 function effCfg() {
@@ -278,6 +278,7 @@ function commit(W) {
   for (const u of W.changed) { if (W.A[u]) S.docs['nations/' + u] = W.A[u]; sendNation(u); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
+  if ((W.strikeFx || []).length) { const now = Date.now(); for (const fx of W.strikeFx) { broadcast('strike', fx); S.strikes.unshift(fx); } S.strikes = S.strikes.filter(x => now - x.t < 15 * 60e3).slice(0, 40); }
   for (const fx of W.nukeFx || []) { const t = `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`; systemMessage(t); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50); persist(); }
   if (W.welcome) { systemMessage(W.welcome); broadcast('announce', { text: W.welcome }); }
 }
@@ -305,8 +306,9 @@ function endEvent(silent) { if (!S.event) return; const e = WP.EVENTS[S.event.ke
 
 // ---------- World Council ----------
 const RES_KEYS = Object.keys(WP.RESOLUTIONS);
-const isTargeted = type => WP.RESOLUTIONS[type].kind !== 'global';
-const resLabel = (type, name) => WP.RESOLUTIONS[type].n + (name ? (WP.RESOLUTIONS[type].kind === 'protect' ? ' for ' : ' against ') + name : '');
+const isTargeted = type => ['punish', 'protect'].includes(WP.RESOLUTIONS[type].kind);
+const PACT_SCOPE = { ai: 'against AI attackers', all: 'against any attacker' };
+const resLabel = (type, name, p) => type === 'custom' && p ? `Custom resolution: “${p.text}”` : WP.RESOLUTIONS[type].n + (type === 'pact' && p ? ` (${PACT_SCOPE[p.scope] || ''})` : '') + (name ? (WP.RESOLUTIONS[type].kind === 'protect' ? ' for ' : ' against ') + name : '');
 const nukedRecently = (u, now) => S.nukes.some(x => x.by === u && now - x.t < 72 * HOUR);
 // why a resolution cannot be put to the vote against/for this nation right now (null = fine)
 function resBlocked(W, type, v) {
@@ -319,28 +321,41 @@ function resBlocked(W, type, v) {
 }
 function councilPropose(uid, b) {
   const W = mkWorld(), n = W.A[uid]; if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
-  const type = String(b.type || ''); if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
+  const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
   if (core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
   const R = WP.RESOLUTIONS[type]; let target = null;
   if (isTargeted(type)) {
-    target = String(b.target || ''); if (!W.A[target] || target === uid) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
+    target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || target === uid) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
     const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
   }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
   if (open.filter(p => !p.auto).length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
-  if (open.some(p => p.type === type && p.target === target)) throw Object.assign(new Error('That resolution is already being voted on.'), { status: 400 });
+  if (type !== 'custom' && open.some(p => p.type === type && p.target === target && (type !== 'pact' || p.scope === b.scope))) throw Object.assign(new Error('That resolution is already being voted on.'), { status: 400 });
+  if (type === 'debt' && Date.now() - ((S.council.passed || {}).debt || 0) < 72 * HOUR) throw Object.assign(new Error(`Debt relief can only pass once every 72 hours. It can be proposed again in ${Math.ceil((72 * HOUR - (Date.now() - S.council.passed.debt)) / HOUR)} hours.`), { status: 400 });
+  if (WP.RESOLUTIONS[type].kind === 'global' && (S.council.active[type] || 0) > Date.now()) { const h = Math.ceil((S.council.active[type] - Date.now()) / HOUR); throw Object.assign(new Error(`“${R.n}” is already in force for another ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
+  let scope = null, text = null, hours = null;
+  if (type === 'pact') { scope = b.scope === 'all' ? 'all' : b.scope === 'ai' ? 'ai' : null; if (!scope) throw Object.assign(new Error('Choose who the pact defends against.'), { status: 400 }); }
+  if (type === 'custom') {
+    text = typeof b.text === 'string' ? b.text.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, ' ').replace(/\s+/g, ' ').trim() : '';
+    if (text.length < 10) throw Object.assign(new Error('Write the resolution (at least 10 characters).'), { status: 400 });
+    if (text.length > 200) throw Object.assign(new Error('Keep it under 200 characters.'), { status: 400 });
+    if (MOD.isProfane(text)) throw Object.assign(new Error('Please reword your resolution.'), { status: 400 });
+    hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
+  }
   if (n.cash < 1e5) throw Object.assign(new Error('Submitting a resolution costs $100,000.'), { status: 400 });
   n.cash -= 1e5; W.changed.add(uid); commit(W);
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + 6 * HOUR, votes: { [uid]: 'y' }, status: 'open' };
+  if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; }
+  if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
   S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); broadcast('council', councilView());
-  const txt = `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name)}.`;
+  const txt = `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
   systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ' Voting closes in 6 hours.');
   return p;
 }
 function councilVote(uid, b) {
   if (!S.docs['nations/' + uid]) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
-  const p = S.council.props.find(x => x.id === b.id && x.status === 'open'); if (!p) throw Object.assign(new Error('That vote has closed.'), { status: 400 });
+  const p = S.council.props.find(x => x.id === b.id && x.status === 'open'); if (!p || Date.now() >= p.end) throw Object.assign(new Error('That vote has closed.'), { status: 400 });
   if (!['y', 'n'].includes(b.vote)) throw Object.assign(new Error('Vote yes or no.'), { status: 400 });
   p.votes[uid] = b.vote; persist(); broadcast('council', councilView()); return p;
 }
@@ -352,16 +367,17 @@ function councilResolve(W) {
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
     p.status = ys > ns && ys >= 3 ? 'passed' : 'failed'; p.result = `${ys}–${ns}`; changed = true;
-    const label = resLabel(p.type, tn && tn.name);
+    const label = resLabel(p.type, tn && tn.name, p);
     if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
-      const until = now + R.h * HOUR, extra = enactResolution(W, p, tn, until);
+      const until = now + (p.hours || R.h) * HOUR, extra = enactResolution(W, p, tn, until); (S.council.passed = S.council.passed || {})[p.type] = now;
       systemMessage(`World Council resolution PASSED (${p.result}): ${label}.${extra ? ' ' + extra : ''}`);
       if (p.target && S.users[p.target]) addNote(p.target, 'council', R.kind === 'protect' ? `The World Council passed a resolution in your favor: ${R.n}.${extra ? ' ' + extra : ''}` : `The World Council passed a resolution against you: ${R.n}.${extra ? ' ' + extra : ''}`);
     } else systemMessage(`World Council resolution failed (${p.result}): ${label}.`);
     if (S.users[p.by]) addNote(p.by, 'council', `Your resolution "${label}" ${p.status} (${p.result}).`);
   }
   for (const [k, until] of Object.entries(S.council.active)) if (until < now) { delete S.council.active[k]; changed = true; }
+  for (const k of ['pacts', 'decl']) if ((S.council[k] || []).some(x => x.until < now)) { S.council[k] = S.council[k].filter(x => x.until >= now); changed = true; }
   if (changed) { persist(); broadcast('council', councilView()); }
 }
 // what a passed resolution actually does. Returns a short note for the announcement.
@@ -380,6 +396,7 @@ function enactResolution(W, p, tn, until) {
       let cash = 0, food = 0, donors = 0;
       for (const [u, vote] of Object.entries(p.votes)) {
         const d = W.A[u]; if (vote !== 'y' || u === v || !d || core.rogue(W, d)) continue;
+        if (S.users[u] && S.users[v] && sharesNetwork(u, v)) { flag(u, `Voted for World Council aid to ${tn.name}, which uses the same network (possible second account); no aid was sent from this account`); continue; }
         const c = Math.max(0, Math.min(2e6, Math.floor((d.cash || 0) * .01))), f = Math.max(0, Math.min(300, Math.floor(((d.res || {}).food || 0) * .05)));
         if (!c && !f) continue; d.cash -= c; d.res.food -= f; cash += c; food += f; donors++; ch(u);
         if (S.users[u]) addNote(u, 'council', `Your nation sent ${WP.moneyS(c)} and ${f} food in humanitarian aid to ${tn.name}.`);
@@ -393,14 +410,33 @@ function enactResolution(W, p, tn, until) {
       return back ? `${WP.moneyS(back)} in frozen assets was returned.` : '';
     }
     case 'debt': {
-      let total = 0; for (const [u, n] of Object.entries(W.A)) if ((n.debt || 0) > 0) { const f = n.debt * .2; n.debt -= f; total += f; ch(u); if (S.users[u]) addNote(u, 'council', `Debt relief: ${WP.moneyS(f)} of your national debt was forgiven.`); }
+      let total = 0; for (const [u, n] of Object.entries(W.A)) if ((n.debt || 0) > 0) { const f = Math.min(n.debt, (p.debts ? p.debts[u] || 0 : n.debt)) * .2; if (!(f > 0)) continue; n.debt -= f; total += f; ch(u); if (S.users[u]) addNote(u, 'council', `Debt relief: ${WP.moneyS(f)} of your national debt was forgiven.`); }
       S.council.active.debt = until; return `${WP.moneyS(total)} of debt was forgiven worldwide.`;
     }
     case 'health': { for (const [u, n] of Object.entries(W.A)) { const c = Math.max(0, Math.floor((n.cash || 0) * .005)); n.cash -= c; ch(u); } S.council.active.health = until; return 'Every nation contributed 0.5% of its treasury.'; }
+    case 'pact': {
+      const members = Object.keys(p.votes).filter(u => p.votes[u] === 'y' && W.A[u]);
+      (S.council.pacts = S.council.pacts || []).push({ id: p.id, scope: p.scope, members, until, t: now });
+      for (const u of members) if (S.users[u]) addNote(u, 'council', `You are a member of the Collective Defense Pact (${PACT_SCOPE[p.scope]}) for 72 hours. If anyone attacks a member, you will automatically be at war with them.`);
+      return `Members: ${members.map(u => W.A[u].name).join(', ')}.`;
+    }
+    case 'custom': (S.council.decl = S.council.decl || []).push({ id: p.id, text: p.text, by: p.by, yes: Object.keys(p.votes).filter(u => p.votes[u] === 'y'), until, t: now }); return 'It is now in force.';
     default: S.council.active[p.type] = until; return '';
   }
 }
 const R_H = p => WP.RESOLUTIONS[p.type].h;
+// collective defense: when anyone attacks a pact member, every other member goes to war with the attacker
+function pactCheck(W) {
+  const hits = W.hits || []; W.hits = []; const pacts = (S.council.pacts || []).filter(x => x.until > Date.now()); if (!hits.length || !pacts.length) return;
+  const said = new Set();
+  for (const h of hits) for (const pc of pacts) {
+    const a = W.A[h.u], v = W.A[h.v]; if (!a || !v || !pc.members.includes(h.v)) continue;
+    if (pc.scope === 'ai' && !BOTS.isBot(h.u)) continue; // this pact only covers attacks by AI nations
+    if (pc.members.includes(h.u)) { pc.members = pc.members.filter(m => m !== h.u); systemMessage(`🛡 ${a.name} attacked a fellow member of the Collective Defense Pact and has been expelled from it.`); }
+    const joined = pc.members.filter(m => m !== h.v && m !== h.u && W.A[m] && core.pactWar(W, m, h.u, h.v));
+    const key = pc.id + h.u; if (joined.length && !said.has(key)) { said.add(key); systemMessage(`🛡 Collective Defense Pact invoked: ${a.name} attacked ${v.name}. ${joined.map(m => W.A[m].name).join(', ')} ${joined.length === 1 ? 'is' : 'are'} now at war with ${a.name}.`); }
+  }
+}
 // ---------- the World Council takes notice on its own ----------
 // Bad behaviour puts a resolution to the vote automatically. Everyone (players and AI) still votes; nothing passes without a majority.
 const AUTO_RULES = [
@@ -440,9 +476,10 @@ function botVotes(W) {
   for (const p of S.council.props) {
     if (p.status !== 'open') continue;
     for (const u of Object.keys(W.A)) {
-      if (!BOTS.isBot(u) || p.votes[u] || rng() > .15) continue;
+      if (!BOTS.isBot(u) || p.votes[u] || rng() > .15 || p.type === 'custom') continue;
       const me = W.A[u], per = (me.ai || {}).p, R = WP.RESOLUTIONS[p.type]; let yes = .5;
-      if (R.kind !== 'global') {
+      if (p.type === 'pact') yes = ({ isolationist: .65, merchant: .55, warlord: .35, expansionist: .45 })[per] || .5;
+      else if (R.kind !== 'global') {
         const t = W.A[p.target]; if (!t) continue;
         const bad = Math.min(.9, (t.aggr || 0) / 70) + (core.rogue(W, t) ? .3 : 0), war = core.atWar(W, u, p.target), ally = core.pact(W, u, p.target, 'ally'), trade = core.pact(W, u, p.target, 'trade');
         const victim = (t.nuked && Date.now() - t.nuked.t < 48 * HOUR ? .35 : 0) + (core.wars(W, p.target).length ? .15 : 0) + ((t.aggr || 0) < 20 ? .1 : 0);
@@ -486,7 +523,8 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
-    councilWatch(W); botVotes(W); councilResolve(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W);
+    if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     W.welcome = null; commit(W);
     // world events
     if (S.event && now >= S.event.end) endEvent();
@@ -524,6 +562,17 @@ function smartReminders(W) {
     const keys = Object.keys(m.rem); if (keys.length > 60) for (const k of keys.slice(0, keys.length - 60)) delete m.rem[k];
   }
 }
+// ---------- ranking history: one point an hour per nation (score, GDP, military power, provinces), kept 7 days ----------
+// Kept in its own file so the main save stays small. Served gzipped to the Rankings page.
+const RANK_FILE = path.join(DATA_DIR, 'rankhist.json'); let RH = [], rhGz = null;
+try { RH = JSON.parse(fs.readFileSync(RANK_FILE, 'utf8')); if (!Array.isArray(RH)) RH = []; } catch (e) { RH = []; }
+function rankPoint(W) {
+  const n = {}; for (const u of Object.keys(W.A)) n[u] = [core.score(W, u), Math.round(W.A[u].gdp || 0), Math.round(core.power(W, u)), core.hexesOf(W, u).length];
+  const now = Date.now(); RH.push({ t: now, n }); RH = RH.filter(p => now - p.t <= 7 * 24 * HOUR); rhGz = null;
+  try { fs.writeFileSync(RANK_FILE + '.tmp', JSON.stringify(RH)); fs.renameSync(RANK_FILE + '.tmp', RANK_FILE); } catch (e) { logErr('Could not save ranking history: ' + e.message); }
+}
+function rankHistBody() { if (!rhGz) rhGz = zlib.gzipSync(JSON.stringify({ v: 1, fields: ['score', 'gdp', 'power', 'prov'], points: RH })); return rhGz; }
+
 function readyReminders(W) {
   const now = Date.now();
   for (const u of Object.keys(S.push)) {
@@ -849,7 +898,7 @@ async function adminRoute(p, req, res, me) {
       if (b.confirm !== 'WIPE') return send(res, 400, { error: 'Type WIPE to confirm.' });
       const backup = path.join(BACKUP_DIR, `backup-before-wipe-${Date.now()}.json`); fs.writeFileSync(backup, JSON.stringify(S));
       for (const k of Object.keys(S.docs)) { const [c, id] = k.split('/'); if (COLS.includes(c)) setDoc(c, id, null); }
-      S.flags = []; S.council = { props: [], active: {} }; S.event = null; broadcast('council', councilView()); broadcast('event', null);
+      S.flags = []; S.council = { props: [], active: {} }; S.event = null; RH = []; rhGz = null; try { fs.unlinkSync(RANK_FILE); } catch (e) {} broadcast('council', councilView()); broadcast('event', null);
       systemMessage('A new era begins: the world has been reset. Found your nation again!');
       audit(me.name, 'Wiped the world', null, 'Backup saved as ' + path.basename(backup)); return send(res, 200, { ok: true });
     }
@@ -892,6 +941,11 @@ async function handle(req, res) {
     if (req.method === 'GET' && STATIC[p]) return serveStatic(req, res, STATIC[p]);
     if (req.method === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
     if (req.method === 'GET' && p === '/api/nukes') return send(res, 200, { nukes: S.nukes.slice(0, 50) });
+    if (req.method === 'GET' && p === '/api/rankhist') {
+      const gz = rankHistBody(), hdr = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Encoding' };
+      if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) { res.writeHead(200, { ...hdr, 'Content-Encoding': 'gzip' }); return res.end(gz); }
+      res.writeHead(200, hdr); return res.end(zlib.gunzipSync(gz));
+    }
     if (req.method === 'GET' && p === '/api/fairplay') {
       const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
       return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500), logTotal: S.fairlog.length,
@@ -900,7 +954,7 @@ async function handle(req, res) {
     }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
     if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!me || !me.admin) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
-    if (req.method === 'GET' && p.startsWith('/n/')) return nationPage(req, res, p.slice(3));
+    if (req.method === 'GET' && p.startsWith('/n/')) return await nationPage(req, res, p.slice(3));
     if (!p.startsWith('/api/')) return notFound(req, res);
 
     if (req.method !== 'GET') {
@@ -1014,7 +1068,7 @@ async function handle(req, res) {
       }
       return send(res, 404, { error: 'Not found.' });
     }
-    if (p.startsWith('/api/admin/')) return adminRoute(p, req, res, me);
+    if (p.startsWith('/api/admin/')) return await adminRoute(p, req, res, me); // await, so its errors reach the catch below and always get an answer
 
     if (p === '/api/stream' && req.method === 'GET') {
       if (clients.size >= 5000) return send(res, 503, { error: 'The server is very busy. Try again shortly.' });
@@ -1039,7 +1093,7 @@ async function handle(req, res) {
       let r;
       try { r = core.exec(W, me.id, b, rng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
-      actLog(me.id, W, b, true, r.msg);
+      actLog(me.id, W, b, true, r.msg); pactCheck(W);
       if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
       commit(W);
       return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok });
@@ -1114,7 +1168,8 @@ async function handle(req, res) {
   }
 }
 
-http.createServer(handle).listen(PORT, () => {
+// last line of defence: whatever goes wrong, the request still gets an answer instead of hanging
+http.createServer((req, res) => handle(req, res).catch(e => { try { if (!res.headersSent) send(res, e && e.status || 500, { error: e && e.status ? e.message : 'Server error.' }); else res.end(); } catch (_) {} if (!(e && e.status)) logErr('Request error: ' + (e && e.stack || e)); })).listen(PORT, () => {
   console.log(`World Powers is running on http://localhost:${PORT}`);
   console.log(`Saving the world to ${FILE}`);
   console.log(`Admin page (only works for admin accounts): ${S.adminPath}`);

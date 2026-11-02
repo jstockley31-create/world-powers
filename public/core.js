@@ -165,7 +165,10 @@ const RESOLUTIONS = {
   health: { kind: 'global', h: 24, n: 'Global health initiative', d: 'For 24 hours every nation\'s health drifts 12 higher (faster population growth) and pandemics kill half as many people. Every nation pays 0.5% of its treasury when it passes.' },
   science: { kind: 'global', h: 24, n: 'Science cooperation', d: 'For 24 hours research costs 25% less for every nation.' },
   food: { kind: 'global', h: 24, n: 'Food security program', d: 'For 24 hours farms everywhere produce 20% more food and the world food price is 15% lower.' },
-  debt: { kind: 'global', h: 24, n: 'Debt relief', d: 'Every nation in debt has 20% of it forgiven the moment it passes. Printing the money pushes inflation 1 point higher worldwide for 24 hours.' }
+  debt: { kind: 'global', h: 24, n: 'Debt relief', d: 'Every nation in debt has 20% of it forgiven the moment it passes. Printing the money pushes inflation 1 point higher worldwide for 24 hours.' },
+  // pacts and declarations
+  pact: { kind: 'pact', h: 72, n: 'Collective defense pact', d: 'Every nation that votes yes becomes a member for 72 hours. If anyone attacks a member (a battle, a strike or a nuke), every other member automatically declares war on the attacker. Choose whether it covers attacks by AI nations only or by anyone.' },
+  custom: { kind: 'custom', h: 48, n: 'Custom resolution', d: 'Write your own resolution (up to 200 characters). If it passes it is listed as in force with everyone who voted for it, for 24, 48 or 72 hours. It is a public commitment: the game cannot enforce typed text. AI nations do not vote on custom resolutions.' }
 };
 const EVENTS = {
   recession: { n: 'Global Recession', d: 'Financial markets have crashed worldwide. Economies everywhere are contracting.', h: 8, mod: { gdp: .9, tax: .85, unemp: 3 },
@@ -445,6 +448,7 @@ function Core(PD, CARDS) {
   function pushOut(W, u, e) { const n = W.A[u]; e.id = rid(); e.t = W.now; n.out = [e, ...(n.out || [])].slice(0, 80); }
   function news(W, u, t) { pushOut(W, u, { type: 'news', x: t }); log(W.A[u], t, W); W.news.push(t); }
   const note = (W, u, kind, text) => { if (W.A[u]) W.notes.push({ u, kind, text }); };
+  const aggrHit = (W, u, v, how) => (W.hits = W.hits || []).push({ u, v, how });
   function gainXP(W, u, x) { const n = W.A[u]; const b = rankOf(n.xp); n.xp = (n.xp || 0) + Math.round(x * W.cfg.xp * fxMul(n, 'xp')); const a = rankOf(n.xp); if (a > b) { news(W, u, `${n.name} has risen to the rank of ${RANKS[a][1]}.`); W.promoted = RANKS[a][1]; note(W, u, 'rank', `You have been promoted to ${RANKS[a][1]}.`); } }
   const touch = (W, ...us) => us.forEach(u => W.changed.add(u));
   // a nation is conquered: remove it and every reference to it; the server deletes the document and tells the player
@@ -566,7 +570,7 @@ function Core(PD, CARDS) {
     if (shipsNeeded > me.ships) fail(`${OCEAN ? 'An overseas' : 'A sea'} invasion of ${num(X)} troops needs ${shipsNeeded} warships to carry them (${perShip} troops each). You have ${me.ships}.`);
     const c = atkCost(W, X), cx = routeCostX(RCH, me); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx); c.food = Math.ceil(c.food * cx); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${c.oil + AIR * 2} oil and ${c.food} food.`);
     const v = owner(W, h), d = W.A[v];
-    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN ? 60 : MARCH ? 45 : 30) * MIN; const retal = (d.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR); me.aggr = Math.min(100, (me.aggr || 0) + (rogue(W, d) ? 0 : retal ? 5 : W.m.aggrPerAttack) * (measure(W, d, 'guarantee') ? 2 : 1)); rogueCheck(W, u);
+    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN ? 60 : MARCH ? 45 : 30) * MIN; const retal = (d.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR); me.aggr = Math.min(100, (me.aggr || 0) + (rogue(W, d) ? 0 : retal ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1))); rogueCheck(W, u);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : me.gov === 'dic' ? 1 : 2), 0, 100); me.stability = clamp(me.stability - 1.5, 0, 100);
     const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null };
     // 1) naval battle for sea invasions
@@ -577,7 +581,7 @@ function Core(PD, CARDS) {
       if (atkN <= defN) {
         const drowned = Math.round(X * .2); me.troops -= drowned;
         Object.assign(result, { win: false, atk: 0, def: Math.round(defN), lossA: drowned, lossD: 0, loot: 0, airLostA: 0, airLostD: 0 });
-        pushOut(W, u, { type: 'battle', to: v, h, X, win: false, lossA: drowned, lossD: 0, loot: 0, sea: 1, ocean: OCEAN ? 1 : 0 });
+        aggrHit(W, u, v, 'battle'); pushOut(W, u, { type: 'battle', to: v, h, X, win: false, lossA: drowned, lossD: 0, loot: 0, sea: 1, ocean: OCEAN ? 1 : 0 });
         log(d, `Your navy turned back ${OCEAN ? 'an overseas' : 'a sea'} invasion of ${pname(h)} by ${me.name}.`, W); note(W, v, 'attack', `Your navy repelled a sea invasion of ${pname(h)} by ${me.name}.`);
         news(W, u, `${d.name}'s navy repelled a sea invasion of ${pname(h)} by ${me.name}.`); gainXP(W, u, 5); touch(W, u, v);
         result.sanctioned = sanctioned(me); return { msg: 'Defeat at sea.', battle: result };
@@ -603,7 +607,7 @@ function Core(PD, CARDS) {
     // newly conquered land may rebel unless it is garrisoned
     if (win && !isCap) { me.conq = me.conq || {}; me.conq[h] = { t: W.now, from: v }; }
     for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${me.name} ${win ? 'captured' : 'attacked'} ${pname(h)} from your ally ${d.name}.`);
-    pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0 });
+    aggrHit(W, u, v, 'battle'); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0 });
     if (result.conquered) {
       const days = Math.max(0, (W.now - (d.created || W.now)) / 864e5);
       news(W, u, `${me.name} has conquered ${d.name}. ${d.name} has fallen after ${days < 1 ? 'less than a day' : Math.floor(days) + ' day' + (Math.floor(days) === 1 ? '' : 's')}.`);
@@ -664,6 +668,9 @@ function Core(PD, CARDS) {
     note(W, v, 'attack', `${me.name} hit your ${what} with a ${kind === 'air' ? 'air' : 'missile'} strike.`); news(W, u, `${me.name} launched ${kind === 'air' ? 'air strikes' : 'missiles'} against ${d.name}.`);
     for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${me.name} launched a ${kind === 'air' ? 'air' : 'missile'} strike on your ally ${d.name}.`);
     gainXP(W, u, 10); touch(W, u, v);
+    // what everyone sees on the globe: the flight from the attacker's capital to one of the target's provinces
+    aggrHit(W, u, v, kind === 'air' ? 'air strike' : 'missile strike');
+    { const hs = hexesOf(W, v), hh = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap; (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: hh, place: pname(hh), kind, n: count, lost, hits, target, t: W.now }); }
     return { msg: `Strike complete — ${sum}.`, strike: { kind, target, count, lost, hits, dmg, sum } };
   }
   function buildNuke(W, u) {
@@ -740,7 +747,7 @@ function Core(PD, CARDS) {
     note(W, v, 'attack', `☢ ${me.name} launched a nuclear strike on ${pname(h)}. ${sum}.`);
     news(W, u, `☢ ${retaliation ? 'RETALIATION — ' : ''}${me.name} has launched a nuclear strike on ${d.name}. ${pname(h)} is in ruins and fallout is spreading.`);
     for (const x of Object.keys(W.A)) if (x !== u && x !== v && !W.A[x].ai && !hit.includes(x)) note(W, x, 'war', `☢ ${me.name} has launched a nuclear strike on ${d.name}. The world enters a nuclear winter for ${WARHEAD.winterH} hours.`);
-    (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, t: W.now });
+    aggrHit(W, u, v, 'nuclear strike'); (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, t: W.now });
     touch(W, u, v); return sum;
   }
   function launchNuke(W, u, v, h) {
@@ -751,6 +758,14 @@ function Core(PD, CARDS) {
     let mad = '';
     if (warheadReady(W, d) && W.A[u]) { detonate(W, v, u, W.A[u].cap, true); mad = ` ${d.name} had an armed warhead and retaliated automatically against your capital.`; }
     return { msg: `☢ Detonation confirmed — ${sum}.${mad}`, nuked: { h, sum, mad: !!mad } };
+  }
+  // collective defense: a pact member goes to war with whoever attacked a fellow member (fair war: the aggressor started it)
+  function pactWar(W, m, aggr, victim) {
+    const me = W.A[m], them = W.A[aggr], vic = W.A[victim]; if (!me || !them || !vic || m === aggr || atWar(W, m, aggr)) return false;
+    const t = W.now; setRel(me, aggr, 'war', t); setRel(me, aggr, 'unally', t); setRel(me, aggr, 'untrade', t); me.rel[aggr].fair = 1;
+    log(me, `Under the Collective Defense Pact you are now at war with ${them.name}, which attacked ${vic.name}.`, W); log(them, `${me.name} declared war on you under a Collective Defense Pact after your attack on ${vic.name}.`, W);
+    note(W, m, 'war', `Collective Defense Pact: ${them.name} attacked ${vic.name}. You are now at war with ${them.name}.`); note(W, aggr, 'war', `${me.name} has declared war on you under a Collective Defense Pact.`);
+    touch(W, m, aggr); return true;
   }
   function dip(W, u, kind, v) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them || v === u) fail('Unknown nation.');
@@ -1189,7 +1204,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

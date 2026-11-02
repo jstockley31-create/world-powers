@@ -285,6 +285,69 @@ body.bigtext #main,body.bigtext #top,body.bigtext #timers,body.bigtext #dock,bod
 #netbar i{width:10px;height:10px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}#netbar.ok i{display:none}@keyframes spin{to{transform:rotate(360deg)}}
 @media(min-width:821px) and (max-height:1000px){#side{padding:8px 10px}#side .sec{margin:8px 10px 3px}#side .nav{padding:5px 10px}}
 a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
+
+/* rankings */
+.rkk{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.rkt1{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:12px 14px;min-width:0}
+.rkt1 span{display:block;color:var(--mu);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em}
+.rkt1 b{display:block;font-size:24px;font-weight:650;margin:4px 0 2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rkt1 small{display:block;color:var(--mu);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rkof{font-style:normal;font-size:14px;font-weight:500;color:var(--mu);margin-left:6px}
+.rkup{color:var(--gn);font-weight:600;white-space:nowrap}.rkdn{color:var(--rd);font-weight:600;white-space:nowrap}
+.rkctl{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.rkseg{display:inline-flex;background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:2px;gap:2px;flex-wrap:wrap}
+.rkseg button{background:transparent;border:0;border-radius:6px;padding:5px 11px;color:var(--mu);cursor:pointer;font:inherit;font-size:12.5px}
+.rkseg button.on{background:var(--s3);color:var(--tx);box-shadow:inset 0 0 0 1px var(--bd2)}
+.rkseg button:hover{color:var(--tx)}
+.rkc{position:relative}.rkc svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+.rkg{stroke:var(--bd);stroke-width:1}.rkbase{stroke:var(--bd2);stroke-width:1}.rkx{stroke:var(--mu2);stroke-width:1;stroke-dasharray:3 3}
+.rkax{fill:var(--mu2);font-size:11px;font-variant-numeric:tabular-nums}
+.rklab{fill:var(--mu);font-size:11.5px}.rklab.me{fill:var(--tx);font-weight:600}
+.rktip{position:absolute;display:none;pointer-events:none;background:#0b1118f2;border:1px solid var(--bd2);border-radius:8px;padding:8px 10px;font-size:12px;min-width:180px;box-shadow:0 8px 24px #0008;z-index:3}
+.rktip b{display:block;margin-bottom:4px;color:var(--tx)}
+.rktip div{display:flex;align-items:center;gap:6px;padding:1px 0;color:var(--mu)}.rktip div.me{color:var(--tx);font-weight:600}
+.rktip .n{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}.rktip .v{font-variant-numeric:tabular-nums;color:var(--tx)}
+.rktip .dot,.rkleg .dot,.rkshl .dot,.rkmv .dot,.rknm .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.rkleg{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.rkleg button{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--bd);border-radius:999px;padding:3px 10px;color:var(--mu);font:inherit;font-size:12px;cursor:pointer}
+.rkleg button.on,.rkleg button:hover{color:var(--tx);border-color:var(--bd2)}.rkleg button.me{color:var(--tx)}
+.rkempty{padding:34px 10px;text-align:center;color:var(--mu);font-size:13.5px;line-height:1.6;background:var(--s2);border:1px dashed var(--bd2);border-radius:8px}
+.rksh{margin-bottom:16px}.rksh:last-child{margin-bottom:0}
+.rkshh{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;margin-bottom:6px}.rkshh .mu{font-size:12px}
+.rkbar{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden;background:var(--s1)}
+.rkbar i{display:block;min-width:2px}
+.rkshl{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--mu)}.rkshl span{display:inline-flex;align-items:center;gap:5px}.rkshl b{color:var(--tx);font-weight:600}
+.rkmvs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.rkmvh{color:var(--mu);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.rkmv{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd);font-size:13px}.rkmv:last-child{border-bottom:0}
+.rkmv .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rktools{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.rktools2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rkq{background:var(--s2);border:1px solid var(--bd2);border-radius:8px;color:var(--tx);padding:6px 10px;font:inherit;font-size:13px;width:190px}
+.rktw{margin-top:12px;overflow-x:auto}
+.rkt tr.mine td{background:#1f1a10}
+.rkt td{vertical-align:middle}
+.rknm{display:flex;align-items:center;gap:9px;min-width:0}.rknm>span{min-width:0}.rknm small{display:block;color:var(--mu2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}
+.rknm svg{flex:none;border-radius:2px}
+.rkmd{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:11.5px;font-weight:700;color:#141414}
+.rkmd.m1{background:#d4a64a}.rkmd.m2{background:#b7c0c9}.rkmd.m3{background:#b9794a}
+.rknum{display:inline-block;width:22px;text-align:center;color:var(--mu);font-variant-numeric:tabular-nums}
+.rksp{display:inline-block;vertical-align:middle}.rksp polyline{fill:none;stroke:var(--mu);stroke-width:1.5;stroke-linejoin:round}.rksp circle.u{fill:var(--gn)}.rksp circle.d{fill:var(--rd)}
+@media(max-width:1200px){.rkk{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:820px){.rkk{grid-template-columns:repeat(2,minmax(0,1fr))}.rkk .rkt1:first-child{grid-column:span 2}.rkt1 b{font-size:21px}.rkq{width:100%}.rktools2{width:100%}.rkmvs{grid-template-columns:1fr}.rknm small{max-width:150px}}
+
+/* strike note */
+.sknote{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 20px));background:#0f151cf2;border:1px solid var(--bd2);border-left:3px solid #e3b341;border-radius:10px;padding:8px 8px 8px 12px;box-shadow:0 10px 30px #0009;font-size:13px;animation:skIn .25s ease-out}
+.sknote.hit{border-left-color:var(--rd);background:#1c1012f2}
+.sknote .ic{font-size:18px;line-height:1}.sknote>span:nth-child(2){flex:1;min-width:0}.sknote small{display:block;color:var(--mu);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sknote.out{opacity:0;transform:translate(-50%,8px);transition:.35s}
+@keyframes skIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@media(max-width:820px){.sknote{bottom:calc(76px + env(safe-area-inset-bottom))}}
+
+.pact,.decl{padding:8px 0;border-bottom:1px solid var(--bd)}.pact:last-child,.decl:last-child{border-bottom:0}
+.pactm{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.chip{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--bd);border-radius:999px;padding:2px 9px;font-size:12px}.chip .dot{width:8px;height:8px;border-radius:50%}
+.decl>div{font-size:14px;margin-bottom:2px}.decl .mu{font-size:12px}
+#cpText{width:100%;resize:vertical;min-height:54px}
 </style>
 <script src="/vendor/d3.min.js"></script>
 <script src="/core.js"></script>
@@ -383,7 +446,7 @@ window.claude={use:async n=>{await authed;return n==='db'?db:n==='user'?user:nul
 window.WP={me:()=>st.me,api,extra:{}};
 const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
-function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
+function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 function connect(){const es=new EventSource('/api/stream');
  es.addEventListener('init',e=>applyInit(JSON.parse(e.data)));
  es.addEventListener('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
@@ -397,6 +460,7 @@ function connect(){const es=new EventSource('/api/stream');
  es.addEventListener('config',e=>setCfg(JSON.parse(e.data)));
  es.addEventListener('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
  es.addEventListener('nuke',e=>window.dispatchEvent(new CustomEvent('wp-nuke',{detail:JSON.parse(e.data)})));
+ es.addEventListener('strike',e=>window.dispatchEvent(new CustomEvent('wp-strike',{detail:JSON.parse(e.data)})));
  es.addEventListener('announce',e=>window.dispatchEvent(new CustomEvent('wp-announce',{detail:JSON.parse(e.data)})));
  let downT=null,wasDown=false;const nb=(t,ok)=>{const b=document.getElementById('netbar');if(!b)return;b.querySelector('span').textContent=t;b.classList.toggle('ok',!!ok);b.classList.add('on')};
  es.onopen=()=>{clearTimeout(downT);downT=null;if(wasDown){wasDown=false;nb('Back online',true);setTimeout(()=>{const b=document.getElementById('netbar');if(b)b.classList.remove('on')},1800)}};
@@ -623,6 +687,8 @@ function maxBuy(r){const budget=Math.max(0,me.cash*.85);let lo=0,hi=1e6;while(hi
 function maxSell(r){const have=Math.floor(me.res[r]||0);let lo=0,hi=have+1;while(hi-lo>1){const m=(lo+hi)>>1;if(C.orderEdge(W,uid,r,-m)>=.77)lo=m;else hi=m}return Math.min(lo,have)}
 function qPrev(r){const el=$('q_'+r),pv=$('qp_'+r);if(!el||!pv)return;const q=Math.floor(+el.value||0);if(q<=0){pv.textContent='';return}const cost=orderCost(r,q,true),got=orderCost(r,q,false);const lp=prices()[r],ai=cost/q,ae=got/q;pv.innerHTML=`Import <b class="${cost>me.cash?'rd':''}">${money(cost)}</b> <span class="${ai>lp*1.25?'rd':''}">(${money(ai)} each)</span> · Export <b class="${q>(me.res[r]||0)?'rd':''}">${money(got)}</b> <span class="${ae<lp*.75?'rd':''}">(${money(ae)} each)</span>`}
 document.addEventListener('input',e=>{if(e.target.dataset&&e.target.dataset.qr)qPrev(e.target.dataset.qr)});
+document.addEventListener('input',e=>{if(e.target.id==='cpText'){councilDraft.text=e.target.value;const c=$('cpCount');if(c)c.textContent=e.target.value.length+'/200'}});
+document.addEventListener('input',e=>{if(e.target.id!=='rkQ')return;rkQ=e.target.value;const pos=e.target.selectionStart;e.target.blur();render();const n=$('rkQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}});
 document.addEventListener('change',e=>{if(e.target.id==='rkSort'){const c=RCOLS[rankTab].find(x=>x[0]===e.target.value);if(c){rankSort={k:c[0],d:c[4]?1:-1};render()}}});
 async function found(){const s=found_;const el=$('fn_name');const name=(el?.value||s.name||'').trim();if(s.hex==null)return toast('Choose your land first: tap dark land on the globe, or tap “Pick a good spot for me”.');if(name.length<2){toast('Now give your nation a name.');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>el.focus(),350)}return}
  const r=await cmd({c:'found',name,color:s.color,gov:s.gov,hex:s.hex},false);if(!r)return;page='overview';toast('Your nation has been founded. Start with Operations → Collect Taxes.');setTimeout(()=>{$('main').scrollTop=0;GL.flyTo(P[s.hex].c,2.2)},300)}
@@ -637,7 +703,7 @@ const GL=(()=>{
  const proj=d3.geoOrthographic().clipAngle(90).precision(.4);const path=d3.geoPath(proj,ctx);const grat=d3.geoGraticule10();
  function size(){if(!st.el)return;const r=st.el.getBoundingClientRect();st.dpr=st.lo?1:Math.min(2,window.devicePixelRatio||1);st.w=Math.max(100,r.width);st.h=Math.max(100,r.height);const W_=Math.round(st.w*st.dpr),H_=Math.round(st.h*st.dpr);if(cv.width!==W_||cv.height!==H_){cv.width=W_;cv.height=H_}cv.style.width=st.w+'px';cv.style.height=st.h+'px'}
  // while the globe is being dragged, zoomed or flown, paint at 1x resolution (much cheaper on phones), then repaint sharp once it settles
- function moving(){if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo){st.lo=false;size();redraw()}},180)}
+ function moving(){st.baseOk=false;if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo){st.lo=false;size();redraw()}},180)}
  const radius=()=>Math.min(st.w,st.h)*.46*st.scale;
  const STARS=(()=>{let x=7;const R=()=>(x=(x*16807)%2147483647)/2147483647;return Array.from({length:180},()=>[R(),R(),R()<.15?1.6:1,.15+R()*.5])})();
  let CGP=null;const cgPolys=()=>CGP||(CGP=PD.cg.flatMap(g=>g.type==='Polygon'?[g.coordinates]:g.coordinates).map(coords=>({c:d3.geoCentroid({type:'Polygon',coordinates:coords}),geo:{type:'MultiPolygon',coordinates:[coords]}})));
@@ -669,7 +735,11 @@ const GL=(()=>{
    ctx.setLineDash([4,4]);ctx.strokeStyle='rgba(170,255,90,.55)';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.stroke();ctx.setLineDash([]);
    const gz=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],rr);gz.addColorStop(0,`rgba(255,${age<1?230:140},60,${.85*pul})`);gz.addColorStop(.25,`rgba(255,90,20,${.45*pul})`);gz.addColorStop(1,'rgba(150,255,60,0)');ctx.fillStyle=gz;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.fill();
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
-  drawFx(ctr,w,h,r);
+  // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
+  if(SK.length){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+  overlay(ctr,w,h,r)}
+ const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
+ function overlay(ctr,w,h,r){drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);
   const fs=Math.round(clamp(10+st.scale*1.5,10,16));ctx.font=`600 ${fs}px Inter,system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   // names: biggest nations first, skip any label that would overlap one already drawn or run off the edge; round joins avoid spiky outlines
   ctx.lineJoin='round';ctx.miterLimit=2;const boxes=[];
@@ -677,9 +747,11 @@ const GL=(()=>{
    if(u!==uid&&(x0<2||x1>w-2||boxes.some(b=>x0<b[2]&&x1>b[0]&&y0<b[3]&&y1>b[1])))continue;boxes.push([x0,y0,x1,y1]);
    ctx.lineWidth=3.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.strokeText(t,xy[0],xy[1]-12);ctx.fillStyle='#fff';ctx.fillText(t,xy[0],xy[1]-12)}
   ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;ctx.beginPath();path({type:'Sphere'});ctx.stroke()}
+ // a strike frame: the cached globe plus the moving parts (much cheaper than redrawing every province)
+ function fastFrame(){if(!st.baseOk||!st.el||!st.el.isConnected)return draw();const w=st.w,h=st.h,r=radius();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(baseCv,0,0);ctx.setTransform(st.dpr,0,0,st.dpr,0,0);proj.rotate(st.rot).scale(r).translate([w/2,h/2]);overlay([-st.rot[0],-st.rot[1]],w,h,r)}
  let labW=null,labC=[],candW=null,candS=null,mineS=[];function labels(){if(labW===W)return labC;labW=W;labC=[];for(const[u,n]of Object.entries(A)){const hs=hexesOf(u);if(!hs.length)continue;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}labC.push([u,n,[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI]])}labC.sort((a,b)=>(b[0]===uid)-(a[0]===uid)||hexesOf(b[0]).length-hexesOf(a[0]).length);return labC}
- const redraw=()=>{if(!st.raf)st.raf=requestAnimationFrame(draw)};
- function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);size();redraw()}
+ const redraw=()=>{st.baseOk=false;if(!st.raf)st.raf=requestAnimationFrame(draw)};
+ function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);size();redraw();if(SK.length)setTimeout(kick,50)}
  function ll(ev){const r=cv.getBoundingClientRect();proj.rotate(st.rot).scale(radius()).translate([st.w/2,st.h/2]);const p=proj.invert([ev.clientX-r.left,ev.clientY-r.top]);if(!p||!isFinite(p[0]))return null;if(d3.geoDistance(p,[-st.rot[0],-st.rot[1]])>Math.PI/2)return null;return p}
  const ptr=new Map();let moved=0,pinch=0,lastHover=0;
  let downX=0,downY=0,downTouch=false;
@@ -696,6 +768,38 @@ const GL=(()=>{
  // nuclear missile flight: an arc rising off the globe from launcher to target, then a shockwave
  function missile(from,to,dur,done,toH){st.fx={from,to,toH,dur,t0:performance.now(),done,ip:d3.geoInterpolate(from,to),dist:d3.geoDistance(from,to)};const loop=()=>{if(!st.fx)return;draw();const f=st.fx,el=performance.now()-f.t0;if(el<f.dur+1400)requestAnimationFrame(loop);else{st.fx=null;draw();done&&done()}};requestAnimationFrame(loop)}
  function stopMissile(){if(st.fx){const d=st.fx.done;st.fx=null;redraw();return d}return null}
+ // ---- air and missile strikes, seen by everyone: planes in formation (or missile streaks) from the attacker's capital, then flashes and lingering smoke ----
+ const SK=[],SMOKE_MS=10*60e3,reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;let skLoop=0;
+ const seedOf=id=>{let h=7;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return()=>((h=(h*16807)%2147483647)/2147483647)};
+ function strike(fx){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const from=P[fx.from]?P[fx.from].c:null,to=P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
+  const dur=!from?0:air_?clamp(3800+dist*1300,3800,6500):clamp(2200+dist*800,2200,3800),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
+  const R=seedOf(fx.id),n=air_?clamp(Math.round((fx.n||5)/8),3,6):clamp(fx.n||1,1,5),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.max(0,n-(fx.hits==null?n:fx.hits));
+  SK.push({fx,from,to,dist,dur:reduce?0:dur,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:8},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
+  while(SK.length>40)SK.shift();kick()}
+ function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<k.dur+1800);if(!busy||!st.el||!st.el.isConnected){skLoop=0;redraw();return}
+  if(st.baseOk&&!st.anim&&!st.raf)fastFrame();else if(!st.raf)draw();skLoop=requestAnimationFrame(step)};skLoop=requestAnimationFrame(step)}
+ function drawStrikes(ctr,w,h,r){if(!SK.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2];
+  for(let i=SK.length-1;i>=0;i--)if(wall-(SK[i].fx.t||0)>SMOKE_MS)SK.splice(i,1);
+  for(const k of SK){const el=now-k.t0,tgVis=d3.geoDistance(ctr,k.to)<1.55,tg=proj(k.to),lift=.05+Math.min(.1,k.dist*.06);
+   const at=s=>{const p=k.ip(s),xy=proj(p),q=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*q,c0[1]+(xy[1]-c0[1])*q],vis:d3.geoDistance(ctr,p)<1.6||Math.sin(Math.PI*s)>.3}};
+   // lingering smoke over the target (fades over ten minutes)
+   const arrive=k.dur,age=el-arrive;if(age>0&&tgVis){const fade=Math.max(0,1-(wall-(k.fx.t||wall)-k.dur)/SMOKE_MS),drift=Math.min(1,age/60000);
+    const sway=Math.sin(wall/1400+k.jit[0][0]*3)*1.5;for(let j=0;j<4;j++){const jx=k.jit[j][0]*3+sway*j*.6,jy=-3-j*6-drift*6,rr=5+j*2.6+drift*3,g=ctx.createRadialGradient(tg[0]+jx,tg[1]+jy,0,tg[0]+jx,tg[1]+jy,rr);g.addColorStop(0,`rgba(190,190,196,${(.62-j*.1)*fade})`);g.addColorStop(.6,`rgba(150,150,158,${(.3-j*.05)*fade})`);g.addColorStop(1,'rgba(140,140,150,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(tg[0]+jx,tg[1]+jy,rr,0,7);ctx.fill()}
+    {const e=ctx.createRadialGradient(tg[0],tg[1],0,tg[0],tg[1],5);e.addColorStop(0,`rgba(255,200,120,${.9*fade})`);e.addColorStop(1,'rgba(255,90,30,0)');ctx.fillStyle=e;ctx.beginPath();ctx.arc(tg[0],tg[1],5,0,7);ctx.fill()}
+    if(age<1800){const t=age/1800;for(let j=0;j<(k.fx.kind==='air'?5:Math.max(1,k.n-k.lostN));j++){const d0=j*.12;if(t<d0)continue;const tt=Math.min(1,(t-d0)/.35);if(tt>=1)continue;const x=tg[0]+k.jit[j][0]*9,y=tg[1]+k.jit[j][1]*7,g=ctx.createRadialGradient(x,y,0,x,y,10);g.addColorStop(0,`rgba(255,250,220,${1-tt})`);g.addColorStop(.4,`rgba(255,150,50,${.8*(1-tt)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.fill()}
+     ctx.strokeStyle=`rgba(255,190,110,${.8*(1-t)})`;ctx.lineWidth=2*(1-t)+.5;ctx.beginPath();ctx.arc(tg[0],tg[1],6+t*22,0,7);ctx.stroke()}
+}
+   if(!k.ip||el>=k.dur||el<0)continue;const prog=el/k.dur,air_=k.fx.kind==='air';
+   if(prog<1&&tgVis){const pl=.5+.5*Math.sin(el/150);ctx.strokeStyle=`rgba(255,120,90,${.35+.4*pl})`;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(tg[0],tg[1],7+pl*3,0,7);ctx.stroke()}
+   for(let j=0;j<k.n;j++){const lag=air_?Math.abs(j-(k.n-1)/2)*.022:j*.05,lost=j>=k.n-k.lostN,stop=lost?k.stops[j]:1,s=Math.min(prog-lag,stop);if(s<=0)continue;
+    const dead=lost&&prog-lag>stop,deadT=dead?(prog-stop)*k.dur/700:0;if(dead&&deadT>1)continue;
+    const a=at(s),b=at(Math.max(0,s-.012));if(!a.vis)continue;let dx=a.xy[0]-b.xy[0],dy=a.xy[1]-b.xy[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;
+    const off=air_?(j-(k.n-1)/2)*8:0,px=a.xy[0]-dy*off,py=a.xy[1]+dx*off;
+    // contrail
+    const tail=air_?.16:.1;ctx.lineCap='round';for(let q=1;q<=10;q++){const s1=Math.max(0,s-tail*q/10),s0=Math.max(0,s-tail*(q-1)/10),p1=at(s1),p0=at(s0);if(!p1.vis||!p0.vis)continue;ctx.strokeStyle=air_?`rgba(235,242,255,${.45*(1-q/10)*(dead?1-deadT:1)})`:`rgba(255,${200-q*8},120,${.8*(1-q/10)})`;ctx.lineWidth=air_?1.2:1.8*(1-q/12);ctx.beginPath();ctx.moveTo(p0.xy[0]-dy*off,p0.xy[1]+dx*off);ctx.lineTo(p1.xy[0]-dy*off,p1.xy[1]+dx*off);ctx.stroke()}
+    if(dead){const g=ctx.createRadialGradient(px,py,0,px,py,9);g.addColorStop(0,`rgba(255,220,150,${1-deadT})`);g.addColorStop(1,'rgba(255,90,30,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,9,0,7);ctx.fill();continue}
+    if(air_){ctx.save();ctx.translate(px,py);ctx.rotate(Math.atan2(dy,dx));ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-4.5,5);ctx.lineTo(-2,0);ctx.lineTo(-4.5,-5);ctx.closePath();ctx.fillStyle='#f4f7fb';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(5,9,14,.8)';ctx.stroke();ctx.restore()}
+    else{const g=ctx.createRadialGradient(px,py,0,px,py,6);g.addColorStop(0,'rgba(255,255,235,1)');g.addColorStop(1,'rgba(255,140,50,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,6,0,7);ctx.fill()}}}}
  function drawFx(ctr,w,h,r){const f=st.fx;if(!f)return;const el=performance.now()-f.t0,prog=Math.min(1,el/f.dur),c0=[w/2,h/2],lift=.12+Math.min(.22,f.dist*.12);
   const air=s=>{const p=f.ip(s),xy=proj(p),k=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*k,c0[1]+(xy[1]-c0[1])*k],vis:d3.geoDistance(ctr,p)<1.62||Math.sin(Math.PI*s)>.25}};
   const tg=proj(f.to),lp=proj(f.from),pulse=.5+.5*Math.sin(el/140);
@@ -706,7 +810,7 @@ const GL=(()=>{
    const hd=pts[pts.length-1];if(hd.vis){const g=ctx.createRadialGradient(hd.xy[0],hd.xy[1],0,hd.xy[0],hd.xy[1],14);g.addColorStop(0,'rgba(255,255,230,1)');g.addColorStop(.3,'rgba(255,190,90,.8)');g.addColorStop(1,'rgba(255,90,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(hd.xy[0],hd.xy[1],14,0,7);ctx.fill()}}
   else{const t=(el-f.dur)/1400;for(const[k,col]of[[1,'255,240,200'],[.65,'255,140,40'],[.35,'160,255,90']]){const rr=r*.32*k*Math.pow(t,.6);ctx.strokeStyle=`rgba(${col},${(1-t)*.9})`;ctx.lineWidth=3*(1-t)+1;ctx.beginPath();ctx.arc(tg[0],tg[1],rr,0,7);ctx.stroke()}
    const g=ctx.createRadialGradient(tg[0],tg[1],0,tg[0],tg[1],r*.22);g.addColorStop(0,`rgba(255,255,235,${1-t})`);g.addColorStop(.4,`rgba(255,150,50,${.7*(1-t)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(tg[0],tg[1],r*.22,0,7);ctx.fill()}}
- return{attach,redraw,flyTo,missile,stopMissile,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
+ return{attach,redraw,flyTo,missile,stopMissile,strike,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
 function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl"><button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
@@ -992,16 +1096,21 @@ const measEnd=(n,k)=>k==='frozen'?(n.frozen&&n.frozen.until)||0:n[k]||0;
 const measOn=n=>MEAS.filter(([k])=>measEnd(n,k)>Date.now());
 const measTags=n=>measOn(n).map(([k,l,c])=>` <span class="tag ${c}" title="World Council: ends in ${fmtT(measEnd(n,k)-Date.now())}">🏛 ${l}${k==='frozen'?' ('+moneyS(n.frozen.amt||0)+')':''}</span>`).join('');
 function councilBanner(n){const m=measOn(n);if(!m.length)return'';const bad=m.some(x=>x[2]==='r'||x[2]==='y');return`<div class="motd" style="${bad?'border-color:#5f2b2e;background:#2a1517;color:#ffc1bd':'border-color:#1f5f3a;background:#0f2418;color:#b7f0c8'}">${I('gavel')}<span><b>World Council measures on your nation</b>${m.map(([k,l,,d])=>`<span style="display:block;margin-top:4px">• <b>${l}${k==='frozen'?` (${moneyS(n.frozen.amt||0)})`:''}</b>, ends in ${fmtT(measEnd(n,k)-Date.now())}: ${d}</span>`).join('')}</span></div>`}
-const resFor=(type,u)=>`${RESOLUTIONS[type].n}${u?` ${RESOLUTIONS[type].kind==='protect'?'for':'against'} ${A[u]?nmHtml(u):'a former nation'}`:''}`;
-const resLen=r=>r.h?` Lasts ${r.h} hours.`:' Takes effect at once.';
+const resTargeted=t=>['punish','protect'].includes(RESOLUTIONS[t].kind);
+const SCOPE={ai:'against AI attackers',all:'against any attacker'};
+const resFor=(type,u,p)=>type==='custom'&&p?`<span class="mu">Custom resolution:</span> “${esc(p.text||'')}”`:type==='pact'&&p?`${RESOLUTIONS.pact.n} <span class="mu">(${SCOPE[p.scope]||''})</span>`:`${RESOLUTIONS[type].n}${u?` ${RESOLUTIONS[type].kind==='protect'?'for':'against'} ${A[u]?nmHtml(u):'a former nation'}`:''}`;
+const resLen=r=>r===RESOLUTIONS.custom?'':r.h?` Lasts ${r.h} hours.`:' Takes effect at once.';
 function pCouncil(){const cs=X().council||{props:[],active:{}};const open=cs.props.filter(p=>p.status==='open'),past=cs.props.filter(p=>p.status!=='open').slice(0,15);const act=Object.entries(cs.active||{}).filter(([k,t])=>t>Date.now());
- const label=p=>resFor(p.type,p.target);
- const card=p=>{const y=Object.values(p.votes).filter(v=>v==='y').length,n=Object.values(p.votes).filter(v=>v==='n').length,mine=p.votes[uid];return`<div class="prop"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><b>${label(p)}</b><span class="mu" style="font-size:12.5px">${p.auto?'<span class="tag y" style="font-size:11px">🏛 Raised by the World Council</span>':`Proposed by ${nmHtml(p.by)}`} · closes in ${fmtT(Math.max(0,p.end-Date.now()))}</span></div>${p.auto&&p.why?`<div style="font-size:13px;margin-top:4px;color:#ffd98a">Why: ${esc(A[p.target]?A[p.target].name:"This nation")} ${esc(p.why)}.</div>`:''}<div class="mu" style="font-size:13px;margin-top:4px">${esc(RESOLUTIONS[p.type].d)}</div><div class="vb"><i style="width:${y+n?y/(y+n)*100:50}%"></i></div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span><b class="gn">${y} yes</b> · <b class="rd">${n} no</b> <span class="mu">· needs a majority and at least 3 yes votes</span></span><span style="display:flex;gap:6px">${mine?`<span class="tag ${mine==='y'?'g':'r'}">You voted ${mine==='y'?'yes':'no'}</span>`:''}<button class="btn sm ok" data-act="vote" data-a="${p.id}" data-b="y">Vote yes</button><button class="btn sm dng" data-act="vote" data-a="${p.id}" data-b="n">Vote no</button></span></div></div>`};
+ const label=p=>resFor(p.type,p.target,p);
+ const card=p=>{const y=Object.values(p.votes).filter(v=>v==='y').length,n=Object.values(p.votes).filter(v=>v==='n').length,mine=p.votes[uid];return`<div class="prop"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><b>${label(p)}</b><span class="mu" style="font-size:12.5px">${p.auto?'<span class="tag y" style="font-size:11px">🏛 Raised by the World Council</span>':`Proposed by ${nmHtml(p.by)}`} · closes in ${fmtT(Math.max(0,p.end-Date.now()))}</span></div>${p.auto&&p.why?`<div style="font-size:13px;margin-top:4px;color:#ffd98a">Why: ${esc(A[p.target]?A[p.target].name:"This nation")} ${esc(p.why)}.</div>`:''}<div class="mu" style="font-size:13px;margin-top:4px">${p.type==='custom'?`A public commitment, not enforced by the game. If it passes it stays in force for ${p.hours||48} hours, listed with every nation that voted for it. AI nations do not vote on it.`:esc(RESOLUTIONS[p.type].d)}</div><div class="vb"><i style="width:${y+n?y/(y+n)*100:50}%"></i></div><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span><b class="gn">${y} yes</b> · <b class="rd">${n} no</b> <span class="mu">· needs a majority and at least 3 yes votes</span></span><span style="display:flex;gap:6px">${mine?`<span class="tag ${mine==='y'?'g':'r'}">You voted ${mine==='y'?'yes':'no'}</span>`:''}<button class="btn sm ok" data-act="vote" data-a="${p.id}" data-b="y">Vote yes</button><button class="btn sm dng" data-act="vote" data-a="${p.id}" data-b="n">Vote no</button></span></div></div>`};
  return`<h1 class="pg">World Council</h1><p class="pgsub">Every nation has one vote. Resolutions pass with a majority and at least three votes in favor; voting stays open for six hours. Resolutions can punish a nation, protect one, or bind the whole world. The Council also watches on its own: nations that attack too often or build warheads face a vote automatically, and victims of a nuclear strike get an aid vote.</p>
  ${councilBanner(me)}
- ${(()=>{const nm_=Object.keys(A).filter(u=>measOn(A[u]).length);return act.length||nm_.length?panel('In force',act.map(([k,t])=>`<div style="padding:6px 0"><b>${RESOLUTIONS[k].n}</b> <span class="mu">— ${esc(RESOLUTIONS[k].d)} Expires in ${fmtT(t-Date.now())}.</span></div>`).join('')+nm_.map(u=>`<div style="padding:6px 0">${nmHtml(u)}${measTags(A[u])}</div>`).join(''),'','gavel'):''})()}
+ ${(()=>{const nm_=Object.keys(A).filter(u=>measOn(A[u]).length);const pc=cs.pacts||[],dc=cs.decl||[];return act.length||nm_.length||pc.length||dc.length?panel('In force',pc.map(x=>`<div class="pact"><b>🛡 ${RESOLUTIONS.pact.n}</b> <span class="mu">${SCOPE[x.scope]} · ${fmtT(x.until-Date.now())} left${x.members.includes(uid)?' · <span class="gn">you are a member</span>':''}</span><div class="pactm">${x.members.filter(u=>A[u]).map(u=>`<span class="chip"><span class="dot" style="background:${esc(A[u].color)}"></span>${esc(A[u].name)}</span>`).join('')}</div></div>`).join('')+dc.map(x=>`<div class="decl"><div>“${esc(x.text)}”</div><span class="mu">${fmtT(x.until-Date.now())} left · supported by ${x.yes.filter(u=>A[u]).map(u=>esc(A[u].name)).join(', ')||'—'}</span></div>`).join('')+act.map(([k,t])=>`<div style="padding:6px 0"><b>${RESOLUTIONS[k].n}</b> <span class="mu">— ${esc(RESOLUTIONS[k].d)} Expires in ${fmtT(t-Date.now())}.</span></div>`).join('')+nm_.map(u=>`<div style="padding:6px 0">${nmHtml(u)}${measTags(A[u])}</div>`).join(''),'','gavel'):''})()}
  ${panel(`Open votes${open.length?` <span class="tag y">${open.length}</span>`:''}`,open.length?open.map(card).join(''):'<p class="mu" style="margin:0">No resolutions are being voted on.</p>','','vote')}
- ${panel('Propose a resolution',rankOf(me.xp)<2?'<p class="mu" style="margin:0">You must reach the rank of Mayor to propose resolutions.</p>':`<div class="cols" style="gap:12px"><div class="field"><label>Resolution</label><select id="cpType">${[['punish','Measures against a nation'],['protect','Support for a nation'],['global','Worldwide treaties']].map(([g,gl])=>`<optgroup label="${gl}">${Object.entries(RESOLUTIONS).filter(([,r])=>r.kind===g).map(([k,r])=>`<option value="${k}" ${councilDraft.type===k?'selected':''}>${r.n}</option>`).join('')}</optgroup>`).join('')}</select></div><div class="field" id="cpTargetWrap" ${RESOLUTIONS[councilDraft.type].kind!=='global'?'':'style="display:none"'}><label>Target nation</label><select id="cpTarget">${others().map(u=>`<option value="${esc(u)}">${esc(A[u].name)}${A[u].ai?' (AI)':''}</option>`).join('')}</select></div></div><p class="mu" style="font-size:13px;margin:0 0 10px" id="cpDesc">${esc(RESOLUTIONS[councilDraft.type].d+resLen(RESOLUTIONS[councilDraft.type]))}</p><button class="btn pri" data-act="propose">Submit to the Council ($100,000)</button>`,'','gavel')}
+ ${panel('Propose a resolution',rankOf(me.xp)<2?'<p class="mu" style="margin:0">You must reach the rank of Mayor to propose resolutions.</p>':`<div class="cols" style="gap:12px"><div class="field"><label>Resolution</label><select id="cpType">${[['punish','Measures against a nation'],['protect','Support for a nation'],['global','Worldwide treaties'],['pact','Pacts'],['custom','Write your own']].map(([g,gl])=>`<optgroup label="${gl}">${Object.entries(RESOLUTIONS).filter(([,r])=>r.kind===g).map(([k,r])=>`<option value="${k}" ${councilDraft.type===k?'selected':''}>${r.n}</option>`).join('')}</optgroup>`).join('')}</select></div><div class="field" id="cpTargetWrap" ${resTargeted(councilDraft.type)?'':'style="display:none"'}><label>Target nation</label><select id="cpTarget">${others().map(u=>`<option value="${esc(u)}">${esc(A[u].name)}${A[u].ai?' (AI)':''}</option>`).join('')}</select></div>
+ <div class="field" id="cpScopeWrap" ${councilDraft.type==='pact'?'':'style="display:none"'}><label>The pact defends members against</label><select id="cpScope"><option value="ai" ${councilDraft.scope!=='all'?'selected':''}>Attacks by AI nations</option><option value="all" ${councilDraft.scope==='all'?'selected':''}>Attacks by any nation</option></select></div>
+ <div class="field" id="cpHoursWrap" ${councilDraft.type==='custom'?'':'style="display:none"'}><label>In force for</label><select id="cpHours">${[24,48,72].map(h=>`<option value="${h}" ${(councilDraft.hours||48)===h?'selected':''}>${h} hours</option>`).join('')}</select></div></div>
+ <div class="field" id="cpTextWrap" ${councilDraft.type==='custom'?'':'style="display:none"'}><label>Your resolution <span class="mu" id="cpCount">${(councilDraft.text||'').length}/200</span></label><textarea id="cpText" maxlength="200" rows="2" placeholder="e.g. If any AI nation attacks a player, every player will declare war on it.">${esc(councilDraft.text||'')}</textarea></div><p class="mu" style="font-size:13px;margin:0 0 10px" id="cpDesc">${esc(RESOLUTIONS[councilDraft.type].d+resLen(RESOLUTIONS[councilDraft.type]))}</p><button class="btn pri" data-act="propose">Submit to the Council ($100,000)</button>`,'','gavel')}
  ${panel('Recent decisions',past.length?`<div class="log">${past.map(p=>`<div><time>${ago(p.end)}</time><span>${label(p)} — <b class="${p.status==='passed'?'gn':'rd'}">${p.status}</b> ${p.result?`(${p.result})`:''}</span></div>`).join('')}</div>`:'<p class="mu" style="margin:0">None yet.</p>')}`}
 // ---------- Mail ----------
 let mailState={view:'in',sel:null,list:null,to:null,loading:false};
@@ -1022,12 +1131,97 @@ const RCOLS={
  economy:[['gdp','GDP',u=>A[u].gdp||0,moneyS],['growth','Growth (24h)',u=>gdpGrowth(A[u]),v=>v==null?'—':`<span class="${v>=0?'gn':'rd'}">${v>=0?'▲':'▼'} ${pctF(Math.abs(v))}</span>`],['unemp','Unemployment',u=>A[u].unemp,v=>`<span class="${v>12?'rd':v<6?'gn':''}">${pctF(v)}</span>`,1],['infl','Inflation',u=>A[u].infl,v=>`<span class="${v>8?'rd':v<4?'gn':''}">${pctF(v)}</span>`,1],['debt','Debt / GDP',u=>(A[u].debt||0)/Math.max(1,A[u].gdp||1)*100,v=>`<span class="${v>100?'rd':''}">${Math.round(v)}%</span>`,1],['pop','Population',u=>A[u].pop||0,numS]],
  society:[['approval','Approval',u=>A[u].approval,v=>`<span class="${v<35?'rd':v>65?'gn':''}">${Math.round(v)}%</span>`],['stability','Stability',u=>A[u].stability,v=>`<span class="${v<30?'rd':v>65?'gn':''}">${Math.round(v)}%</span>`],['gov','Government',u=>GOV[A[u].gov]?GOV[A[u].gov].n:'—',esc],['tech','Tech level',u=>A[u].tech||0,num],['aggr','Aggression',u=>A[u].aggr||0,v=>`<span class="${v>=50?'rd':''}">${Math.round(v)}${v>=50?' · sanctioned':''}</span>`,1]],
  military:[['troops','Army',u=>A[u].troops||0,numS],['ships','Warships',u=>A[u].ships||0,num],['air','Aircraft',u=>A[u].air||0,num],['tech','Tech level',u=>A[u].tech||0,num],['power','Military power',u=>power(u),v=>`<b>${numS(v)}</b>`]]};
-function pRank(){const onl=onlineSet(),allCols=RCOLS[rankTab];let cols=allCols;const col=cols.find(c=>c[0]===rankSort.k)||cols[cols.length-1];if(col[0]!==rankSort.k)rankSort={k:col[0],d:col[4]?1:-1};const rkNarrow=!isMob()&&innerWidth<1200&&allCols.length>4;if(isMob())cols=[col];else if(rkNarrow)cols=allCols.filter(c=>c===col||allCols.filter(x=>x!==col).indexOf(c)<3);
+// ================= rankings =================
+// history: one point an hour per nation from /api/rankhist (score, GDP, military power, provinces); a live point is added for "now"
+let RHD=null,rhAt=0,rhBusy=false,rkMetric='score',rkRange=24,rkFilter='all',rkQ='',rkFocus=null;
+async function loadRH(force){if(rhBusy||(!force&&RHD&&Date.now()-rhAt<5*60e3))return;rhBusy=true;try{const r=await WP.api('GET','/api/rankhist');RHD=r.points||[];rhAt=Date.now()}catch(e){RHD=RHD||[]}rhBusy=false;if(page==='rank')render()}
+const RKM={score:{n:'Score',i:0,f:u=>score(u),fmt:num,ax:numS},gdp:{n:'GDP',i:1,f:u=>A[u].gdp||0,fmt:moneyS,ax:moneyS},power:{n:'Military power',i:2,f:u=>power(u),fmt:numS,ax:numS},prov:{n:'Provinces',i:3,f:u=>hexesOf(u).length,fmt:num,ax:num}};
+const TABMETRIC={overall:'score',economy:'gdp',military:'power',society:null};
+function rkSeries(m,hours){const M=RKM[m],now=Date.now(),from=now-hours*HOUR,pts=(RHD||[]).filter(p=>p.t>=from),out={};
+ for(const u of Object.keys(A)){const a=[];for(const p of pts){const v=p.n[u];if(v)a.push([p.t,v[M.i]])}a.push([now,M.f(u)]);out[u]=a}return out}
+// rank of every nation by a metric at the history point closest to `ago` hours back (null if there is no history that old)
+function rkPast(m,ago){const H=RHD||[];if(!H.length)return null;const want=Date.now()-ago*HOUR;let best=null;for(const p of H)if(p.t<=want+20*60e3&&(!best||Math.abs(p.t-want)<Math.abs(best.t-want)))best=p;if(!best||Date.now()-best.t<ago*HOUR*.5)return null;
+ const i=RKM[m].i,ids=Object.keys(best.n).sort((a,b)=>best.n[b][i]-best.n[a][i]),r={};ids.forEach((u,k)=>r[u]=k+1);return{t:best.t,rank:r,val:u=>best.n[u]?best.n[u][i]:null}}
+const rkNow=m=>{const ids=Object.keys(A).sort((a,b)=>RKM[m].f(b)-RKM[m].f(a)),r={};ids.forEach((u,k)=>r[u]=k+1);return r};
+const rkDelta=d=>d==null?'<span class="mu">—</span>':d>0?`<span class="rkup" title="Up ${d} since yesterday">▲${d}</span>`:d<0?`<span class="rkdn" title="Down ${-d} since yesterday">▼${-d}</span>`:'<span class="mu" title="No change since yesterday">=</span>';
+const rkMedal=i=>i<3?`<span class="rkmd m${i+1}">${i+1}</span>`:`<span class="rknum">${i+1}</span>`;
+function rkSpark(arr){if(!arr||arr.length<2)return'';const w=84,h=22,xs=arr.map(a=>a[0]),ys=arr.map(a=>a[1]),x0=xs[0],x1=xs[xs.length-1],y0=Math.min(...ys),y1=Math.max(...ys),dy=(y1-y0)||1;
+ const pts=arr.map(a=>`${(((a[0]-x0)/((x1-x0)||1))*(w-4)+2).toFixed(1)},${(h-3-((a[1]-y0)/dy)*(h-6)).toFixed(1)}`),last=pts[pts.length-1].split(','),up=ys[ys.length-1]>=ys[0];
+ return`<svg class="rksp" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts.join(' ')}"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" class="${up?'u':'d'}"/></svg>`}
+// the race chart: top nations by the chosen metric over time, you always included
+let rkCS=null;
+function rkChart(){const M=RKM[rkMetric],S_=rkSeries(rkMetric,rkRange),mob=isMob();
+ const hist=(RHD||[]).filter(p=>p.t>=Date.now()-rkRange*HOUR).length;
+ if(!RHD)return`<div class="rkempty">Loading history…</div>`;
+ if(hist<1)return`<div class="rkempty"><b>The race chart is warming up.</b><br>A point is recorded for every nation each hour, so the lines appear over the next few hours.</div>`;
+ const order=Object.keys(A).sort((a,b)=>M.f(b)-M.f(a));let show=order.slice(0,mob?5:8);if(uid&&A[uid]&&!show.includes(uid))show.push(uid);if(rkFocus&&A[rkFocus]&&!show.includes(rkFocus))show.push(rkFocus);
+ if(!show.length)return`<div class="rkempty">No nations yet.</div>`;
+ const W_=mob?360:880,H_=mob?230:300,pl=mob?44:58,pr=mob?10:190,pt=14,pb=26,iw=W_-pl-pr,ih=H_-pt-pb;
+ const all=show.flatMap(u=>S_[u]),t0=Math.min(...all.map(a=>a[0])),t1=Date.now(),hi=Math.max(1,...all.map(a=>a[1])),lo0=Math.min(...all.map(a=>a[1]));
+ // fit the axis to the data (a line chart need not start at zero) on round steps, so movement in the race is visible
+ const span_=Math.max(hi-lo0,hi*.04,1),mag=Math.pow(10,Math.floor(Math.log10(span_/4))),stp=[1,2,2.5,5,10].map(x=>x*mag).find(x=>Math.ceil(hi/(x))*x-Math.floor(lo0/x)*x<=x*5)||10*mag,ymin=Math.max(0,Math.floor(lo0/stp)*stp),ymax=Math.max(ymin+stp,Math.ceil(hi/stp)*stp),nT=Math.round((ymax-ymin)/stp);
+ const X_=t=>pl+((t-t0)/((t1-t0)||1))*iw,Y_=v=>pt+ih-((v-ymin)/(ymax-ymin))*ih;
+ let g='';for(let k=0;k<=nT;k++){const v=ymin+stp*k,y=Y_(v);g+=`<line class="rkg" x1="${pl}" x2="${pl+iw}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="rkax" x="${pl-8}" y="${(y+4).toFixed(1)}" text-anchor="end">${M.ax(v)}</text>`}
+ // time ticks on the local clock (midnight, 6 AM, noon…), so daylight-saving changes never shift them
+ const span=t1-t0,day=span>3*864e5,sh=day?24:span>864e5?(mob?24:12):span>12*HOUR?(mob?6:3):1;let xt='',n=0;const d=new Date(t0);d.setMinutes(0,0,0);if(day)d.setHours(0);while(d.getTime()<t0||d.getHours()%sh)d.setHours(d.getHours()+1);
+ while(d.getTime()<=t1&&n<14){const tk=d.getTime(),lab=day||sh>=24||d.getHours()===0?d.toLocaleDateString([], {weekday:'short'}):d.toLocaleTimeString([], {hour:'numeric'});if(X_(tk)>pl+18&&X_(tk)<pl+iw-18)xt+=`<text class="rkax" x="${X_(tk).toFixed(1)}" y="${H_-8}" text-anchor="middle">${lab}</text>`;d.setHours(d.getHours()+sh);n++}
+ const dim=u=>rkFocus&&u!==rkFocus&&u!==uid;
+ const lines=show.map(u=>{const a=S_[u];if(a.length<1)return'';const d=a.map((q,i)=>(i?'L':'M')+X_(q[0]).toFixed(1)+' '+Y_(q[1]).toFixed(1)).join(' ');const me_=u===uid;
+  return`<path d="${d}" fill="none" stroke="${esc(A[u].color)}" stroke-width="${me_||u===rkFocus?3:2}" stroke-linejoin="round" stroke-linecap="round" opacity="${dim(u)?.2:1}"/>`+(a.length===1?`<circle cx="${X_(a[0][0])}" cy="${Y_(a[0][1])}" r="4" fill="${esc(A[u].color)}"/>`:'')}).join('');
+ // direct labels at the line ends, nudged apart so they never overlap
+ let labs='';if(!mob){const ends=show.map(u=>({u,y:Y_(S_[u][S_[u].length-1][1])})).sort((a,b)=>a.y-b.y);for(let i=1;i<ends.length;i++)if(ends[i].y-ends[i-1].y<14)ends[i].y=ends[i-1].y+14;const over=ends.length?ends[ends.length-1].y-(pt+ih):0;if(over>0)ends.forEach(e=>e.y-=over);
+  labs=ends.map(e=>`<g opacity="${dim(e.u)?.35:1}"><circle cx="${pl+iw+10}" cy="${(e.y).toFixed(1)}" r="4" fill="${esc(A[e.u].color)}"/><text class="rklab${e.u===uid?' me':''}" x="${pl+iw+18}" y="${(e.y+4).toFixed(1)}">${esc(A[e.u].name.length>24?A[e.u].name.slice(0,23)+'…':A[e.u].name)}</text></g>`).join('')}
+ rkCS={t0,t1,pl,pt,iw,ih,W_,H_,X_,Y_,show,S_,fmt:M.fmt};
+ const leg=`<div class="rkleg">${show.map(u=>`<button class="${rkFocus===u?'on':''}${u===uid?' me':''}" data-act="rkfocus" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span>${esc(A[u].name)}</button>`).join('')}</div>`;
+ return`<div class="rkc" id="rkWrap"><svg id="rkSvg" viewBox="0 0 ${W_} ${H_}" role="img" aria-label="${M.n} of the leading nations over the last ${rkRange} hours">${g}${xt}<line class="rkbase" x1="${pl}" x2="${pl+iw}" y1="${pt+ih}" y2="${pt+ih}"/>${lines}${labs}<line id="rkX" class="rkx" x1="0" x2="0" y1="${pt}" y2="${pt+ih}" style="display:none"/><g id="rkDots"></g><rect x="${pl}" y="${pt}" width="${iw}" height="${ih}" fill="transparent" id="rkHit"/></svg><div class="rktip" id="rkTip"></div></div>${leg}`}
+function rkHover(e){const svg=$('rkSvg');if(!svg||!rkCS)return;const r=svg.getBoundingClientRect(),cx=(e.touches?e.touches[0].clientX:e.clientX),sx=(cx-r.left)/r.width*rkCS.W_;
+ const tip=$('rkTip'),xl=$('rkX'),dots=$('rkDots');if(sx<rkCS.pl||sx>rkCS.pl+rkCS.iw){tip.style.display='none';xl.style.display='none';dots.innerHTML='';return}
+ const t=rkCS.t0+(sx-rkCS.pl)/rkCS.iw*(rkCS.t1-rkCS.t0);let tt=null;const rows=rkCS.show.map(u=>{const a=rkCS.S_[u];let b=a[0];for(const q of a)if(Math.abs(q[0]-t)<Math.abs(b[0]-t))b=q;if(!tt||Math.abs(b[0]-t)<Math.abs(tt-t))tt=b[0];return{u,q:b}}).sort((a,b)=>b.q[1]-a.q[1]);
+ const x=rkCS.X_(tt);xl.setAttribute('x1',x);xl.setAttribute('x2',x);xl.style.display='';dots.innerHTML=rows.filter(o=>Math.abs(o.q[0]-tt)<40*60e3).map(o=>`<circle cx="${rkCS.X_(o.q[0])}" cy="${rkCS.Y_(o.q[1])}" r="4.5" fill="${esc(A[o.u].color)}" stroke="var(--s1)" stroke-width="2"/>`).join('');
+ const now_=Date.now()-tt<20*60e3;tip.innerHTML=`<b>${now_?'Now':new Date(tt).toLocaleString([], {weekday:'short',hour:'numeric',minute:'2-digit'})}</b>${rows.map(o=>`<div${o.u===uid?' class="me"':''}><span class="dot" style="background:${esc(A[o.u].color)}"></span><span class="n">${esc(A[o.u].name)}</span><span class="v">${rkCS.fmt(o.q[1])}</span></div>`).join('')}`;
+ tip.style.display='block';const wr=$('rkWrap').getBoundingClientRect(),px=x/rkCS.W_*r.width+(r.left-wr.left);tip.style.left=Math.min(wr.width-tip.offsetWidth-4,Math.max(4,px+(px>wr.width/2?-tip.offsetWidth-14:14)))+'px';tip.style.top='8px'}
+document.addEventListener('mousemove',e=>{if(e.target.closest&&e.target.closest('#rkSvg'))rkHover(e);else if(rkCS&&$('rkTip')&&$('rkTip').style.display==='block'){$('rkTip').style.display='none';const xl=$('rkX');if(xl)xl.style.display='none';const d=$('rkDots');if(d)d.innerHTML=''}});
+document.addEventListener('touchstart',e=>{if(e.target.closest&&e.target.closest('#rkSvg'))rkHover(e)},{passive:true});
+document.addEventListener('touchmove',e=>{if(e.target.closest&&e.target.closest('#rkSvg'))rkHover(e)},{passive:true});
+// share of the world: who holds the GDP, the military power and the land
+function rkShare(){const bar=(label,f,fmt)=>{const ids=Object.keys(A),tot=ids.reduce((a,u)=>a+Math.max(0,f(u)),0)||1,top=ids.sort((a,b)=>f(b)-f(a)).slice(0,5),rest=tot-top.reduce((a,u)=>a+Math.max(0,f(u)),0);
+  const seg=(c,v,t)=>v/tot>.004?`<i style="flex:${(v/tot).toFixed(4)};background:${c}" title="${esc(t)}"></i>`:'';
+  const mine=uid&&A[uid]?Math.max(0,f(uid))/tot*100:null;
+  return`<div class="rksh"><div class="rkshh"><b>${label}</b><span class="mu">World total ${fmt(tot)}${mine!=null?` · you ${mine<1?mine.toFixed(1):Math.round(mine)}%`:''}</span></div><div class="rkbar">${top.map(u=>seg(esc(A[u].color),Math.max(0,f(u)),`${A[u].name}: ${fmt(f(u))} (${(f(u)/tot*100).toFixed(1)}%)`)).join('')}${seg('var(--bd2)',rest,`Everyone else: ${fmt(rest)} (${(rest/tot*100).toFixed(1)}%)`)}</div><div class="rkshl">${top.slice(0,isMob()?3:5).map(u=>`<span><span class="dot" style="background:${esc(A[u].color)}"></span>${esc(A[u].name)} <b>${Math.round(f(u)/tot*100)}%</b></span>`).join('')}</div></div>`};
+ return bar('GDP',u=>A[u].gdp||0,moneyS)+bar('Military power',u=>power(u),numS)+bar('Land',u=>hexesOf(u).length,v=>num(v)+' provinces')}
+// biggest movers over the last day
+function rkMovers(){const past=rkPast('score',24);if(!past)return'<p class="mu" style="margin:0;font-size:13px">Movers appear once a day of history has been recorded.</p>';
+ const ch=Object.keys(A).map(u=>{const o=past.val(u);return o?{u,p:(score(u)/o-1)*100}:null}).filter(Boolean),row=x=>`<div class="rkmv"><span class="dot" style="background:${esc(A[x.u].color)}"></span><span class="n">${nmHtml(x.u)}</span><span class="${x.p>=0?'rkup':'rkdn'}">${x.p>=0?'▲':'▼'} ${Math.abs(x.p)<10?Math.abs(x.p).toFixed(1):Math.round(Math.abs(x.p))}%</span></div>`;
+ const up=ch.filter(x=>x.p>.05).sort((a,b)=>b.p-a.p).slice(0,4),dn=ch.filter(x=>x.p<-.05).sort((a,b)=>a.p-b.p).slice(0,4);
+ return`<div class="rkmvs"><div><div class="rkmvh">Rising</div>${up.map(row).join('')||'<p class="mu" style="margin:0;font-size:13px">Nobody grew.</p>'}</div><div><div class="rkmvh">Falling</div>${dn.map(row).join('')||'<p class="mu" style="margin:0;font-size:13px">Nobody shrank.</p>'}</div></div><p class="mu" style="font-size:11.5px;margin:10px 0 0">Change in score over the last 24 hours.</p>`}
+// your standing at a glance
+function rkTiles(){if(!uid||!A[uid])return'';const N=Object.keys(A).length,past=rkPast('score',24),now_=rkNow('score'),r=now_[uid];
+ const order=Object.keys(A).sort((a,b)=>score(b)-score(a)),ahead=r>1?order[r-2]:null,behind=order[r]||null;
+ const d=past&&past.rank[uid]?past.rank[uid]-r:null,cat=m=>rkNow(m)[uid];
+ const tile=(l,v,s)=>`<div class="rkt1"><span>${l}</span><b>${v}</b><small>${s}</small></div>`;
+ return`<div class="rkk">${tile('World rank',`#${r}<em class="rkof">of ${N}</em>`,d==null?'Change appears after a day':d>0?`<span class="rkup">▲ ${d}</span> since yesterday`:d<0?`<span class="rkdn">▼ ${-d}</span> since yesterday`:'Same as yesterday')}
+ ${tile('Score',num(score(uid)),ahead?`${num(score(ahead)-score(uid))} behind ${esc(A[ahead].name)}`:behind?`Leading by ${num(score(uid)-score(behind))}`:'Leading the world')}
+ ${tile('Economy',`#${cat('gdp')}`,`GDP ${moneyS(A[uid].gdp||0)}`)}
+ ${tile('Military',`#${cat('power')}`,`Power ${numS(power(uid))}`)}
+ ${tile('Land',`#${cat('prov')}`,`${num(hexesOf(uid).length)} province${hexesOf(uid).length===1?'':'s'}`)}</div>`}
+function pRank(){loadRH();const onl=onlineSet(),allCols=RCOLS[rankTab];let cols=allCols;const col=cols.find(c=>c[0]===rankSort.k)||cols[cols.length-1];if(col[0]!==rankSort.k)rankSort={k:col[0],d:col[4]?1:-1};const rkNarrow=!isMob()&&innerWidth<1200&&allCols.length>4;if(isMob())cols=[col];else if(rkNarrow)cols=allCols.filter(c=>c===col||allCols.filter(x=>x!==col).indexOf(c)<3);
  const val=u=>{const v=col[2](u);return typeof v==='number'&&isFinite(v)?v:(typeof v==='string'?v:-1e18*rankSort.d)};
- const us=Object.keys(A).sort((a,b)=>{const x=val(a),y=val(b);return typeof x==='string'?rankSort.d*String(x).localeCompare(String(y)):rankSort.d*(x-y)});
+ const ranked=Object.keys(A).sort((a,b)=>{const x=val(a),y=val(b);return typeof x==='string'?rankSort.d*String(x).localeCompare(String(y)):rankSort.d*(x-y)});
+ const al=uid&&A[uid]?new Set(C.allies(W,uid)):new Set(),q=rkQ.trim().toLowerCase();
+ const us=ranked.filter(u=>(rkFilter==='all'||(rkFilter==='players'&&!A[u].ai)||(rkFilter==='allies'&&(al.has(u)||u===uid)))&&(!q||A[u].name.toLowerCase().includes(q)||String(ruler(u)).toLowerCase().includes(q)));
+ const tm=TABMETRIC[rankTab],mKey=RKM[rankSort.k]?rankSort.k:tm,past=mKey&&rankSort.d<0?rkPast(mKey,24):null,spk=mKey||'score',S7=RHD&&!rkNarrow&&innerWidth>=1100?rkSeries(spk,72):null;
  const tabs=[['overall','Overall'],['economy','Economy'],['society','Society'],['military','Military']].map(([k,t])=>`<button class="${rankTab===k?'on':''}" data-act="rtab" data-a="${k}">${t}</button>`).join('');
  const th=c=>`<th class="r" style="cursor:pointer;white-space:nowrap" data-act="rsort" data-a="${c[0]}" title="Sort">${c[1]}${rankSort.k===c[0]?(rankSort.d<0?' ▼':' ▲'):''}</th>`;
- return`<h1 class="pg">Rankings</h1><p class="pgsub">Compare every nation in the world. Tap a column to sort.</p>${panel('World rankings',`<div class="tabs2" style="margin-bottom:12px">${tabs}</div>${isMob()||rkNarrow?`<div class="field" style="margin-bottom:10px;max-width:320px"><label>Sort by</label><select id="rkSort">${allCols.map(c=>`<option value="${c[0]}" ${c[0]===col[0]?'selected':''}>${c[1]}</option>`).join('')}</select></div>`:''}<table class="rkt"><thead><tr><th>#</th><th>Nation</th>${rankTab==='overall'?'<th class="hm">Leader</th><th class="hm">Rank</th>':''}${cols.map(th).join('')}</tr></thead><tbody>${us.map((u,i)=>`<tr ${u===uid?'style="background:#1f1a10"':''}><td class="mu">${i+1}</td><td class="rkn"><span class="dot" style="background:${esc(A[u].color)};display:inline-block;margin-right:8px"></span>${nmHtml(u)} ${onl.has(u)?'<span class="gn" title="Online" style="font-size:10px">●</span>':''}</td>${rankTab==='overall'?`<td class="mu hm">${esc(ruler(u))}</td><td class="hm">${esc(rankName(A[u]))}</td>`:''}${cols.map(c=>`<td class="r num">${c[3](c[2](u))}</td>`).join('')}</tr>`).join('')}</tbody></table>`,'','trophy')}
+ const seg=(id,opts,cur,act)=>`<div class="rkseg" role="group">${opts.map(([k,l])=>`<button class="${cur==k?'on':''}" data-act="${act}" data-a="${k}">${l}</button>`).join('')}</div>`;
+ const table=`<div class="rktools"><div class="tabs2" style="margin:0">${tabs}</div><div class="rktools2">${seg('f',[['all','All'],['players','Players'],['allies','My allies']],rkFilter,'rkfilt')}<input id="rkQ" class="rkq" placeholder="Find a nation…" value="${esc(rkQ)}" autocomplete="off"></div></div>
+ ${isMob()||rkNarrow?`<div class="field" style="margin:10px 0;max-width:320px"><label>Sort by</label><select id="rkSort">${allCols.map(c=>`<option value="${c[0]}" ${c[0]===col[0]?'selected':''}>${c[1]}</option>`).join('')}</select></div>`:''}
+ <div class="rktw"><table class="rkt"><thead><tr><th>#</th>${past?'<th title="Change in rank since yesterday">24h</th>':''}<th>Nation</th>${rankTab==='overall'?'<th class="hm">Rank</th>':''}${cols.map(th).join('')}${!isMob()&&S7?`<th class="hm r" title="Last 3 days">${RKM[spk].n} · 3 days</th>`:''}</tr></thead><tbody>${us.map(u=>{const i=ranked.indexOf(u);return`<tr class="${u===uid?'mine':''}"><td>${rkMedal(i)}</td>${past?`<td>${past.rank[u]?rkDelta(past.rank[u]-(i+1)):'<span class="tag" style="font-size:10px;padding:0 5px">New</span>'}</td>`:''}<td class="rkn"><div class="rknm">${A[u].flag?flagOf(A[u],22,14):`<span class="dot" style="background:${esc(A[u].color)}"></span>`}<span>${nmHtml(u)} ${onl.has(u)?'<span class="gn" title="Online now" style="font-size:10px">●</span>':''}${u===uid?' <span class="tag y" style="font-size:10px;padding:0 6px">You</span>':''}<small>${esc(ruler(u))}</small></span></div></td>${rankTab==='overall'?`<td class="hm">${esc(rankName(A[u]))}</td>`:''}${cols.map(c=>`<td class="r num">${c[3](c[2](u))}</td>`).join('')}${!isMob()&&S7?`<td class="hm r">${rkSpark(S7[u])}</td>`:''}</tr>`}).join('')||`<tr><td colspan="9" class="mu" style="padding:16px">No nations match.</td></tr>`}</tbody></table></div>`;
+ const mt=Object.entries(RKM).map(([k,M])=>[k,M.n]);
+ return`<h1 class="pg">Rankings</h1><p class="pgsub">How every nation compares — and how the race has moved. Updated live; history is recorded every hour.</p>
+ ${rkTiles()}
+ ${panel('The race',`<div class="rkctl">${seg('m',mt,rkMetric,'rkmetric')}${seg('r',[[24,'24 hours'],[72,'3 days'],[168,'7 days']],rkRange,'rkrange')}</div>${rkChart()}`,isMob()?'':'<span class="mu" style="font-size:12px;text-transform:none;letter-spacing:0">Hover the chart for values · click a name to highlight it</span>','chart')}
+ <div class="cols">${panel('Share of the world',rkShare(),'','globe')}${panel('Biggest movers · 24 h',rkMovers(),'','trophy')}</div>
+ ${panel('World rankings',table,'','trophy')}
  ${(X().fallenList||[]).length?panel('Fallen nations',`<div class="log">${X().fallenList.map(f=>`<div><time>${ago(f.t)}</time><span><span class="dot" style="background:${esc(f.color)};display:inline-block;margin-right:6px"></span><b>${esc(f.name)}</b>${f.ai?' <span class="tag" style="font-size:10px;padding:0 6px">AI</span>':f.leader?` <span class="mu">(${esc(f.leader)})</span>`:''} — conquered by ${esc(f.byName)} after ${f.days<1?'less than a day':Math.floor(f.days)+' day'+(Math.floor(f.days)===1?'':'s')}</span></div>`).join('')}</div>`,'','swords'):''}
  ${panel('World news',`<div class="log">${worldNews().slice(0,40).map(e=>`<div><time>${ago(e.t)}</time><span>${esc(e.x)}</span></div>`).join('')||'<p class="mu">Quiet so far.</p>'}</div>`)}`}
 function pHelp(){const step=(t,d)=>`<div class="chk"><span class="cb" style="border-color:var(--ac)"></span><div><b>${t}</b><div class="mu" style="font-size:13px">${d}</div></div></div>`;
@@ -1139,7 +1333,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'repay':cmd({c:'bonds',amt:+$('bondAmt').value||me.debt,repay:true});break;
  case'covert':{const v=$('cvT').value;const o=COVERT[a];if(a!=='rig'&&v===uid)return toast('Choose another nation for that operation.');ask(`${o.n}${v===uid?' in your own election':` against ${esc(nm(v))}`}?`,`${esc(o.d)} Costs ${money(o.cost)} and needs ${o.spies} agents. If it fails, your agents may be caught publicly.`,'Launch operation',async()=>{const r=await cmd({c:'covert',op:a,v},false);if(r){toast(r.msg);SND.play(r.covert?'win':'lose')}});break}
  case'vote':cmd({id:a,vote:b},false,'/api/council/vote').then(r=>r&&toast('Vote recorded.'));break;
- case'propose':{const type=$('cpType').value,target=$('cpTarget')?$('cpTarget').value:'';ask(`Submit “${RESOLUTIONS[type].n}”${RESOLUTIONS[type].kind!=='global'?` ${RESOLUTIONS[type].kind==='protect'?'for':'against'} ${esc(nm(target))}`:''}?`,'The proposal costs $100,000 and is announced to every nation. Voting stays open for six hours.','Submit',()=>cmd({type,target},false,'/api/council/propose').then(r=>r&&toast('Resolution submitted to the World Council.')));break}
+ case'propose':{const type=$('cpType').value,target=$('cpTarget')?$('cpTarget').value:'',scope=$('cpScope')?$('cpScope').value:'ai',text=$('cpText')?$('cpText').value.trim():'',hours=$('cpHours')?+$('cpHours').value:48;if(type==='custom'&&text.length<10){toast('Write the resolution first (at least 10 characters).');break}ask(`Submit “${type==='custom'?esc(text.slice(0,60))+(text.length>60?'…':''):RESOLUTIONS[type].n}”${resTargeted(type)?` ${RESOLUTIONS[type].kind==='protect'?'for':'against'} ${esc(nm(target))}`:''}?`,'The proposal costs $100,000 and is announced to every nation. Voting stays open for six hours.','Submit',()=>cmd({type,target,scope,text,hours},false,'/api/council/propose').then(r=>r&&(councilDraft.text='',1)&&toast('Resolution submitted to the World Council.')));break}
  case'mailview':mailState.view=a;mailState.sel=null;if(a==='compose'){mailState.subj='';mailState.body='';}render();break;
  case'mailopen':{mailState.sel=a;mailState.view=(mailState.list.find(m=>m.id===a)||{}).box||'in';const m=mailState.list.find(x=>x.id===a);if(m&&m.box==='in'&&!m.read){m.read=true;WP.api('POST','/api/mail/read',{id:a}).catch(()=>{})}render();break}
  case'mailreply':{const m=mailState.list.find(x=>x.id===mailState.sel);mailState.view='compose';mailState.to=m.from;mailState.subj=(/^re:/i.test(m.subj)?'':'Re: ')+m.subj;mailState.body=`\n\n— ${m.fromLeader||''} wrote:\n${m.body.split('\n').map(l=>'> '+l).join('\n')}`.slice(0,1900);render();break}
@@ -1170,6 +1364,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'nuke':ask('Build a nuclear deterrent?',`This costs ${money(C.NUKE.cash)}, ${C.NUKE.steel} steel, ${C.NUKE.oil} oil and ${C.NUKE.goods} goods. The whole world will be alerted and your aggression rises by 40 — you will very likely be sanctioned. In return, your capital can never be besieged.`,'Build it',()=>cmd({c:'nuke'}));break;
  case'share':{const url=location.origin+'/n/'+slug(A[a].name);if(navigator.share&&isMob())navigator.share({title:A[a].name+' — World Powers',url}).catch(()=>{});else copyText(url,'Link copied — share it anywhere.');break}
  case'mention':{closeModal();if(isMob()){page='chat';render();renderChat(true)}const i=$('cin');i.value=(i.value?i.value.trim()+' ':'')+'@'+names[a]+' ';i.focus();break}
+ case'rkmetric':rkMetric=a;render();break;case'rkrange':rkRange=+a;render();break;case'rkfilt':rkFilter=a;render();break;case'rkfocus':rkFocus=rkFocus===a?null:a;render();break;
  case'rtab':rankTab=a;rankSort={k:{overall:'score',economy:'gdp',society:'approval',military:'power'}[a],d:-1};render();break;
  case'rsort':{const c=RCOLS[rankTab].find(x=>x[0]===a);rankSort=rankSort.k===a?{k:a,d:-rankSort.d}:{k:a,d:c&&c[4]?1:-1};render();break}
  case'nclear':WP.extra.notes=[];renderBell();bellPanel();WP.api('POST','/api/notes/clear',{}).catch(()=>{});break;
@@ -1182,7 +1377,8 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'close':closeModal();break;
  case'dock':dockMin=!dockMin;$('dock').classList.toggle('min',dockMin);el.textContent=dockMin?'Show':'Hide';if(!dockMin)markChatSeen();break}});
 document.addEventListener('change',async e=>{const t=e.target;if(t.dataset&&t.dataset.pref){const r=await WP.api('POST','/api/prefs',{[t.dataset.pref]:t.checked}).catch(()=>null);if(r)WP.extra.prefs=r.prefs}
- if(t.id==='cpType'){councilDraft.type=t.value;const w=$('cpTargetWrap');if(w)w.style.display=RESOLUTIONS[t.value].kind!=='global'?'':'none';const d=$('cpDesc');if(d)d.textContent=RESOLUTIONS[t.value].d+resLen(RESOLUTIONS[t.value])}});
+ if(t.id==='cpScope')councilDraft.scope=t.value;if(t.id==='cpHours')councilDraft.hours=+t.value;
+ if(t.id==='cpType'){councilDraft.type=t.value;const w=$('cpTargetWrap');if(w)w.style.display=resTargeted(t.value)?'':'none';for(const[id,k]of[['cpScopeWrap','pact'],['cpHoursWrap','custom'],['cpTextWrap','custom']]){const e=$(id);if(e)e.style.display=t.value===k?'':'none'}const d=$('cpDesc');if(d)d.textContent=RESOLUTIONS[t.value].d+resLen(RESOLUTIONS[t.value])}});
 document.addEventListener('mousedown',e=>{const bp=$('bellPanel');if(bp.classList.contains('on')&&!bp.contains(e.target)&&!e.target.closest('#bellBtn'))bp.classList.remove('on')});
 function keepName(){const el=$('fn_name');if(el)found_.name=el.value}
 $('mod').addEventListener('click',e=>{if(e.target.id!=='mod')return;if(planner||$('mod').querySelector('input,textarea,select'))return;closeModal()});
@@ -1195,6 +1391,15 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){heartbeat
 window.addEventListener('wp-config',e=>{CFG={...CFG,...e.detail};if(loaded)refresh()});
 window.addEventListener('wp-announce',e=>{toast(e.detail.text);SND.play('note')});
 window.addEventListener('wp-nuke',e=>nukeQueue(e.detail));
+// strikes: everyone sees the flight on the globe and a short note; the camera only moves for the nation being hit, and only on the World page
+let skNoteAt=0;
+window.addEventListener('wp-strike',e=>{const fx=e.detail;if(!fx)return;GL.strike(fx);const mine=fx.to===uid||fx.by===uid,ally=uid&&A[uid]&&(C.allies(W,uid).includes(fx.to)||C.allies(W,uid).includes(fx.by));
+ if(fx.to===uid&&page==='world'&&P[fx.h])GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6));
+ if(nukeBusy||(!mine&&!ally&&Date.now()-skNoteAt<20000))return;skNoteAt=Date.now();strikeNote(fx)});
+function strikeNote(fx){const old=$('skNote');if(old)old.remove();const el=document.createElement('div');el.id='skNote';el.className='sknote'+(fx.to===uid?' hit':'');
+ el.innerHTML=`<span class="ic">${fx.kind==='air'?'✈':'🚀'}</span><span><b>${esc(fx.byName)}</b> ${fx.kind==='air'?'launched an air strike':'fired missiles'} on <b>${fx.to===uid?'your nation':esc(fx.toName)}</b><small>${esc(fx.place||'')}</small></span><button class="btn sm" data-sk="show">Show me</button><button class="btn sm ghost" data-sk="x" aria-label="Dismiss">✕</button>`;
+ el.addEventListener('click',ev=>{const k=ev.target.closest('[data-sk]');if(!k)return;el.remove();if(k.dataset.sk==='show'&&P[fx.h]){if(page!=='world'){page='world';render()}setTimeout(()=>GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.8)),page==='world'?0:350)}});
+ document.body.appendChild(el);setTimeout(()=>{if(el.isConnected){el.classList.add('out');setTimeout(()=>el.remove(),400)}},8000)}
 // a launch plays out for everyone online: siren, a launch alert, the missile flying across the globe, the impact, then the detonation screen
 function nukeQueue(fx){nukeQ.push(fx);if(!nukeBusy)nukeNext()}
 function nukeNext(){const fx=nukeQ.shift();if(!fx){nukeBusy=false;return}nukeBusy=true;
@@ -1235,7 +1440,7 @@ refreshW();
  if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
  let gotN=false,gotC=false,hadMine=false;
  db.collection('nations').onSnapshot(s=>{N={};s.docs.forEach(d=>{if(d.exists)N[d.id]=d.data()});
-  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();setTimeout(()=>{if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
+  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const fx of (WP.extra&&WP.extra.strikes)||[])GL.strike(fx)}catch(e){}setTimeout(()=>{if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
   if(N[uid])hadMine=true;else if(hadMine){hadMine=false;if(!X().fallen)toast('Your nation was reset by an administrator.')}
   refreshSoon();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
  db.collection('chat').onSnapshot(s=>{CH={};s.docs.forEach(d=>{if(d.exists)CH[d.id]=d.data()});if(uid&&CH[uid]&&!gotC)myChat=(CH[uid].m||[]).slice();gotC=true;if(uid&&myChat.length&&CH[uid])CH[uid]={m:myChat};renderChat();if(page==='chat'||deskChatOpen())markChatSeen();else chatBadge();renderSide()},()=>{});
