@@ -312,7 +312,7 @@ function councilPropose(uid, b) {
   if (R.target) { target = String(b.target || ''); if (!W.A[target] || target === uid) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 }); }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
-  if (open.length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
+  if (open.filter(p => !p.auto).length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
   if (open.some(p => p.type === type && p.target === target)) throw Object.assign(new Error('That resolution is already being voted on.'), { status: 400 });
   if (n.cash < 1e5) throw Object.assign(new Error('Submitting a resolution costs $100,000.'), { status: 400 });
   n.cash -= 1e5; W.changed.add(uid); commit(W);
@@ -350,6 +350,39 @@ function councilResolve(W) {
   for (const [k, until] of Object.entries(S.council.active)) if (until < now) { delete S.council.active[k]; changed = true; }
   if (changed) { persist(); broadcast('council', councilView()); }
 }
+// ---------- the World Council takes notice on its own ----------
+// Bad behaviour puts a resolution to the vote automatically. Everyone (players and AI) still votes; nothing passes without a majority.
+const AUTO_RULES = [
+  // [type, test(nation, recent attacks, W, id) -> reason or null]
+  ['sanction', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 60 || atk.victims >= 3) ? (atk.victims >= 3 ? `attacked ${atk.victims} different nations in 12 hours` : `pushed its aggression to ${Math.round(n.aggr)}`) : null],
+  ['condemn', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 35 || atk.n >= 3) ? `${atk.n >= 3 ? `launched ${atk.n} attacks in 6 hours` : `pushed its aggression to ${Math.round(n.aggr)}`}` : null],
+  ['embargo', (n, atk, W, u) => n.warhead && Date.now() - (n.warhead.t || 0) < 6 * HOUR ? 'began assembling a launchable nuclear warhead' : null],
+  ['condemn', (n, atk, W, u) => n.nuke && Date.now() - n.nuke < 3 * HOUR ? 'tested a nuclear weapon' : null]
+];
+function councilWatch(W) {
+  if (S.config.councilAuto === false) return; const now = Date.now(); S.council.watch = S.council.watch || {};
+  for (const [k, t] of Object.entries(S.council.watch)) if (now - t > 48 * HOUR) delete S.council.watch[k];
+  const open = () => S.council.props.filter(p => p.status === 'open');
+  if (open().filter(p => p.auto).length >= 3) return;
+  for (const [u, n] of Object.entries(W.A)) {
+    if (open().some(p => p.target === u)) continue;
+    const battles = (n.out || []).filter(e => e.type === 'battle' && e.to && e.to !== u && W.A[e.to] && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === u && x.t < e.t && e.t - x.t < 24 * HOUR)));
+    const atk = { n: battles.filter(e => now - e.t < 6 * HOUR).length, victims: new Set(battles.filter(e => now - e.t < 12 * HOUR).map(e => e.to)).size };
+    for (const [type, test] of AUTO_RULES) {
+      const why = test(n, atk, W, u); if (!why) continue; const key = type + ':' + u;
+      if (S.council.watch[key] && now - S.council.watch[key] < 24 * HOUR) continue;
+      S.council.watch[key] = now; const R = WP.RESOLUTIONS[type];
+      S.council.props.unshift({ id: rid(), by: null, auto: true, why, type, target: u, t: now, end: now + 6 * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
+      const txt = `The World Council has taken notice: ${n.name} ${why}. A vote on "${R.n}" against ${n.name} is now open.`;
+      systemMessage('🏛 ' + txt); const hit = new Set(battles.map(e => e.to)), nuclear = type === 'embargo' || /nuclear/.test(why);
+      for (const v of Object.keys(S.users)) if (v !== u && (nuclear || hit.has(v))) addNote(v, 'council', txt + ' Voting closes in 6 hours.');
+      if (S.users[u]) addNote(u, 'council', `The World Council is voting on "${R.n}" against your nation because it ${why}. You have 6 hours to make your case in chat.`);
+      persist(); broadcast('council', councilView());
+      if (open().filter(p => p.auto).length >= 3) return;
+      break; // at most one new resolution per nation at a time
+    }
+  }
+}
 // AI nations cast votes according to their personality and relations
 function botVotes(W) {
   for (const p of S.council.props) {
@@ -382,7 +415,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
-    botVotes(W); councilResolve(W);
+    councilWatch(W); botVotes(W); councilResolve(W);
     W.welcome = null; commit(W);
     // world events
     if (S.event && now >= S.event.end) endEvent();
@@ -633,7 +666,7 @@ async function adminRoute(p, req, res, me) {
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
-      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest']) if (c[k] != null) nc[k] = !!c[k];
+      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto']) if (c[k] != null) nc[k] = !!c[k];
       if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 300);
       if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
@@ -700,7 +733,7 @@ async function handle(req, res) {
     if (req.method === 'GET' && STATIC[p]) return serveStatic(req, res, STATIC[p]);
     if (req.method === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
     if (req.method === 'GET' && p === '/api/fairplay') {
-      const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'nukeTest', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
+      const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
       return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500), logTotal: S.fairlog.length,
         settings: Object.fromEntries(keys.map(k => [k, c[k]])), defaults: Object.fromEntries(keys.map(k => [k, WP.DEFCFG[k]])), boost: c.boost || null, council: S.council.active, event: S.event,
         world: { nations: Object.keys(S.docs).filter(k => k.startsWith('nations/')).length, players: Object.keys(S.users).length } }, { 'Cache-Control': 'no-store' });

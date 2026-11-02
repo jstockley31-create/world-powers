@@ -128,7 +128,7 @@ module.exports = function makeBots(core, WP, rng) {
       if (core.offered(W, v, u, 'ally') && rng() < per.ally * .4) return tryExec(W, u, { c: 'dip', kind: 'ally', v });
     }
     const myWars = core.wars(W, u);
-    if (rng() < .02 * per.trade && core.traders(W, u).length < 3) { const cand = others.filter(v => !core.atWar(W, u, v) && !core.pact(W, u, v, 'trade') && !core.offered(W, u, v, 'trade')); if (cand.length) return tryExec(W, u, { c: 'dip', kind: 'trade', v: pick(cand) }); }
+    if (rng() < .02 * per.trade && core.traders(W, u).length < 3) { const cand = others.filter(v => !core.atWar(W, u, v) && !core.pact(W, u, v, 'trade') && !core.pact(W, u, v, 'ally') && !core.offered(W, u, v, 'trade')); if (cand.length) return tryExec(W, u, { c: 'dip', kind: 'trade', v: pick(cand) }); }
     // 5) war: only against bordering nations of similar strength, within all the usual protections
     if (cfg.war && cfg.botWar !== 'no') {
       const front = []; for (const h of core.hexesOf(W, u)) for (const k of core.nbrs(h)) { const v = core.owner(W, k); if (v && v !== u) front.push([k, v]); }

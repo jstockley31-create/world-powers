@@ -33,7 +33,7 @@ const ACTS = [
   { k: 'campaign', s: 'Campaign', n: 'Election Campaign', i: 'vote', cd: 30, xp: 5, dem: true },
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
-const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, nukeTest: false };
+const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, councilAuto: true, nukeTest: false };
 // Chain events: a crisis that unfolds over several decisions. An option's third element names the next step.
 const CHAINS = {
   strike1: { t: 'General strike', d: 'The national federation of unions has called a general strike over wages and rising prices. Ports and factories are shutting down.', o: [['Open wage negotiations', { tr: -1, ap: 3 }, 'strike2a'], ['Declare the strike illegal', { st: -4, ap: -6 }, 'strike2b'], ['Wait it out', { gdp: -1, ap: -2 }, 'strike2c']] },
@@ -153,7 +153,10 @@ function Core(PD, CARDS) {
   const wars = (W, u) => others(W, u).filter(v => atWar(W, u, v));
   const allies = (W, u) => others(W, u).filter(v => pact(W, u, v, 'ally'));
   const embargoed = (W, n) => (n.embargo || 0) > W.now;
-  const traders = (W, u) => embargoed(W, W.A[u]) ? [] : others(W, u).filter(v => pact(W, u, v, 'trade') && !embargoed(W, W.A[v]));
+  // trade partners: nations with a trade agreement, plus allies (allies trade automatically). Rogue states and embargoed nations trade with no one.
+  const tradesWith = (W, u, v) => (pact(W, u, v, 'trade') || (pact(W, u, v, 'ally') && !rogue(W, W.A[u]) && !rogue(W, W.A[v]))) && !embargoed(W, W.A[v]);
+  const traders = (W, u) => embargoed(W, W.A[u]) ? [] : others(W, u).filter(v => tradesWith(W, u, v));
+  const tradeDeals = (W, u) => others(W, u).filter(v => pact(W, u, v, 'trade'));
   const sanctioned = n => (n.aggr || 0) >= 50;
   // rogue state ("the North Korea treatment"): 75+ aggression brings a full embargo and isolation for at least 24 hours
   const ROGUE_AT = 75;
@@ -675,7 +678,8 @@ function Core(PD, CARDS) {
       if (embargoed(W, me)) fail('You are under a World Council embargo.');
       if (pact(W, u, v, 'trade')) fail(`You already have a trade agreement with ${them.name}.`);
       if (offered(W, u, v, 'trade')) fail(`You have already proposed a trade agreement to ${them.name}. Waiting for their answer.`);
-      if (traders(W, u).length >= 5) fail('You can hold at most 5 trade agreements.');
+      if (pact(W, u, v, 'ally')) fail(`You are allies with ${them.name}, so you already trade automatically.`);
+      if (tradeDeals(W, u).length >= 5) fail('You can hold at most 5 trade agreements.');
       setRel(me, v, 'trade', t);
       if (pact(W, u, v, 'trade')) { news(W, u, `${me.name} and ${them.name} signed a trade agreement.`); note(W, v, 'diplo', `${me.name} accepted your trade agreement.`); note(W, u, 'diplo', `Trade agreement with ${them.name} signed.`); }
       else { log(me, `Trade agreement proposed to ${them.name}.`, W); log(them, `${me.name} proposes a trade agreement.`, W); note(W, v, 'diplo', `${me.name} proposes a trade agreement.`); }
