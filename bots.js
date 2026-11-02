@@ -100,6 +100,22 @@ module.exports = function makeBots(core, WP, rng) {
     }
     return false;
   }
+  // pick the best reachable province of an enemy (preferring nations that hit us in the last day) and attack it if the odds are good
+  function farStrike(W, u, enemies) {
+    const n = W.A[u]; let best = null;
+    const hitUs = v => (W.A[v].out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR);
+    for (const v of [...enemies].sort((a, b) => hitUs(b) - hitUs(a)).slice(0, 3)) {
+      const hs = core.hexesOf(W, v); for (let i = hs.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [hs[i], hs[j]] = [hs[j], hs[i]]; }
+      for (const h of hs.slice(0, 12)) {
+        if (core.canAttack(W, u, h)) continue;
+        const pl = core.attackPlan(W, u, h, Math.floor(n.troops * .8), Math.floor((n.air || 0) * .8)); if (!pl || pl.X < 50) continue;
+        if (n.cash < pl.cost.cash * 1.5 || n.res.oil < pl.cost.oil + 20 || n.res.food < pl.cost.food + 20) continue;
+        const score = pl.chance + (hitUs(v) ? .1 : 0) - (W.A[v].cap == h ? .1 : 0);
+        if (pl.chance >= .55 && (!best || score > best.score)) best = { h, pl, score };
+      }
+    }
+    return best ? tryExec(W, u, { c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR }) : null;
+  }
   function turn(W, u, cfg) {
     const n = W.A[u]; if (!n || !n.ai) return;
     const per = PERS[n.ai.p] || PERS.merchant; W.now = Date.now();
@@ -114,6 +130,12 @@ module.exports = function makeBots(core, WP, rng) {
     if (n.cash < 1e5 && core.maxBorrow(n) > 3e5 && !core.left(W, n, 'bonds')) { n.cd.bonds = W.now + 2 * HOUR; return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(core.maxBorrow(n), n.gdp * .1)) }); }
     if (n.debt > 0 && n.cash > 4e6) return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(n.debt, n.cash * .4)), repay: true });
     if (n.gov === 'dem' && n.nextElection && n.nextElection - W.now < 24 * HOUR && !core.left(W, n, 'campaign') && (n.campaign || 0) < 12 && n.cash > 4e5) return tryExec(W, u, { c: 'act', k: 'campaign' });
+    // walk away from partners the World Council condemned or sanctioned (warlords care least)
+    { const bad = v => { const t = W.A[v]; return !!t && (core.rogue(W, t) || core.sanctioned(t) || (t.condemned || 0) > W.now); };
+      for (const v of core.others(W, u)) if (bad(v)) {
+        if (core.pact(W, u, v, 'trade') && rng() < (n.ai.p === 'warlord' ? .1 : .35)) return tryExec(W, u, { c: 'dip', kind: 'untrade', v });
+        if (core.pact(W, u, v, 'ally') && rng() < (n.ai.p === 'warlord' ? .03 : .15)) return tryExec(W, u, { c: 'dip', kind: 'unally', v });
+      } }
     // 2) basic income
     if (!core.left(W, n, 'daily')) return tryExec(W, u, { c: 'act', k: 'daily' });
     for (const k of ['tax', 'prod']) if (!core.left(W, n, k) && (n.cash < 5e5 || rng() < .45)) return tryExec(W, u, { c: 'act', k });
@@ -123,18 +145,38 @@ module.exports = function makeBots(core, WP, rng) {
     if (per.sell || rng() < .3) for (const r of ['food', 'oil', 'steel', 'goods']) if (n.res[r] > 900) { if (tryExec(W, u, { c: 'market', r, q: Math.round(n.res[r] * .4), buy: false })) return; }
     // 4) diplomacy
     const others = core.others(W, u);
+    const shunned = v => { const t = W.A[v]; return !!t && (core.rogue(W, t) || core.sanctioned(t) || (t.condemned || 0) > W.now); };
     for (const v of others) {
+      if (shunned(v)) continue; // no new deals with nations the world has punished
       if (core.offered(W, v, u, 'trade') && rng() < per.trade * .5) return tryExec(W, u, { c: 'dip', kind: 'trade', v });
       if (core.offered(W, v, u, 'ally') && rng() < per.ally * .4) return tryExec(W, u, { c: 'dip', kind: 'ally', v });
     }
     const myWars = core.wars(W, u);
-    if (rng() < .02 * per.trade && core.traders(W, u).length < 3) { const cand = others.filter(v => !core.atWar(W, u, v) && !core.pact(W, u, v, 'trade') && !core.pact(W, u, v, 'ally') && !core.offered(W, u, v, 'trade')); if (cand.length) return tryExec(W, u, { c: 'dip', kind: 'trade', v: pick(cand) }); }
+    if (rng() < .02 * per.trade && core.traders(W, u).length < 3) { const cand = others.filter(v => !shunned(v) && !core.atWar(W, u, v) && !core.pact(W, u, v, 'trade') && !core.pact(W, u, v, 'ally') && !core.offered(W, u, v, 'trade')); if (cand.length) return tryExec(W, u, { c: 'dip', kind: 'trade', v: pick(cand) }); }
     // 5) war: only against bordering nations of similar strength, within all the usual protections
     if (cfg.war && cfg.botWar !== 'no') {
       const front = []; for (const h of core.hexesOf(W, u)) for (const k of core.nbrs(h)) { const v = core.owner(W, k); if (v && v !== u) front.push([k, v]); }
       if (myWars.length) {
         if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const rt = core.route(W, u, h); let X = Math.floor(n.troops * .7); if (rt === 'sea') X = Math.min(X, n.ships * 100); if (X < 50) continue; const AIR = Math.floor(n.air * .7); if ((X + AIR * 20) * core.atkMult(n) * (rt === 'sea' ? .8 : 1) > core.defense(W, h, u) * (.9 + rng() * .25) && (rt !== 'sea' || n.ships * 25 > core.navalDefense(W, h))) return tryExec(W, u, { c: 'attack', h, x: X, air: AIR }); }
-      } else if (core.rankOf(n.xp) >= 2 && rng() < per.war) {
+        // no border to fight on (or nothing worth hitting there): use the war planner like a player would — by sea, overseas or a long march
+        if (rng() < .35) { const r = farStrike(W, u, myWars); if (r) return r; }
+        // hit back at whoever attacked us in the last day: missiles if we have the tech, otherwise the air force
+        const attackers = myWars.filter(v => core.rogue(W, W.A[v]) || (W.A[v].out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR));
+        if (attackers.length && rng() < .3) { const v = pick(attackers);
+          if (!core.canStrike(W, u, v)) {
+            if ((n.tech || 0) >= core.MISSILE.tech && n.cash > core.MISSILE.cash * 4) { const r = tryExec(W, u, { c: 'strike', v, kind: 'missile', target: rng() < .5 ? 'mil' : 'infra', n: Math.min(3, Math.floor(n.cash / core.MISSILE.cash / 2)) }); if (r) return r; }
+            if ((n.air || 0) >= 10) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: 'mil', n: Math.floor(n.air * .6) }); if (r) return r; } } }
+      }
+      // the world turns on rogue states: AI nations declare war on them from anywhere they can reach
+      if (core.rankOf(n.xp) >= 2 && rng() < ({ warlord: .015, expansionist: .008, merchant: .002, isolationist: .001 }[n.ai.p] || .002)) {
+        const mine = core.score(W, u);
+        const rogues = others.filter(v => { const t = W.A[v]; if (!core.rogue(W, t) || core.atWar(W, u, v) || core.pact(W, u, v, 'ally')) return false;
+          const s = core.score(W, v); if (s < mine * .35 || s > mine * 2) return false; if (!isBot(v) && W.now - t.created < cfg.protectH * HOUR) return false;
+          if (!isBot(v) && cfg.botWar === 'retaliate' && !(t.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR)) return false;
+          return core.hexesOf(W, v).some(h => core.attackPlan(W, u, h)); });
+        if (rogues.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: pick(rogues) });
+      }
+      if (myWars.length) { /* already fighting */ } else if (core.rankOf(n.xp) >= 2 && rng() < per.war) {
         const mine = core.score(W, u);
         const targets = [...new Set(front.map(f => f[1]))].filter(v => {
           const t = W.A[v]; if (core.pact(W, u, v, 'ally')) return false;

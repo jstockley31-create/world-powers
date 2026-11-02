@@ -77,7 +77,7 @@ const COVERT = {
 const RESOLUTIONS = {
   sanction: { n: 'Impose sanctions', target: true, d: 'The target nation is declared a rogue state for at least 24 hours: full trade embargo, trade agreements cancelled, allies walk away, and the world may attack it freely.' },
   embargo: { n: 'Trade embargo', target: true, d: 'For 24 hours the target cannot trade on the world market and its trade agreements are suspended.' },
-  condemn: { n: 'Formal condemnation', target: true, d: 'A public rebuke: the target loses 10 approval and 8 stability, and gains 20 aggression — a step closer to sanctions.' },
+  condemn: { n: 'Formal condemnation', target: true, d: 'A public rebuke: the target loses 10 approval and 8 stability, gains 20 aggression — a step closer to sanctions — and AI nations shun it for 24 hours.' },
   climate: { n: 'Climate accord', d: 'For 24 hours oil output falls 15% worldwide, and every nation gains 3 approval.' },
   arms: { n: 'Arms reduction treaty', d: 'For 24 hours military upkeep is 20% cheaper, but invasions cost 50% more.' },
   freetrade: { n: 'Free trade pact', d: 'For 24 hours market spreads shrink: imports are cheaper and exports pay more for everyone.' },

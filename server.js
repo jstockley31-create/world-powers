@@ -340,7 +340,7 @@ function councilResolve(W) {
     if (p.status === 'passed') {
       if (p.type === 'sanction') { tn.aggr = Math.max(tn.aggr || 0, 80); core.rogueCheck(W, p.target); W.changed.add(p.target); }
       else if (p.type === 'embargo') { tn.embargo = now + 24 * HOUR; W.changed.add(p.target); }
-      else if (p.type === 'condemn') { tn.approval = Math.max(0, tn.approval - 10); tn.stability = Math.max(0, tn.stability - 8); tn.aggr = Math.min(100, (tn.aggr || 0) + 20); W.changed.add(p.target); }
+      else if (p.type === 'condemn') { tn.approval = Math.max(0, tn.approval - 10); tn.stability = Math.max(0, tn.stability - 8); tn.aggr = Math.min(100, (tn.aggr || 0) + 20); tn.condemned = now + 24 * HOUR; W.changed.add(p.target); }
       else S.council.active[p.type] = now + 24 * HOUR;
       systemMessage(`World Council resolution PASSED (${p.result}): ${label}.`);
       if (p.target) addNote(p.target, 'council', `The World Council passed a resolution against you: ${R.n}.`);
