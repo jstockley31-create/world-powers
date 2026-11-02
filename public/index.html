@@ -96,7 +96,7 @@ td.r,th.r{text-align:right}
 .qchips{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;max-width:230px}.qchips button{background:var(--s3);border:1px solid var(--bd2);color:#c5ced8;border-radius:5px;font:inherit;font-size:11px;padding:1px 6px;cursor:pointer}.qchips button:hover{border-color:var(--ac);color:#fff}
 .qprev{font-size:11px;margin-top:3px;line-height:1.5}.qprev b{color:#c5ced8;font-weight:600}.qprev b.rd{color:var(--rd)}
 .nkalert{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9998;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;background:rgba(40,6,4,.92);border:1px solid #ff5a3c;color:#ffd7cf;padding:10px 16px;border-radius:12px;box-shadow:0 0 40px rgba(255,60,30,.45);font-size:14px;max-width:calc(100vw - 24px);animation:nkpulse 1s ease-in-out infinite alternate}
-.nkalert b{color:#fff;letter-spacing:.08em}.nkdot{width:10px;height:10px;border-radius:50%;background:#ff3b2f;box-shadow:0 0 10px #ff3b2f}@keyframes nkpulse{to{box-shadow:0 0 70px rgba(255,60,30,.75)}}
+.nkalert b{color:#fff;letter-spacing:.08em}.nkph{font:600 11.5px ui-monospace,Menlo,monospace;letter-spacing:.08em;color:#ffb199;background:rgba(0,0,0,.35);border:1px solid rgba(255,90,60,.5);border-radius:6px;padding:2px 7px;white-space:nowrap}.nkdot{width:10px;height:10px;border-radius:50%;background:#ff3b2f;box-shadow:0 0 10px #ff3b2f}@keyframes nkpulse{to{box-shadow:0 0 70px rgba(255,60,30,.75)}}
 svg.flag{vertical-align:-2px;border-radius:2px;flex:none}h2 svg.flag{margin-right:8px;vertical-align:-4px}
 .laws{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}.law{display:flex;gap:10px;align-items:center;justify-content:space-between;border:1px solid var(--bd);border-radius:8px;padding:9px 11px;background:var(--s2)}.law.on{border-color:#2c4a36;background:#0f1a13}.law b{font-size:13.5px}.law small{display:block;color:var(--mu);font-size:12px;line-height:1.4;margin-top:2px}.law .btn{flex:none}
 .fdes{display:flex;gap:18px;flex-wrap:wrap}.fprev{text-align:center;min-width:160px}.fprev svg{border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.45)}.flab{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);margin:10px 0 5px}
@@ -327,6 +327,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .rktw{margin-top:12px;overflow-x:auto}
 .rkt tr.mine td{background:#1f1a10}
 .rkt td{vertical-align:middle}
+.rknm>span{white-space:normal;overflow-wrap:anywhere}.rknm .tag{display:inline-block;margin:1px 0}
 .rknm{display:flex;align-items:center;gap:9px;min-width:0}.rknm>span{min-width:0}.rknm small{display:block;color:var(--mu2);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px}
 .rknm svg{flex:none;border-radius:2px}
 .rkmd{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:11.5px;font-weight:700;color:#141414}
@@ -746,7 +747,7 @@ const GL=(()=>{
    const gz=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],rr);gz.addColorStop(0,`rgba(255,${age<1?230:140},60,${.85*pul})`);gz.addColorStop(.25,`rgba(255,90,20,${.45*pul})`);gz.addColorStop(1,'rgba(150,255,60,0)');ctx.fillStyle=gz;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.fill();
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
   // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
-  if(SK.length){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+  if(SK.length||st.fx){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  function overlay(ctr,w,h,r){drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);
@@ -765,18 +766,27 @@ const GL=(()=>{
  function ll(ev){const r=cv.getBoundingClientRect();proj.rotate(st.rot).scale(radius()).translate([st.w/2,st.h/2]);const p=proj.invert([ev.clientX-r.left,ev.clientY-r.top]);if(!p||!isFinite(p[0]))return null;if(d3.geoDistance(p,[-st.rot[0],-st.rot[1]])>Math.PI/2)return null;return p}
  const ptr=new Map();let moved=0,pinch=0,lastHover=0;
  let downX=0,downY=0,downTouch=false;
- cv.addEventListener('pointerdown',e=>{ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;downX=e.clientX;downY=e.clientY;downTouch=e.pointerType!=='mouse';st.anim=null;if(ptr.size===2){const[a,b]=[...ptr.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y)}cv.setPointerCapture(e.pointerId);cv.classList.add('drag')});
+ cv.addEventListener('pointerdown',e=>{if(st.fx){st.fx.track=false;st.fx.touched=true}ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;downX=e.clientX;downY=e.clientY;downTouch=e.pointerType!=='mouse';st.anim=null;if(ptr.size===2){const[a,b]=[...ptr.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y)}cv.setPointerCapture(e.pointerId);cv.classList.add('drag')});
  cv.addEventListener('pointermove',e=>{const p=ptr.get(e.pointerId);if(!p){if(e.pointerType!=='mouse')return;const now=performance.now();if(now-lastHover>50){lastHover=now;const q=ll(e);const h=q?findProv(q):null;if(h!==st.hover){st.hover=h;redraw()}showTip(h,e)}return}
   if(ptr.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;moved+=Math.abs(dx)+Math.abs(dy);const k=.25/st.scale;moving();st.rot=[st.rot[0]+dx*k,clamp(st.rot[1]-dy*k,-85,85),0];p.x=e.clientX;p.y=e.clientY;hideTip();redraw()}
   else if(ptr.size===2){p.x=e.clientX;p.y=e.clientY;const[a,b]=[...ptr.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch){moving();st.scale=clamp(st.scale*d/pinch,.8,9)}pinch=d;moved+=10;redraw()}});
  const up=e=>{const had=ptr.delete(e.pointerId);if(ptr.size<2)pinch=0;if(!ptr.size)cv.classList.remove('drag');if(had&&e.type==='pointerup'&&(downTouch?Math.hypot(e.clientX-downX,e.clientY-downY)<18&&moved<60:moved<8)){const q=ll(e);const h=q?findProv(q):null;if(h!=null)pickProv(h);else if(st.mode==='found')toast(q?'That’s sea — tap on land.':'Tap on the globe itself.')}};
  cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);cv.addEventListener('pointerleave',()=>{if(st.hover!=null){st.hover=null;redraw()}hideTip()});
- cv.addEventListener('wheel',e=>{e.preventDefault();moving();st.scale=clamp(st.scale*(e.deltaY>0?.88:1.14),.8,9);redraw()},{passive:false});
+ cv.addEventListener('wheel',e=>{e.preventDefault();if(st.fx){st.fx.track=false;st.fx.touched=true}moving();st.scale=clamp(st.scale*(e.deltaY>0?.88:1.14),.8,9);redraw()},{passive:false});
  new ResizeObserver(()=>{if(st.el&&st.el.isConnected){size();redraw()}}).observe(document.body);
  function flyTo(c,scale){const r0=st.rot.slice(),s0=st.scale,r1=[-c[0],-c[1],0],s1=scale||st.scale;let dl=r1[0]-r0[0];dl=((dl+540)%360)-180;const t0=performance.now();st.anim=true;
   const step=t=>{if(!st.anim)return;const k=Math.min(1,(t-t0)/900),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;st.rot=[r0[0]+dl*e,r0[1]+(r1[1]-r0[1])*e,0];st.scale=s0+(s1-s0)*e;if(k<1)moving();draw();if(k<1)requestAnimationFrame(step);else st.anim=null};requestAnimationFrame(step)}
  // nuclear missile flight: an arc rising off the globe from launcher to target, then a shockwave
- function missile(from,to,dur,done,toH){st.fx={from,to,toH,dur,t0:performance.now(),done,ip:d3.geoInterpolate(from,to),dist:d3.geoDistance(from,to)};const loop=()=>{if(!st.fx)return;draw();const f=st.fx,el=performance.now()-f.t0;if(el<f.dur+1400)requestAnimationFrame(loop);else{st.fx=null;draw();done&&done()}};requestAnimationFrame(loop)}
+ // intercontinental ballistic flight: boost, a long arc above the atmosphere, then a steep re-entry; the camera follows until the player takes over
+ const coarse=matchMedia('(pointer: coarse)').matches; // phones: hold the camera still (cheap frames), desktops: follow the missile
+ function missile(from,to,dur,done,toH){st.fx={from,to,toH,dur,t0:performance.now(),done,ip:d3.geoInterpolate(from,to),dist:d3.geoDistance(from,to),track:!coarse,s0:st.scale};
+  const loop=()=>{if(!st.fx)return;const f=st.fx,el=performance.now()-f.t0,prog=Math.min(1,el/f.dur);
+   if(f.track&&!st.anim&&prog<1){const g=f.ip(Math.min(1,prog+.04)),r1=[-g[0],-g[1]+6*Math.sin(Math.PI*prog)];const dl=((r1[0]-st.rot[0]+540)%360)-180;st.rot=[st.rot[0]+dl*.04,clamp(st.rot[1]+(r1[1]-st.rot[1])*.04,-85,85),0];
+    const want=prog<.15?f.s0:prog<.74?Math.max(.85,f.s0*.72):Math.max(f.s0,2.3);st.scale+=(want-st.scale)*.025}
+   if(!f.track&&!f.zoomed&&prog>.78&&!st.anim){f.zoomed=true;if(!f.touched)flyTo(f.to,Math.max(st.scale,2))}
+   if(f.track){moving();draw()}else if(st.baseOk&&!st.anim)fastFrame();else draw();
+   if(el<f.dur+1400)requestAnimationFrame(loop);else{st.fx=null;redraw();done&&done()}};requestAnimationFrame(loop)}
+ const nukePhase=()=>{const f=st.fx;if(!f)return null;const el=performance.now()-f.t0,p=el/f.dur;return{p,left:Math.max(0,f.dur-el),ph:p<.13?'BOOST PHASE':p<.76?'MIDCOURSE · IN SPACE':p<1?'RE-ENTRY':'IMPACT'}};
  function stopMissile(){if(st.fx){const d=st.fx.done;st.fx=null;redraw();return d}return null}
  // ---- air and missile strikes, seen by everyone: planes in formation (or missile streaks) from the attacker's capital, then flashes and lingering smoke ----
  const SK=[],SMOKE_MS=10*60e3,reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;let skLoop=0;
@@ -821,17 +831,31 @@ const GL=(()=>{
     if(dead){const g=ctx.createRadialGradient(px,py,0,px,py,9);g.addColorStop(0,`rgba(255,220,150,${1-deadT})`);g.addColorStop(1,'rgba(255,90,30,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,9,0,7);ctx.fill();continue}
     if(air_){ctx.save();ctx.translate(px,py);ctx.rotate(Math.atan2(dy,dx));ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-4.5,5);ctx.lineTo(-2,0);ctx.lineTo(-4.5,-5);ctx.closePath();ctx.fillStyle='#f4f7fb';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(5,9,14,.8)';ctx.stroke();ctx.restore()}
     else{const g=ctx.createRadialGradient(px,py,0,px,py,6);g.addColorStop(0,'rgba(255,255,235,1)');g.addColorStop(1,'rgba(255,140,50,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,6,0,7);ctx.fill()}}}}
- function drawFx(ctr,w,h,r){const f=st.fx;if(!f)return;const el=performance.now()-f.t0,prog=Math.min(1,el/f.dur),c0=[w/2,h/2],lift=.12+Math.min(.22,f.dist*.12);
-  const air=s=>{const p=f.ip(s),xy=proj(p),k=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*k,c0[1]+(xy[1]-c0[1])*k],vis:d3.geoDistance(ctr,p)<1.62||Math.sin(Math.PI*s)>.25}};
+ function drawFx(ctr,w,h,r){const f=st.fx;if(!f)return;const el=performance.now()-f.t0,prog=Math.min(1,el/f.dur),c0=[w/2,h/2];
+  // altitude in globe radii: steep climb, long high arc well above the atmosphere, steep dive
+  const H=.2+Math.min(.34,f.dist*.17),alt=s=>H*Math.pow(Math.max(0,Math.sin(Math.PI*Math.min(1,Math.max(0,s)))),.62);
+  // height is drawn as a lift straight up the screen above the ground track, so the climb, the arc through space and the dive read clearly from any angle
+  const air=s=>{const p=f.ip(s),g=proj(p),z=Math.cos(d3.geoDistance(ctr,p)),lift=alt(s)*r*.8;return{xy:[g[0],g[1]-lift],g,vis:z>-.05}};
   const tg=proj(f.to),lp=proj(f.from),pulse=.5+.5*Math.sin(el/140);
   if(d3.geoDistance(ctr,f.from)<1.55){ctx.beginPath();ctx.arc(lp[0],lp[1],5,0,7);ctx.fillStyle='rgba(255,170,60,.9)';ctx.fill()}
   if(prog<1&&d3.geoDistance(ctr,f.to)<1.55){ctx.strokeStyle=`rgba(255,60,50,${.5+.5*pulse})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(tg[0],tg[1],9+pulse*5,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(tg[0]-16,tg[1]);ctx.lineTo(tg[0]+16,tg[1]);ctx.moveTo(tg[0],tg[1]-16);ctx.lineTo(tg[0],tg[1]+16);ctx.lineWidth=1;ctx.stroke()}
-  if(prog<1){const N=70,pts=[];for(let i=0;i<=N*prog;i++)pts.push(air(i/N));pts.push(air(prog));
-   ctx.lineCap='round';for(let i=1;i<pts.length;i++){if(!pts[i].vis||!pts[i-1].vis)continue;const a=i/pts.length;ctx.strokeStyle=`rgba(255,${150+a*90|0},${80+a*120|0},${.12+a*.75})`;ctx.lineWidth=1+a*2.2;ctx.beginPath();ctx.moveTo(pts[i-1].xy[0],pts[i-1].xy[1]);ctx.lineTo(pts[i].xy[0],pts[i].xy[1]);ctx.stroke()}
-   const hd=pts[pts.length-1];if(hd.vis){const g=ctx.createRadialGradient(hd.xy[0],hd.xy[1],0,hd.xy[0],hd.xy[1],14);g.addColorStop(0,'rgba(255,255,230,1)');g.addColorStop(.3,'rgba(255,190,90,.8)');g.addColorStop(1,'rgba(255,90,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(hd.xy[0],hd.xy[1],14,0,7);ctx.fill()}}
+  if(prog<1){const N=140,pts=[];for(let i=0;i<=N*prog;i++)pts.push([i/N,air(i/N)]);pts.push([prog,air(prog)]);const BO=.13,RE=.76;
+   // the trail: a hot exhaust plume during boost, a faint vapour line in space, glowing plasma on re-entry
+   ctx.lineCap='round';for(let i=1;i<pts.length;i++){const[s1,b]=pts[i],a=pts[i-1][1];if(!a.vis||!b.vis)continue;const age=prog-s1,fade=Math.max(0,1-age*1.6);if(fade<=0)continue;
+    if(s1<BO){ctx.strokeStyle=`rgba(255,${170+(s1/BO)*60|0},90,${.85*fade})`;ctx.lineWidth=2.6*fade+.6}
+    else if(s1<RE){ctx.strokeStyle=`rgba(200,225,255,${.42*fade})`;ctx.lineWidth=1.1}
+    else{const q=(s1-RE)/(1-RE);ctx.strokeStyle=`rgba(255,${150-q*80|0},${60-q*40|0},${.9*fade})`;ctx.lineWidth=2+q*3}
+    ctx.beginPath();ctx.moveTo(a.xy[0],a.xy[1]);ctx.lineTo(b.xy[0],b.xy[1]);ctx.stroke()}
+   // ground track (dashed) under the flight, and a drop line from the missile to the ground
+   ctx.setLineDash([3,5]);ctx.strokeStyle='rgba(255,120,90,.35)';ctx.lineWidth=1;ctx.beginPath();let pen=false;for(const[,q]of pts){if(!q.vis){pen=false;continue}pen?ctx.lineTo(q.g[0],q.g[1]):ctx.moveTo(q.g[0],q.g[1]);pen=true}ctx.stroke();ctx.setLineDash([]);
+   const hd=pts[pts.length-1][1];if(hd.vis){ctx.setLineDash([2,3]);ctx.strokeStyle='rgba(255,255,255,.28)';ctx.beginPath();ctx.moveTo(hd.xy[0],hd.xy[1]);ctx.lineTo(hd.g[0],hd.g[1]);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='rgba(0,0,0,.45)';ctx.beginPath();ctx.ellipse(hd.g[0],hd.g[1],4,2,0,0,7);ctx.fill()}
+   if(hd.vis){const x=hd.xy[0],y=hd.xy[1];
+    if(prog<BO){const g=ctx.createRadialGradient(x,y,0,x,y,16);g.addColorStop(0,'rgba(255,255,230,1)');g.addColorStop(.3,'rgba(255,190,90,.85)');g.addColorStop(1,'rgba(255,90,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,16,0,7);ctx.fill()}
+    else if(prog<RE){const g=ctx.createRadialGradient(x,y,0,x,y,7);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(1,'rgba(160,200,255,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,1.8,0,7);ctx.fill()}
+    else{const q=(prog-RE)/(1-RE),fl=.8+Math.random()*.4,rr=(10+q*14)*fl,g=ctx.createRadialGradient(x,y,0,x,y,rr);g.addColorStop(0,'rgba(255,255,240,1)');g.addColorStop(.25,`rgba(255,${200-q*60|0},110,.95)`);g.addColorStop(.6,'rgba(255,90,30,.45)');g.addColorStop(1,'rgba(255,60,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rr,0,7);ctx.fill()}}}
   else{const t=(el-f.dur)/1400;for(const[k,col]of[[1,'255,240,200'],[.65,'255,140,40'],[.35,'160,255,90']]){const rr=r*.32*k*Math.pow(t,.6);ctx.strokeStyle=`rgba(${col},${(1-t)*.9})`;ctx.lineWidth=3*(1-t)+1;ctx.beginPath();ctx.arc(tg[0],tg[1],rr,0,7);ctx.stroke()}
    const g=ctx.createRadialGradient(tg[0],tg[1],0,tg[0],tg[1],r*.22);g.addColorStop(0,`rgba(255,255,235,${1-t})`);g.addColorStop(.4,`rgba(255,150,50,${.7*(1-t)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(tg[0],tg[1],r*.22,0,7);ctx.fill()}}
- return{attach,redraw,flyTo,missile,stopMissile,strike,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
+ return{attach,redraw,flyTo,missile,stopMissile,nukePhase,coarse,strike,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
 function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl"><button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
@@ -1425,12 +1449,14 @@ function strikeNote(fx){const old=$('skNote');if(old)old.remove();const el=docum
 function nukeQueue(fx){nukeQ.push(fx);if(!nukeBusy)nukeNext()}
 function nukeNext(){const fx=nukeQ.shift();if(!fx){nukeBusy=false;return}nukeBusy=true;
  if(fx.from==null||!P[fx.from]||!P[fx.h]){nukeFlash(fx);setTimeout(nukeNext,3000);return}
- SND.siren(26);const al=document.createElement('div');al.className='nkalert';al.innerHTML=`<span class="nkdot"></span><b>☢ ${fx.replay?'REPLAY · ':''}MISSILE LAUNCH DETECTED</b><span>${esc(fx.byName)} ${fx.retaliation?'has fired back at':'has launched a nuclear missile at'} ${esc(fx.toName)}</span><button class="btn sm" data-nk="skip">Skip</button>`;document.body.appendChild(al);
- let finished=false;const finish=()=>{if(finished)return;finished=true;al.remove();nukeFlash(fx,true);setTimeout(()=>{const h=heldToasts.splice(0);nukeNext();h.slice(-1).forEach(t=>toast(t))},2500)};
+ const dur=clamp(12000+d3.geoDistance(P[fx.from].c,P[fx.h].c)*4500,12000,22000);
+ SND.siren(Math.ceil(dur/1000)+8);const al=document.createElement('div');al.className='nkalert';al.innerHTML=`<span class="nkdot"></span><b>☢ ${fx.replay?'REPLAY · ':''}MISSILE LAUNCH DETECTED</b><span>${esc(fx.byName)} ${fx.retaliation?'has fired back at':'has launched a nuclear missile at'} ${esc(fx.toName)}</span><span class="nkph" id="nkPh">LAUNCH</span><button class="btn sm" data-nk="skip">Skip</button>`;document.body.appendChild(al);
+ const phT=setInterval(()=>{const ph=GL.nukePhase(),el=$('nkPh');if(!el||!al.isConnected){clearInterval(phT);return}if(ph)el.textContent=ph.ph+(ph.left>0?' · impact in '+Math.ceil(ph.left/1000)+'s':'')},250);
+ let finished=false;const finish=()=>{if(finished)return;finished=true;clearInterval(phT);al.remove();nukeFlash(fx,true);setTimeout(()=>{const h=heldToasts.splice(0);nukeNext();h.slice(-1).forEach(t=>toast(t))},2500)};
  al.addEventListener('click',ev=>{if(ev.target.dataset.nk==='skip'){GL.stopMissile();finish()}});
  closeModal&&closeModal();if(page!=='world'){page='world';render()}
  const a=P[fx.from].c,b=P[fx.h].c,mid=d3.geoInterpolate(a,b)(.5),dist=d3.geoDistance(a,b);
- setTimeout(()=>{GL.flyTo(mid,clamp(1.9-dist*.55,.85,2.2));setTimeout(()=>{if(finished)return;GL.missile(a,b,clamp(3500+dist*1400,3500,7000),finish,fx.h)},1000)},250)}
+ setTimeout(()=>{if(GL.coarse)GL.flyTo(mid,clamp(1.9-dist*.55,.85,2.2));else GL.flyTo(a,clamp(1.9-dist*.4,1.1,2));setTimeout(()=>{if(finished)return;GL.missile(a,b,dur,finish,fx.h)},1100)},250)}
 function nukeFlash(fx,sirenOn){try{const o=document.createElement('div');o.className='nkflash';o.innerHTML=`<div class="nkbox"><div class="nkic">☢</div><div class="nkt">${fx.replay?'REPLAY · ':''}NUCLEAR DETONATION</div><div class="nks">${esc(fx.byName)} ${fx.retaliation?'retaliated against':'struck'} ${esc(fx.toName)} at ${esc(fx.place)}.<br>Fallout is spreading. The world enters a nuclear winter.</div><div style="display:flex;gap:8px;justify-content:center"><button class="btn" data-act="nkclose">See ground zero</button><button class="btn" data-act="nkmute" style="background:rgba(0,0,0,.45);border-color:rgba(255,255,255,.35);color:#fff">🔇 Silence siren</button></div></div>`;document.body.appendChild(o);if(!sirenOn)SND.siren(22);
  o.addEventListener('click',ev=>{if(ev.target.dataset.act==='nkmute'){SND.stopSiren();ev.target.remove();return}SND.stopSiren();o.remove();if(ev.target.dataset.act==='nkclose'&&P[fx.h]){if(page!=='world'){page='world';render()}setTimeout(()=>GL.flyTo(P[fx.h].c,2.4),350)}});setTimeout(()=>o.isConnected&&o.classList.add('fade'),12000);setTimeout(()=>o.remove(),14000)}catch(e){}}
 // replays: /play?replay=<launch time> plays back a past launch from /api/nukes; /play?replay=demo&a=<nation>&b=<nation> shows a launch between two
@@ -1461,7 +1487,7 @@ refreshW();
  if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
  let gotN=false,gotC=false,hadMine=false;
  db.collection('nations').onSnapshot(s=>{N={};s.docs.forEach(d=>{if(d.exists)N[d.id]=d.data()});
-  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const fx of (WP.extra&&WP.extra.strikes)||[])GL.strike(fx)}catch(e){}setTimeout(()=>{if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
+  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const fx of (WP.extra&&WP.extra.strikes)||[])GL.strike(fx)}catch(e){}setTimeout(function away_(){if(nukeBusy||document.querySelector('.nkflash'))return setTimeout(away_,3000);if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
   if(N[uid])hadMine=true;else if(hadMine){hadMine=false;if(!X().fallen)toast('Your nation was reset by an administrator.')}
   refreshSoon();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
  db.collection('chat').onSnapshot(s=>{CH={};s.docs.forEach(d=>{if(d.exists)CH[d.id]=d.data()});if(uid&&CH[uid]&&!gotC)myChat=(CH[uid].m||[]).slice();gotC=true;if(uid&&myChat.length&&CH[uid])CH[uid]={m:myChat};renderChat();if(page==='chat'||deskChatOpen())markChatSeen();else chatBadge();renderSide()},()=>{});
