@@ -6,10 +6,10 @@ const NAMES = ['Kingdom of Varn', 'Republic of Kestria', 'Federation of Orlesia'
   'Republic of Istara', 'Federation of Cordia', 'Emirate of Zahran', 'Commonwealth of Wexmoor', 'Republic of Talmyra', 'Kingdom of Eskavar', 'Union of Pallas', 'Free Republic of Aldmere',
   'Empire of Corvanth', 'Republic of Meridia', 'Kingdom of Thessaly Nova', 'Federation of Rhodan', 'Principality of Avenor', 'Republic of Galdor'];
 const PERS = {
-  merchant: { n: 'Merchant', gov: 'dem', war: .0003, trade: .9, ally: .6, peace: .2, build: ['research', 'infra', 'expand', 'navy'], sell: true, budget: { spend: 16, mil: 20, health: 25, edu: 30, infra: 25 } },
-  expansionist: { n: 'Expansionist', gov: 'mon', war: .002, trade: .5, ally: .5, peace: .08, build: ['expand', 'recruit', 'navy', 'infra', 'research'], budget: { spend: 17, mil: 35, health: 20, edu: 20, infra: 25 } },
-  warlord: { n: 'Warlord', gov: 'dic', war: .006, trade: .3, ally: .35, peace: .03, build: ['recruit', 'air', 'drill', 'navy', 'expand', 'spies'], budget: { spend: 20, mil: 50, health: 15, edu: 15, infra: 20 } },
-  isolationist: { n: 'Isolationist', gov: 'com', war: .0001, trade: .35, ally: .25, peace: .3, build: ['fort', 'infra', 'research', 'spies', 'expand'], budget: { spend: 15, mil: 35, health: 25, edu: 20, infra: 20 } }
+  merchant: { n: 'Merchant', gov: 'dem', war: .0008, trade: .9, ally: .6, peace: .2, build: ['research', 'infra', 'expand', 'navy'], sell: true, budget: { spend: 16, mil: 20, health: 25, edu: 30, infra: 25 } },
+  expansionist: { n: 'Expansionist', gov: 'mon', war: .005, trade: .5, ally: .5, peace: .08, build: ['expand', 'recruit', 'navy', 'infra', 'research'], budget: { spend: 17, mil: 35, health: 20, edu: 20, infra: 25 } },
+  warlord: { n: 'Warlord', gov: 'dic', war: .015, trade: .3, ally: .35, peace: .03, build: ['recruit', 'air', 'drill', 'navy', 'expand', 'spies'], budget: { spend: 20, mil: 50, health: 15, edu: 15, infra: 20 } },
+  isolationist: { n: 'Isolationist', gov: 'com', war: .0003, trade: .35, ally: .25, peace: .3, build: ['fort', 'infra', 'research', 'spies', 'expand'], budget: { spend: 15, mil: 35, health: 25, edu: 20, infra: 20 } }
 };
 const PKEYS = Object.keys(PERS);
 
@@ -116,14 +116,57 @@ module.exports = function makeBots(core, WP, rng) {
     }
     return best ? tryExec(W, u, { c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR }) : null;
   }
+  // ---------- the Rising Power: one AI superpower that keeps pace with the strongest player, goes nuclear and must be stopped together ----------
+  const humans = W => Object.keys(W.A).filter(v => !isBot(v));
+  function pickBoss(W, cfg) {
+    const bots = Object.keys(W.A).filter(isBot); if (!cfg.aiBoss || !bots.length || !humans(W).length || (cfg.bossPause && !bots.some(b => W.A[b].ai.boss))) { if (cfg.bossPause) return null; for (const b of bots) if (W.A[b].ai.boss) { W.A[b].ai.boss = false; core.touch(W, b); } return null; }
+    const cur = bots.find(b => W.A[b].ai.boss); if (cur) return cur;
+    const b = bots.sort((a, c) => (['warlord', 'expansionist'].includes(W.A[c].ai.p) - ['warlord', 'expansionist'].includes(W.A[a].ai.p)) || core.score(W, c) - core.score(W, a))[0];
+    W.A[b].ai.boss = true; core.touch(W, b);
+    core.news(W, b, `⚠ ${W.A[b].name} is rising as a superpower. Foreign arms dealers are pouring money and weapons into its military.`);
+    for (const h of humans(W)) core.note(W, h, 'war', `⚠ ${W.A[b].name} has become the Rising Power: an AI superpower that will grow with the strongest nations, build nuclear weapons and attack players. Stopping it will take the world working together.`);
+    return b;
+  }
+  function bossAssist(W, u) {
+    const n = W.A[u], H = humans(W).map(v => W.A[v]).filter(Boolean); if (!H.length) return;
+    const top = k => Math.max(...H.map(h => h[k] || 0)), topPow = Math.max(...humans(W).map(v => core.power(W, v)));
+    // money, materials and an army that grow toward the strongest player (about 90% of them), never past them
+    if (n.cash < Math.max(4e7, top('cash') * .5)) n.cash += Math.max(1.5e5, top('gdp') * .0004);
+    for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 5000) n.res[r] = (n.res[r] || 0) + 40;
+    if (core.power(W, u) < topPow * .9) { n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .006)); if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(20, Math.ceil(n.troops * .004))); }
+    if (n.pop < top('pop') * .6) n.pop *= 1.002;
+    if (rng() < 1 / 90 && (n.tech || 0) < Math.max(core.WARHEAD.tech, top('tech'))) n.tech = (n.tech || 0) + 1;
+    if ((n.xp || 0) < Math.max(WP.RANKS[core.WARHEAD.rank][0], top('xp') * .9)) n.xp = (n.xp || 0) + 15;
+    if (rng() < 1 / 240 && (n.fort || 0) < 12) n.fort = (n.fort || 0) + 1;
+    n.approval = Math.max(n.approval, 55); n.stability = Math.max(n.stability, 60); core.touch(W, u);
+  }
+  function bossMove(W, u, cfg) {
+    const n = W.A[u], H = humans(W);
+    // nuclear ambitions
+    if (!n.nuke && rng() < .4) { const r = tryExec(W, u, { c: 'nuke' }); if (r) return r; }
+    if (n.nuke && !n.warhead && !core.canWarhead(W, u) && rng() < .4) { const r = tryExec(W, u, { c: 'warhead' }); if (r) return r; }
+    const foes = core.wars(W, u).filter(v => !isBot(v));
+    // the launch: only against a player it has been at war with for 6+ hours
+    if (core.warheadReady(W, n) && rng() < .05) { const tg = foes.filter(v => W.now - core.warSince(W, u, v) > 6 * HOUR && !core.canLaunch(W, u, v)).sort((a, b) => core.score(W, b) - core.score(W, a))[0]; if (tg) { const r = tryExec(W, u, { c: 'launch', v: tg }); if (r) return r; } }
+    // war on the strongest players it can reach (one or two wars at a time)
+    if (cfg.war && cfg.botWar === 'yes' && foes.length < 2 && rng() < .03 && core.rankOf(n.xp) >= 2) {
+      const t = H.filter(v => !core.atWar(W, u, v) && W.now - W.A[v].created > cfg.protectH * HOUR && core.hexesOf(W, v).some(h => core.attackPlan(W, u, h))).sort((a, b) => core.score(W, b) - core.score(W, a));
+      if (t.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: t[Math.floor(rng() * Math.min(2, t.length))] });
+    }
+    if (foes.length && rng() < .5) { const r = farStrike(W, u, foes); if (r) return r; }
+    if (foes.length && (n.air || 0) >= 10 && rng() < .3) { const v = foes[Math.floor(rng() * foes.length)]; if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: rng() < .6 ? 'mil' : 'infra', n: Math.floor(n.air * .6) }); if (r) return r; } }
+    return null;
+  }
   function turn(W, u, cfg) {
     const n = W.A[u]; if (!n || !n.ai) return;
     const per = PERS[n.ai.p] || PERS.merchant; W.now = Date.now();
+    const boss = pickBoss(W, cfg) === u; if (boss) bossAssist(W, u);
     // AI nations act at the pace of a dedicated human player, not every instant, and take a long break each day
     if (core.wars(W, u).length && handlePeace(W, u)) return;
     const hourUTC = new Date(W.now).getUTCHours(); n.ai.sleep = n.ai.sleep != null ? n.ai.sleep : Math.floor(rng() * 24);
-    if ((hourUTC - n.ai.sleep + 24) % 24 < 9) return;
-    if (rng() > .085) return;
+    if ((hourUTC - n.ai.sleep + 24) % 24 < (boss ? 4 : 9)) return;
+    if (rng() > (boss ? .18 : core.wars(W, u).length ? .14 : .085)) return;
+    if (boss) { const r = bossMove(W, u, cfg); if (r) return r; }
     // 1) decisions
     if (n.cards.length && rng() < .5) { const c = n.cards[0]; const card = core.getCard(c.i); if (card) return tryExec(W, u, { c: 'decide', id: c.id, o: chooseOption(W, u, card) }); }
     // finances: borrow when broke, repay when flush, campaign before elections
@@ -189,17 +232,22 @@ module.exports = function makeBots(core, WP, rng) {
       }
       if (myWars.length) { /* already fighting */ } else if (core.rankOf(n.xp) >= 2 && rng() < per.war) {
         const mine = core.score(W, u);
-        const targets = [...new Set(front.map(f => f[1]))].filter(v => {
+        const border = new Set(front.map(f => f[1]));
+        // anyone we border, plus real players we can reach by sea, overseas or a long march (AI nations hunt players more than each other)
+        const pool = [...new Set([...border, ...others.filter(v => !isBot(v) && W.A[v] && core.hexesOf(W, v).some(h => core.attackPlan(W, u, h)))])];
+        const targets = pool.filter(v => {
           const t = W.A[v]; if (core.pact(W, u, v, 'ally')) return false;
-          const s = core.score(W, v); if (s < mine * .45 || s > mine * 1.25) return false;
+          if (isBot(v)) { const s = core.score(W, v); if (s < mine * .4 || s > mine * 1.4) return false; }
+          else { const pw = core.power(W, v), my = core.power(W, u); if (pw > my * 1.3 || pw < my * .25) return false; } // a player whose army we can match
+          if (!isBot(v) && core.wars(W, v).filter(isBot).length >= 2) return false; // no pile-ons: a player already fighting two AI nations is left alone
           if (!isBot(v)) { if (cfg.botWar === 'retaliate') { const hit = (t.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR) || (core.R(W, v, u).war || 0) > W.now - 24 * HOUR; if (!hit) return false; } if (W.now - t.created < cfg.protectH * HOUR) return false; }
           return true;
         });
-        if (targets.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: pick(targets) });
+        if (targets.length) { const weighted = targets.flatMap(v => isBot(v) ? [v] : [v, v, v]); return tryExec(W, u, { c: 'dip', kind: 'war', v: pick(weighted) }); }
       }
     }
     // warlords sometimes bomb their enemies' armies from the air
-    if (myWars.length && n.ai.p === 'warlord' && (n.air || 0) >= 10 && rng() < .12) { const v = pick(myWars); if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: 'mil', n: Math.floor(n.air * .6) }); if (r) return r; } }
+    if (myWars.length && (n.air || 0) >= 10 && rng() < ({ warlord: .18, expansionist: .1, merchant: .05, isolationist: .03 }[n.ai.p] || .05)) { const v = pick(myWars); if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: 'mil', n: Math.floor(n.air * .6) }); if (r) return r; } }
     // covert operations against enemies (warlords and isolationists mostly)
     if (myWars.length && n.spies >= 2 && !core.left(W, n, 'covert') && rng() < (n.ai.p === 'warlord' ? .25 : .08)) { const v = pick(myWars); const op = W.A[v].tech > n.tech && n.spies >= 3 ? 'steal' : pick(['sabotage', 'unrest']); const r = tryExec(W, u, { c: 'covert', op, v }); if (r) return r; }
     // 6) development according to personality

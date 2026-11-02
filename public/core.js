@@ -33,7 +33,7 @@ const ACTS = [
   { k: 'campaign', s: 'Campaign', n: 'Election Campaign', i: 'vote', cd: 30, xp: 5, dem: true },
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
-const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, councilAuto: true, nukeTest: false };
+const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, councilAuto: true, nukeTest: false, aiBoss: true };
 // Chain events: a crisis that unfolds over several decisions. An option's third element names the next step.
 const CHAINS = {
   strike1: { t: 'General strike', d: 'The national federation of unions has called a general strike over wages and rising prices. Ports and factories are shutting down.', o: [['Open wage negotiations', { tr: -1, ap: 3 }, 'strike2a'], ['Declare the strike illegal', { st: -4, ap: -6 }, 'strike2b'], ['Wait it out', { gdp: -1, ap: -2 }, 'strike2c']] },
@@ -382,7 +382,7 @@ function Core(PD, CARDS) {
     if (W.cfg.weakRule && !theyHitMe && !fairWar && !n.ai && score(W, v) < score(W, u) * .4) return `${n.name} is far weaker than you. Attacking them is not permitted.`;
     if (W.OWN[h].cap) {
       if (!W.cfg.conquest) return 'Capitals cannot be captured.';
-      if (n.nuke) return `${n.name} has a nuclear deterrent. Its capital cannot be besieged.`;
+      if (n.nuke && !rogue(W, n)) return `${n.name} has a nuclear deterrent. Its capital cannot be besieged unless it becomes a rogue state.`;
       if (Object.keys(n.hexes || {}).length > 1) return `The capital can only be besieged once ${n.name} has lost all its other provinces.`;
       // the defender always gets a warning period: from losing its last other province, or from the declaration of war (none for AI)
       const start = n.ai ? 1 : n.lastStand || warSince(W, u, v);

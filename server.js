@@ -212,7 +212,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 // ---------- what other players may see ----------
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
+    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
 }
@@ -263,11 +263,13 @@ function effCfg() {
   const c = { ...S.config }, now = Date.now(); const on = S.schedule.filter(x => BOOSTS[x.type] && x.start <= now && now < x.end);
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
+  c.bossPause = (S.bossFell || 0) + 48 * HOUR > now; // a breather after the Rising Power falls
   return c;
 }
 const mkWorld = () => core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council);
 function commit(W) {
   for (const f of W.fallen || []) {
+    { const was = S.docs['nations/' + f.id]; if (was && was.ai && was.ai.boss) { S.bossFell = Date.now(); systemMessage(`🎉 The Rising Power ${f.name} has fallen to ${f.byName}! The world is safe — for now. Another power may rise in 48 hours.`); broadcast('announce', { text: `The Rising Power ${f.name} has fallen!` }); } }
     delete S.docs['nations/' + f.id];
     const rec = { t: f.t, id: f.id, name: f.name, color: f.color, by: f.by, byName: f.byName, days: Math.round(f.days * 10) / 10, rank: f.peakRank, leader: BOTS.isBot(f.id) ? null : (S.users[f.id] || {}).name || null, ai: BOTS.isBot(f.id) };
     S.fallen.unshift(rec); S.fallen = S.fallen.slice(0, 100);
@@ -485,8 +487,9 @@ function botVotes(W) {
         const victim = (t.nuked && Date.now() - t.nuked.t < 48 * HOUR ? .35 : 0) + (core.wars(W, p.target).length ? .15 : 0) + ((t.aggr || 0) < 20 ? .1 : 0);
         if (p.target === u) yes = R.kind === 'protect' ? 1 : 0;
         else if (R.kind === 'punish') {
-          if (war) yes = .95; else if (ally) yes = Math.min(.05, bad); else { yes = Math.max(.05, bad); if (trade) yes *= .5; }
-          if (p.type === 'inspect' && !ally) yes = Math.max(yes, per === 'warlord' ? .35 : .7); // non-proliferation is popular
+          if (t.ai && t.ai.boss && !war) yes = .2; // the Rising Power has friends (and money): AI nations rarely vote against it unless at war with it
+          else if (war) yes = .95; else if (ally) yes = Math.min(.05, bad); else { yes = Math.max(.05, bad); if (trade) yes *= .5; }
+          if (p.type === 'inspect' && !ally && !(t.ai && t.ai.boss)) yes = Math.max(yes, per === 'warlord' ? .35 : .7); // non-proliferation is popular
           if (p.type === 'freeze' && per === 'merchant') yes *= .7; // bankers dislike seizing deposits
         } else { // support for a nation
           if (war) yes = p.type === 'aid' ? .25 : .03; else if (ally) yes = .95;
@@ -869,7 +872,7 @@ async function adminRoute(p, req, res, me) {
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
-      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto']) if (c[k] != null) nc[k] = !!c[k];
+      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss']) if (c[k] != null) nc[k] = !!c[k];
       if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 300);
       if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
@@ -947,7 +950,7 @@ async function handle(req, res) {
       res.writeHead(200, hdr); return res.end(zlib.gunzipSync(gz));
     }
     if (req.method === 'GET' && p === '/api/fairplay') {
-      const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
+      const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'aiBoss', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
       return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500), logTotal: S.fairlog.length,
         settings: Object.fromEntries(keys.map(k => [k, c[k]])), defaults: Object.fromEntries(keys.map(k => [k, WP.DEFCFG[k]])), boost: c.boost || null, council: S.council.active, event: S.event,
         world: { nations: Object.keys(S.docs).filter(k => k.startsWith('nations/')).length, players: Object.keys(S.users).length } }, { 'Cache-Control': 'no-store' });
