@@ -212,7 +212,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 // ---------- what other players may see ----------
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
+    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
 }
@@ -305,12 +305,27 @@ function endEvent(silent) { if (!S.event) return; const e = WP.EVENTS[S.event.ke
 
 // ---------- World Council ----------
 const RES_KEYS = Object.keys(WP.RESOLUTIONS);
+const isTargeted = type => WP.RESOLUTIONS[type].kind !== 'global';
+const resLabel = (type, name) => WP.RESOLUTIONS[type].n + (name ? (WP.RESOLUTIONS[type].kind === 'protect' ? ' for ' : ' against ') + name : '');
+const nukedRecently = (u, now) => S.nukes.some(x => x.by === u && now - x.t < 72 * HOUR);
+// why a resolution cannot be put to the vote against/for this nation right now (null = fine)
+function resBlocked(W, type, v) {
+  const n = W.A[v], now = Date.now(), M = k => core.measure(W, n, k);
+  if (type === 'inspect' && !n.nuke) return `${n.name} has no nuclear program to inspect.`;
+  if (type === 'ceasefire' && !core.wars(W, v).length) return `${n.name} is not at war with anyone.`;
+  if ((type === 'aid' || type === 'guarantee') && core.rogue(W, n)) return `${n.name} is a rogue state. The Council will not support it until sanctions are lifted.`;
+  if (type === 'lift') { if (!(M('embargo') || M('armsEmb') || M('frozen') || M('condemned') || core.rogue(W, n))) return `${n.name} is not under any sanctions.`; if (nukedRecently(v, now)) return `${n.name} launched a nuclear strike less than 72 hours ago. Its sanctions cannot be lifted yet.`; }
+  return null;
+}
 function councilPropose(uid, b) {
   const W = mkWorld(), n = W.A[uid]; if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   const type = String(b.type || ''); if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
   if (core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
   const R = WP.RESOLUTIONS[type]; let target = null;
-  if (R.target) { target = String(b.target || ''); if (!W.A[target] || target === uid) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 }); }
+  if (isTargeted(type)) {
+    target = String(b.target || ''); if (!W.A[target] || target === uid) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
+    const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
+  }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
   if (open.filter(p => !p.auto).length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
@@ -319,7 +334,7 @@ function councilPropose(uid, b) {
   n.cash -= 1e5; W.changed.add(uid); commit(W);
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + 6 * HOUR, votes: { [uid]: 'y' }, status: 'open' };
   S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); broadcast('council', councilView());
-  const txt = `${n.name} proposes to the World Council: ${R.n}${target ? ' against ' + W.A[target].name : ''}.`;
+  const txt = `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name)}.`;
   systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ' Voting closes in 6 hours.');
   return p;
 }
@@ -337,27 +352,63 @@ function councilResolve(W) {
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
     p.status = ys > ns && ys >= 3 ? 'passed' : 'failed'; p.result = `${ys}–${ns}`; changed = true;
-    const label = R.n + (tn ? ' against ' + tn.name : '');
+    const label = resLabel(p.type, tn && tn.name);
+    if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
-      if (p.type === 'sanction') { tn.aggr = Math.max(tn.aggr || 0, 80); core.rogueCheck(W, p.target); W.changed.add(p.target); }
-      else if (p.type === 'embargo') { tn.embargo = now + 24 * HOUR; W.changed.add(p.target); }
-      else if (p.type === 'condemn') { tn.approval = Math.max(0, tn.approval - 10); tn.stability = Math.max(0, tn.stability - 8); tn.aggr = Math.min(100, (tn.aggr || 0) + 20); tn.condemned = now + 24 * HOUR; W.changed.add(p.target); }
-      else S.council.active[p.type] = now + 24 * HOUR;
-      systemMessage(`World Council resolution PASSED (${p.result}): ${label}.`);
-      if (p.target) addNote(p.target, 'council', `The World Council passed a resolution against you: ${R.n}.`);
+      const until = now + R.h * HOUR, extra = enactResolution(W, p, tn, until);
+      systemMessage(`World Council resolution PASSED (${p.result}): ${label}.${extra ? ' ' + extra : ''}`);
+      if (p.target && S.users[p.target]) addNote(p.target, 'council', R.kind === 'protect' ? `The World Council passed a resolution in your favor: ${R.n}.${extra ? ' ' + extra : ''}` : `The World Council passed a resolution against you: ${R.n}.${extra ? ' ' + extra : ''}`);
     } else systemMessage(`World Council resolution failed (${p.result}): ${label}.`);
     if (S.users[p.by]) addNote(p.by, 'council', `Your resolution "${label}" ${p.status} (${p.result}).`);
   }
   for (const [k, until] of Object.entries(S.council.active)) if (until < now) { delete S.council.active[k]; changed = true; }
   if (changed) { persist(); broadcast('council', councilView()); }
 }
+// what a passed resolution actually does. Returns a short note for the announcement.
+function enactResolution(W, p, tn, until) {
+  const now = Date.now(), v = p.target, ch = x => W.changed.add(x);
+  switch (p.type) {
+    case 'sanction': tn.aggr = Math.max(tn.aggr || 0, 80); core.rogueCheck(W, v); ch(v); return '';
+    case 'embargo': tn.embargo = Math.max(tn.embargo || 0, until); ch(v); return '';
+    case 'armsEmb': tn.armsEmb = Math.max(tn.armsEmb || 0, until); ch(v); return '';
+    case 'freeze': { const amt = Math.max(0, Math.floor((tn.cash || 0) * .25)); tn.cash -= amt; tn.frozen = { amt: ((tn.frozen && tn.frozen.amt) || 0) + amt, until: Math.max((tn.frozen && tn.frozen.until) || 0, until) }; ch(v); return `${WP.moneyS(amt)} of ${tn.name}'s treasury is frozen for ${R_H(p)} hours.`; }
+    case 'condemn': tn.approval = Math.max(0, tn.approval - 10); tn.stability = Math.max(0, tn.stability - 8); tn.aggr = Math.min(100, (tn.aggr || 0) + 20); tn.condemned = Math.max(tn.condemned || 0, until); core.rogueCheck(W, v); ch(v); return '';
+    case 'inspect': { const had = tn.warhead && !core.warheadReady(W, tn); if (had) tn.warhead = null; tn.inspected = Math.max(tn.inspected || 0, until); ch(v); return had ? `Inspectors dismantled the warhead ${tn.name} was assembling.` : `Inspectors will monitor ${tn.name}'s program for ${R_H(p)} hours.`; }
+    case 'ceasefire': { tn.ceasefire = Math.max(tn.ceasefire || 0, until); ch(v); const foes = core.wars(W, v); for (const f of foes) if (S.users[f]) addNote(f, 'council', `A World Council ceasefire with ${tn.name} is in force for ${R_H(p)} hours. No battles or strikes until it ends.`); return `No fighting between ${tn.name} and ${foes.map(f => W.A[f].name).join(', ')} for ${R_H(p)} hours.`; }
+    case 'guarantee': tn.guarantee = Math.max(tn.guarantee || 0, until); ch(v); return '';
+    case 'aid': {
+      let cash = 0, food = 0, donors = 0;
+      for (const [u, vote] of Object.entries(p.votes)) {
+        const d = W.A[u]; if (vote !== 'y' || u === v || !d || core.rogue(W, d)) continue;
+        const c = Math.max(0, Math.min(2e6, Math.floor((d.cash || 0) * .01))), f = Math.max(0, Math.min(300, Math.floor(((d.res || {}).food || 0) * .05)));
+        if (!c && !f) continue; d.cash -= c; d.res.food -= f; cash += c; food += f; donors++; ch(u);
+        if (S.users[u]) addNote(u, 'council', `Your nation sent ${WP.moneyS(c)} and ${f} food in humanitarian aid to ${tn.name}.`);
+      }
+      tn.cash += cash; tn.res.food = (tn.res.food || 0) + food; tn.health = Math.min(100, (tn.health || 50) + 10); tn.stability = Math.min(100, tn.stability + 6); ch(v);
+      return `${donors} nation${donors === 1 ? '' : 's'} sent ${WP.moneyS(cash)} and ${WP.num(food)} food.`;
+    }
+    case 'lift': {
+      const back = tn.frozen ? tn.frozen.amt || 0 : 0; tn.cash += back; tn.frozen = null; tn.embargo = 0; tn.armsEmb = 0; tn.condemned = 0;
+      if (core.rogue(W, tn)) tn.rogue = 0; tn.aggr = Math.min(tn.aggr || 0, 30); ch(v);
+      return back ? `${WP.moneyS(back)} in frozen assets was returned.` : '';
+    }
+    case 'debt': {
+      let total = 0; for (const [u, n] of Object.entries(W.A)) if ((n.debt || 0) > 0) { const f = n.debt * .2; n.debt -= f; total += f; ch(u); if (S.users[u]) addNote(u, 'council', `Debt relief: ${WP.moneyS(f)} of your national debt was forgiven.`); }
+      S.council.active.debt = until; return `${WP.moneyS(total)} of debt was forgiven worldwide.`;
+    }
+    case 'health': { for (const [u, n] of Object.entries(W.A)) { const c = Math.max(0, Math.floor((n.cash || 0) * .005)); n.cash -= c; ch(u); } S.council.active.health = until; return 'Every nation contributed 0.5% of its treasury.'; }
+    default: S.council.active[p.type] = until; return '';
+  }
+}
+const R_H = p => WP.RESOLUTIONS[p.type].h;
 // ---------- the World Council takes notice on its own ----------
 // Bad behaviour puts a resolution to the vote automatically. Everyone (players and AI) still votes; nothing passes without a majority.
 const AUTO_RULES = [
   // [type, test(nation, recent attacks, W, id) -> reason or null]
   ['sanction', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 60 || atk.victims >= 3) ? (atk.victims >= 3 ? `attacked ${atk.victims} different nations in 12 hours` : `pushed its aggression to ${Math.round(n.aggr)}`) : null],
   ['condemn', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 35 || atk.n >= 3) ? `${atk.n >= 3 ? `launched ${atk.n} attacks in 6 hours` : `pushed its aggression to ${Math.round(n.aggr)}`}` : null],
-  ['embargo', (n, atk, W, u) => n.warhead && Date.now() - (n.warhead.t || 0) < 6 * HOUR ? 'began assembling a launchable nuclear warhead' : null],
+  ['inspect', (n, atk, W, u) => n.warhead && !core.warheadReady(W, n) && Date.now() - (n.warhead.t || 0) < 6 * HOUR ? 'began assembling a launchable nuclear warhead' : null],
+  ['aid', (n, atk, W, u) => n.nuked && Date.now() - n.nuked.t < 6 * HOUR && !core.rogue(W, n) ? 'was struck by a nuclear weapon' : null],
   ['condemn', (n, atk, W, u) => n.nuke && Date.now() - n.nuke < 3 * HOUR ? 'tested a nuclear weapon' : null]
 ];
 function councilWatch(W) {
@@ -370,14 +421,14 @@ function councilWatch(W) {
     const battles = (n.out || []).filter(e => e.type === 'battle' && e.to && e.to !== u && W.A[e.to] && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === u && x.t < e.t && e.t - x.t < 24 * HOUR)));
     const atk = { n: battles.filter(e => now - e.t < 6 * HOUR).length, victims: new Set(battles.filter(e => now - e.t < 12 * HOUR).map(e => e.to)).size };
     for (const [type, test] of AUTO_RULES) {
-      const why = test(n, atk, W, u); if (!why) continue; const key = type + ':' + u;
+      const why = test(n, atk, W, u); if (!why || resBlocked(W, type, u)) continue; const key = type + ':' + u;
       if (S.council.watch[key] && now - S.council.watch[key] < 24 * HOUR) continue;
       S.council.watch[key] = now; const R = WP.RESOLUTIONS[type];
       S.council.props.unshift({ id: rid(), by: null, auto: true, why, type, target: u, t: now, end: now + 6 * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
-      const txt = `The World Council has taken notice: ${n.name} ${why}. A vote on "${R.n}" against ${n.name} is now open.`;
-      systemMessage('🏛 ' + txt); const hit = new Set(battles.map(e => e.to)), nuclear = type === 'embargo' || /nuclear/.test(why);
+      const txt = `The World Council has taken notice: ${n.name} ${why}. A vote on "${resLabel(type, n.name)}" is now open.`;
+      systemMessage('🏛 ' + txt); const hit = new Set(battles.map(e => e.to)), nuclear = /nuclear/.test(why);
       for (const v of Object.keys(S.users)) if (v !== u && (nuclear || hit.has(v))) addNote(v, 'council', txt + ' Voting closes in 6 hours.');
-      if (S.users[u]) addNote(u, 'council', `The World Council is voting on "${R.n}" against your nation because it ${why}. You have 6 hours to make your case in chat.`);
+      if (S.users[u]) addNote(u, 'council', R.kind === 'protect' ? `The World Council is voting on "${R.n}" for your nation because it ${why}.` : `The World Council is voting on "${R.n}" against your nation because it ${why}. You have 6 hours to make your case in chat.`);
       persist(); broadcast('council', councilView());
       if (open().filter(p => p.auto).length >= 3) return;
       break; // at most one new resolution per nation at a time
@@ -390,9 +441,28 @@ function botVotes(W) {
     if (p.status !== 'open') continue;
     for (const u of Object.keys(W.A)) {
       if (!BOTS.isBot(u) || p.votes[u] || rng() > .15) continue;
-      const me = W.A[u], per = (me.ai || {}).p; let yes = .5;
-      if (p.target) { const t = W.A[p.target]; if (!t) continue; if (p.target === u) yes = 0; else { const bad = Math.min(.9, (t.aggr || 0) / 70) + (core.rogue(W, t) ? .3 : 0); if (core.atWar(W, u, p.target)) yes = .95; else if (core.pact(W, u, p.target, 'ally')) yes = Math.min(.05, bad); else { yes = Math.max(.05, bad); if (core.pact(W, u, p.target, 'trade')) yes *= .5; } } }
-      else yes = { climate: { isolationist: .8, merchant: .6, warlord: .3, expansionist: .4 }, arms: { isolationist: .8, merchant: .6, warlord: .1, expansionist: .3 }, freetrade: { merchant: .95, expansionist: .6, warlord: .4, isolationist: .3 }, peacekeeping: { isolationist: .85, merchant: .7, warlord: .1, expansionist: .3 } }[p.type][per] || .5;
+      const me = W.A[u], per = (me.ai || {}).p, R = WP.RESOLUTIONS[p.type]; let yes = .5;
+      if (R.kind !== 'global') {
+        const t = W.A[p.target]; if (!t) continue;
+        const bad = Math.min(.9, (t.aggr || 0) / 70) + (core.rogue(W, t) ? .3 : 0), war = core.atWar(W, u, p.target), ally = core.pact(W, u, p.target, 'ally'), trade = core.pact(W, u, p.target, 'trade');
+        const victim = (t.nuked && Date.now() - t.nuked.t < 48 * HOUR ? .35 : 0) + (core.wars(W, p.target).length ? .15 : 0) + ((t.aggr || 0) < 20 ? .1 : 0);
+        if (p.target === u) yes = R.kind === 'protect' ? 1 : 0;
+        else if (R.kind === 'punish') {
+          if (war) yes = .95; else if (ally) yes = Math.min(.05, bad); else { yes = Math.max(.05, bad); if (trade) yes *= .5; }
+          if (p.type === 'inspect' && !ally) yes = Math.max(yes, per === 'warlord' ? .35 : .7); // non-proliferation is popular
+          if (p.type === 'freeze' && per === 'merchant') yes *= .7; // bankers dislike seizing deposits
+        } else { // support for a nation
+          if (war) yes = p.type === 'aid' ? .25 : .03; else if (ally) yes = .95;
+          else if (p.type === 'lift') yes = Math.max(.05, .8 - bad);
+          else if (p.type === 'aid') yes = Math.min(.95, .35 + victim + (per === 'merchant' || per === 'isolationist' ? .1 : 0) - bad * .5);
+          else if (p.type === 'ceasefire') yes = Math.min(.9, .45 + victim + (per === 'warlord' ? -.25 : per === 'isolationist' ? .15 : 0));
+          else yes = Math.max(.05, Math.min(.9, .3 + victim - bad + (trade ? .2 : 0)));
+        }
+      }
+      else yes = ({ climate: { isolationist: .8, merchant: .6, warlord: .3, expansionist: .4 }, arms: { isolationist: .8, merchant: .6, warlord: .1, expansionist: .3 }, freetrade: { merchant: .95, expansionist: .6, warlord: .4, isolationist: .3 }, peacekeeping: { isolationist: .85, merchant: .7, warlord: .1, expansionist: .3 },
+        npt: { isolationist: .85, merchant: .7, warlord: me.nuke ? .5 : .2, expansionist: .45 }, health: { isolationist: .7, merchant: .55, warlord: .35, expansionist: .5 }, science: { isolationist: .7, merchant: .75, warlord: .5, expansionist: .7 },
+        food: { isolationist: .75, merchant: .4, warlord: .55, expansionist: .6 }, debt: { isolationist: .5, merchant: .25, warlord: .6, expansionist: .6 } }[p.type] || {})[per] || .5;
+      if (p.type === 'debt') yes = Math.min(.95, yes + ((me.debt || 0) > (me.gdp || 1) * .3 ? .35 : 0)); // nations in debt want relief
       p.votes[u] = rng() < yes ? 'y' : 'n';
     }
   }
@@ -597,7 +667,7 @@ function restoreNation(id, snapName, by) {
     const had = new Set((old.offOut || []).map(o => o.id));
     for (const o of [...(cur.offOut || [])]) if (!had.has(o.id)) { cur.offOut = cur.offOut.filter(x => x.id !== o.id); const t = W.A[o.to]; if (t) { t.offIn = (t.offIn || []).filter(x => x.id !== o.id); W.changed.add(o.to); } }
   }
-  if (cur) { n = cur; for (const k of RESTORE_FIELDS) if (old[k] !== undefined) n[k] = JSON.parse(JSON.stringify(old[k])); n.res = { ...(old.res || {}) }; n.hexes = hexes; }
+  if (cur) { n = cur; for (const k of RESTORE_FIELDS) if (old[k] !== undefined) n[k] = JSON.parse(JSON.stringify(old[k])); n.res = { ...(old.res || {}) }; n.frozen = old.frozen || null; n.hexes = hexes; } // a freeze holds treasury money, so it goes back with the cash
   else {
     n = JSON.parse(JSON.stringify(old)); n.hexes = hexes; n.rel = {}; n.offOut = []; n.offIn = []; n.warhead = null;
     for (const [v, x] of Object.entries(W.A)) if (x.rel && x.rel[id]) { delete x.rel[id]; W.changed.add(v); } // a clean diplomatic slate: no leftover wars
@@ -654,7 +724,7 @@ function overview() {
     health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, loopMs: health.loopMs, saveMs: health.saveMs, saveError: health.saveError, dataDir: DATA_DIR,
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackupT || (S.lastBackup ? Date.parse(S.lastBackup + 'T09:00:00Z') : null), pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
-    players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50),
+    players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
     analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.slice(0, 100), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView()
   };
 }
