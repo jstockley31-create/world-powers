@@ -62,6 +62,7 @@ const CHAIN_STARTS = ['strike1', 'scandal1', 'chip1', 'drought1', 'refugee1'];
 const GEN_FIRST = ['Alexei', 'Maren', 'Tomas', 'Ilse', 'Rafael', 'Noor', 'Kenji', 'Elena', 'Viktor', 'Amara', 'Dario', 'Sven', 'Lucia', 'Omar', 'Hana', 'Felix', 'Ines', 'Bram', 'Yara', 'Casimir', 'Petra', 'Malik', 'Astrid', 'Jonah'];
 const GEN_LAST = ['Varga', 'Holm', 'Okafor', 'Brandt', 'Castell', 'Rourke', 'Sato', 'Lindqvist', 'Marek', 'Duarte', 'Haddad', 'Novak', 'Ferreira', 'Kowal', 'Abara', 'Strand', 'Morel', 'Tanaka', 'Ilic', 'Rayne', 'Vasquez', 'Achterberg'];
 const GEN_TYPES = { attack: { n: 'Field marshal', d: '+4% attack strength per star' }, defense: { n: 'Defense commander', d: '+4% defense in every province per star' }, logistics: { n: 'Quartermaster general', d: 'Distant attacks: 10% smaller penalty and cost per star' } };
+const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
 const NUKE = { tech: 12, rank: 4, cash: 25e6, steel: 1500, oil: 1500, goods: 500, upkeep: 1e5 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 const WARHEAD = { tech: 15, rank: 6, cash: 75e6, steel: 3000, oil: 3000, goods: 2000, buildH: 12, holdH: 24, cdD: 7, km: 1600, nukedH: 48, falloutH: 24, winterH: 24 };
@@ -205,7 +206,17 @@ function Core(PD, CARDS) {
   }
   const consumption = n => ({ food: Math.round(n.pop / 1000 * .25), oil: Math.round((n.troops || 0) / 100 * .5 + (n.ships || 0) * .5 + (n.air || 0) * .4 + n.infra * .5), steel: 0, goods: Math.round(n.pop / 1000 * .05) });
   const popCap = (W, u) => hexesOf(W, u).length * 150000 * (1 + soft(W.A[u].infra, 10) * .05);
-  function prices(W) { const p = {}, since = W.now - 6 * HOUR, net = { food: 0, oil: 0, steel: 0, goods: 0 }; for (const n of Object.values(W.A)) for (const t of n.trades || []) if (t.t > since && net[t.r] != null) net[t.r] += t.q; for (const k in RES) p[k] = Math.round(RES[k].p * clamp(Math.exp(net[k] / 4000), .4, 3) * (W.m.price[k] || 1)); return p; }
+  // World market. Prices follow the last 6 hours of net trading by all nations, but each nation's own net counts for at most
+  // ±MKT_CAP units, so no single nation can push a price beyond about ×2.1 or ×0.47. Big orders pay the price along the way
+  // (not the price before the order), so buying and immediately selling back always loses the market fee.
+  const MKT_K = 4000, MKT_CAP = 3000, mktMult = net => clamp(Math.exp(net / MKT_K), .4, 3);
+  function mktNets(W, r, skip) { let other = 0, mine = 0; const since = W.now - 6 * HOUR;
+    for (const [u, n] of Object.entries(W.A)) { let v = 0; for (const t of n.trades || []) if (t.t > since && t.r === r) v += t.q; v = clamp(v, -MKT_CAP, MKT_CAP); if (u === skip) mine = v; else other += v; }
+    return { other, mine }; }
+  function prices(W) { const p = {}; for (const k in RES) { const { other } = mktNets(W, k, null); p[k] = Math.round(RES[k].p * mktMult(other) * (W.m.price[k] || 1)); } return p; }
+  // average price multiplier for an order of q units (+ buy, − sell) by nation u, integrated along the price path
+  function orderMult(W, u, r, q) { const { other, mine } = mktNets(W, r, u); const N = 60; let sum = 0;
+    for (let i = 0; i < N; i++) sum += mktMult(other + clamp(mine + q * (i + .5) / N, -MKT_CAP, MKT_CAP)); return sum / N; }
   function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(5, traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1); const inf = Math.max(0, (n.infl || 0) - 3) / 200; return { buy: 1.08 + sp - tb - W.m.spread + inf, sell: .92 - sp + tb + W.m.spread }; }
   const maxBorrow = n => Math.max(0, (n.gdp || 0) * 1.2 - (n.debt || 0));
 
@@ -691,9 +702,9 @@ function Core(PD, CARDS) {
     if (embargoed(W, me)) fail('You are under a World Council embargo and cannot trade on the world market.');
     if (rogue(W, me)) fail('Your nation is a rogue state under a full international embargo. The world market is closed to you.');
     q = Math.floor(Number(q)); if (!(q > 0) || q > 1e6) fail('Enter a valid quantity.');
-    const p = prices(W)[r], s = spreads(W, u); let msg;
-    if (buy) { const cost = Math.round(p * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; me.trades = [{ t: W.now, r, q }, ...(me.trades || [])].slice(0, 40); msg = `Imported ${num(q)} ${r} for ${money(cost)}.`; }
-    else { if (q > me.res[r]) fail('You do not have that much.'); const got = Math.round(p * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; me.trades = [{ t: W.now, r, q: -q }, ...(me.trades || [])].slice(0, 40); msg = `Exported ${num(q)} ${r} for ${money(got)}.`; }
+    const s = spreads(W, u), base = RES[r].p * (W.m.price[r] || 1); let msg;
+    if (buy) { const cost = Math.round(base * orderMult(W, u, r, q) * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; me.trades = [{ t: W.now, r, q }, ...(me.trades || [])].slice(0, 40); msg = `Imported ${num(q)} ${r} for ${money(cost)}.`; }
+    else { if (q > me.res[r]) fail('You do not have that much.'); const got = Math.round(base * orderMult(W, u, r, -q) * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; me.trades = [{ t: W.now, r, q: -q }, ...(me.trades || [])].slice(0, 40); msg = `Exported ${num(q)} ${r} for ${money(got)}.`; }
     log(me, msg, W); gainXP(W, u, 2); touch(W, u); return { msg };
   }
 
@@ -754,6 +765,8 @@ function Core(PD, CARDS) {
     n.cash += hs.filter(h => ['P', 'D'].includes(P[h].t) && h != n.cap).length * 2000 * W.cfg.income;
     // government budget
     const spend = spendPerTick(n); n.cash -= spend; n.spent = (n.spent || 0) * .993 + spend; n.rev = (n.rev || 0) * .993;
+    // part of the tax take arrives on its own (about enough to cover normal spending); the Collect Taxes operation brings in the rest
+    const autoTax = taxIncome(W, u) * AUTO_TAX; n.cash += autoTax; n.rev += autoTax;
     const milFund = spend * b.mil / 100, need = upkeep(W, n), ratio = need > 0 ? milFund / need : 2;
     if (ratio >= 1) n.morale = clamp(n.morale + Math.min(2, (ratio - 1) * 4 + .5), 0, 100);
     else { n.morale = clamp(n.morale - 6 * (1 - ratio), 0, 100); if (n.morale < 30) { n.troops = Math.floor(n.troops * (1 - .02 * (1 - ratio))); } }
@@ -883,10 +896,10 @@ function Core(PD, CARDS) {
     }
   }
 
-  return { P, CN, land, sea, nbrs, pname, getCard, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, getCard, orderMult, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { Core, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { Core, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });
