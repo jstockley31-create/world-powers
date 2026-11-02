@@ -131,10 +131,13 @@ module.exports = function makeBots(core, WP, rng) {
     const n = W.A[u], H = humans(W).map(v => W.A[v]).filter(Boolean); if (!H.length) return;
     const top = k => Math.max(...H.map(h => h[k] || 0)), topPow = Math.max(...humans(W).map(v => core.power(W, v)));
     // money, materials and an army that grow toward the strongest player (about 90% of them), never past them
-    if (n.cash < Math.max(4e7, top('cash') * .5)) n.cash += Math.max(1.5e5, top('gdp') * .0004);
+    const behind = core.power(W, u) < topPow * .9, saving = (!n.nuke && n.cash < core.NUKE.cash * 1.2) || (n.nuke && !n.warhead && n.cash < core.WARHEAD.cash * 1.2);
+    if (behind || saving) n.cash += Math.max(2.5e5, top('gdp') * .0004); // backing only while it is behind the top player or saving for its nuclear program and warhead
     for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 5000) n.res[r] = (n.res[r] || 0) + 40;
     if (core.power(W, u) < topPow * .9) { n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .006)); if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(20, Math.ceil(n.troops * .004))); }
     if (n.pop < top('pop') * .6) n.pop *= 1.002;
+    // overstretched: well past the strongest player, its backers pull out and its forces thin (keeps it a rival, not a steamroller)
+    if (core.power(W, u) > topPow * 1.15) { n.air = Math.floor((n.air || 0) * .996); n.troops = Math.floor(n.troops * .997); n.ships = Math.floor((n.ships || 0) * .998); }
     if (rng() < 1 / 90 && (n.tech || 0) < Math.max(core.WARHEAD.tech, top('tech'))) n.tech = (n.tech || 0) + 1;
     if ((n.xp || 0) < Math.max(WP.RANKS[core.WARHEAD.rank][0], top('xp') * .9)) n.xp = (n.xp || 0) + 15;
     if (rng() < 1 / 240 && (n.fort || 0) < 12) n.fort = (n.fort || 0) + 1;
