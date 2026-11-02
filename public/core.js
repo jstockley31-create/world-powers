@@ -210,16 +210,19 @@ function Core(PD, CARDS) {
   const consumption = n => ({ food: Math.round(n.pop / 1000 * .25), oil: Math.round((n.troops || 0) / 100 * .5 + (n.ships || 0) * .5 + (n.air || 0) * .4 + n.infra * .5), steel: 0, goods: Math.round(n.pop / 1000 * .05) });
   const popCap = (W, u) => hexesOf(W, u).length * 150000 * (1 + soft(W.A[u].infra, 10) * .05);
   // World market. Prices follow the last 6 hours of net trading by all nations, but each nation's own net counts for at most
-  // ±MKT_CAP units, so no single nation can push a price beyond about ×2.1 or ×0.47. Big orders pay the price along the way
+  // a share of the market depth, so no single nation can push a price beyond about ×2.1 or ×0.47. Big orders pay the price along the way
   // (not the price before the order), so buying and immediately selling back always loses the market fee.
-  const MKT_K = 4000, MKT_CAP = 3000, mktMult = net => clamp(Math.exp(net / MKT_K), .4, 3);
+  // market depth grows with the world: more land held means bigger stockpiles and a deeper market
+  const mktK = W => 4000 + 120 * Object.keys(W.OWN || {}).length, mktMult = (W, net) => clamp(Math.exp(net / mktK(W)), .4, 3);
   function mktNets(W, r, skip) { let other = 0, mine = 0; const since = W.now - 6 * HOUR;
-    for (const [u, n] of Object.entries(W.A)) { let v = 0; for (const t of n.trades || []) if (t.t > since && t.r === r) v += t.q; v = clamp(v, -MKT_CAP, MKT_CAP); if (u === skip) mine = v; else other += v; }
+    const cap = mktK(W) * .75; for (const [u, n] of Object.entries(W.A)) { let v = 0; for (const t of n.trades || []) if (t.t > since && t.r === r) v += t.q; v = clamp(v, -cap, cap); if (u === skip) mine = v; else other += v; }
     return { other, mine }; }
-  function prices(W) { const p = {}; for (const k in RES) { const { other } = mktNets(W, k, null); p[k] = Math.round(RES[k].p * mktMult(other) * (W.m.price[k] || 1)); } return p; }
+  function prices(W) { const p = {}; for (const k in RES) { const { other } = mktNets(W, k, null); p[k] = Math.round(RES[k].p * mktMult(W, other) * (W.m.price[k] || 1)); } return p; }
   // average price multiplier for an order of q units (+ buy, − sell) by nation u, integrated along the price path
-  function orderMult(W, u, r, q) { const { other, mine } = mktNets(W, r, u); const N = 60; let sum = 0;
-    for (let i = 0; i < N; i++) sum += mktMult(other + clamp(mine + q * (i + .5) / N, -MKT_CAP, MKT_CAP)); return sum / N; }
+  function orderMult(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75, N = 60; let sum = 0;
+    for (let i = 0; i < N; i++) sum += mktMult(W, other + clamp(mine + q * (i + .5) / N, -cap, cap)); return sum / N; }
+  // price multiplier at the very end of an order of q units, relative to the price before it (for "sensible max" buttons)
+  function orderEdge(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75; return mktMult(W, other + clamp(mine + q, -cap, cap)) / mktMult(W, other + mine); }
   function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(5, traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1); const inf = Math.max(0, (n.infl || 0) - 3) / 200; return { buy: 1.08 + sp - tb - W.m.spread + inf, sell: .92 - sp + tb + W.m.spread }; }
   const maxBorrow = n => Math.max(0, (n.gdp || 0) * 1.2 - (n.debt || 0));
 
@@ -900,7 +903,7 @@ function Core(PD, CARDS) {
     }
   }
 
-  return { P, CN, land, sea, nbrs, pname, getCard, orderMult, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, getCard, orderMult, orderEdge, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
