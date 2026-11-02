@@ -136,6 +136,17 @@ module.exports = function makeBots(core, WP, rng) {
         if (core.pact(W, u, v, 'trade') && rng() < (n.ai.p === 'warlord' ? .1 : .35)) return tryExec(W, u, { c: 'dip', kind: 'untrade', v });
         if (core.pact(W, u, v, 'ally') && rng() < (n.ai.p === 'warlord' ? .03 : .15)) return tryExec(W, u, { c: 'dip', kind: 'unally', v });
       } }
+    // a flag of its own, laws that fit its personality, and answers to direct trade offers
+    if (!n.flag) { const h = [...u].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7), P_ = WP.FLAG_COLORS, L = WP.FLAG_LAYOUTS, E = WP.FLAG_EMBLEMS;
+      return tryExec(W, u, { c: 'flag', flag: { l: L[h % L.length], c: [P_[h % 9], P_[(h >> 4) % P_.length], P_[(h >> 8) % P_.length]], e: E[(h >> 12) % E.length] }, motto: ({ warlord: 'Strength above all', expansionist: 'Ever onward', merchant: 'Prosperity through trade', isolationist: 'Our land, our way' })[n.ai.p] || '' }); }
+    if ((n.offIn || []).length && rng() < .4) { const o = n.offIn[0], pr = core.prices(W), val = b => Object.entries(b || {}).reduce((t, [k, v]) => t + (k === 'cash' ? v : v * (pr[k] || 0)), 0);
+      const fair = val(o.give) >= val(o.want) * 1.05, can = Object.entries(o.want).every(([k, v]) => (k === 'cash' ? n.cash - 3e5 : (n.res[k] || 0) - 200) >= v);
+      return tryExec(W, u, { c: fair && can ? 'offerok' : 'offerno', id: o.id }); }
+    { const want = { warlord: ['conscription', 'martialLaw'], expansionist: ['conscription', 'freeMarket'], merchant: ['freeMarket', 'education'], isolationist: ['censorship', 'healthcare'] }[n.ai.p] || [];
+      const next = want.find(k => !(n.laws || []).includes(k)); if (next && !core.left(W, n, 'law') && (n.laws || []).length < core.lawSlots(n) && n.cash > core.lawCost(n) * 3 && rng() < .05) return tryExec(W, u, { c: 'law', k: next, on: true }); }
+    if (core.rankOf(n.xp) >= 2 && n.ai.p !== 'warlord') { const pr = n.proj;
+      if (pr && pr.next <= W.now && n.cash > WP.WONDERS[pr.k].cost.cash * 2 && rng() < .3) { const r = tryExec(W, u, { c: 'wonder', k: pr.k }); if (r) return r; }
+      else if (!pr && rng() < .004) { const free = Object.keys(WP.WONDERS).filter(k => !core.wonderHolder(W, k) && n.cash > WP.WONDERS[k].cost.cash * 4); if (free.length) { const r = tryExec(W, u, { c: 'wonder', k: pick(free) }); if (r) return r; } } }
     // 2) basic income
     if (!core.left(W, n, 'daily')) return tryExec(W, u, { c: 'act', k: 'daily' });
     for (const k of ['tax', 'prod']) if (!core.left(W, n, k) && (n.cash < 5e5 || rng() < .45)) return tryExec(W, u, { c: 'act', k });
