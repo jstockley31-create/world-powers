@@ -348,6 +348,16 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .pactm{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.chip{display:inline-flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--bd);border-radius:999px;padding:2px 9px;font-size:12px}.chip .dot{width:8px;height:8px;border-radius:50%}
 .decl>div{font-size:14px;margin-bottom:2px}.decl .mu{font-size:12px}
 #cpText{width:100%;resize:vertical;min-height:54px}
+
+/* strike alert on the globe */
+.skban{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:4;display:flex;align-items:center;gap:8px;max-width:calc(100% - 110px);background:rgba(40,8,6,.88);border:1px solid #ff5a3c;color:#ffd7cf;padding:6px 6px 6px 12px;border-radius:999px;font-size:12.5px;box-shadow:0 0 24px rgba(255,60,30,.35);animation:skFlash 1s ease-in-out infinite alternate;white-space:nowrap}
+.skban.air{background:rgba(10,22,40,.88);border-color:#7fb4ff;color:#dbe9ff;box-shadow:0 0 24px rgba(90,150,255,.3);animation-name:skFlashB}
+.skban b{letter-spacing:.06em;color:#fff}.skban .t{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.skban .dot{width:8px;height:8px;border-radius:50%;background:#ff3b2f;box-shadow:0 0 8px #ff3b2f;flex:none}.skban.air .dot{background:#7fb4ff;box-shadow:0 0 8px #7fb4ff}
+.skban button{background:#fff;color:#141414;border:0;border-radius:999px;padding:4px 11px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;flex:none}
+@keyframes skFlash{from{box-shadow:0 0 10px rgba(255,60,30,.25)}to{box-shadow:0 0 34px rgba(255,60,30,.75)}}
+@keyframes skFlashB{from{box-shadow:0 0 10px rgba(90,150,255,.2)}to{box-shadow:0 0 30px rgba(90,150,255,.6)}}
+@media(max-width:820px){.skban{max-width:calc(100% - 70px);font-size:11.5px}.skban .t{display:none}}
 </style>
 <script src="/vendor/d3.min.js"></script>
 <script src="/core.js"></script>
@@ -774,23 +784,34 @@ const GL=(()=>{
  function strike(fx){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const from=P[fx.from]?P[fx.from].c:null,to=P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
   const dur=!from?0:air_?clamp(3800+dist*1300,3800,6500):clamp(2200+dist*800,2200,3800),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
   const R=seedOf(fx.id),n=air_?clamp(Math.round((fx.n||5)/8),3,6):clamp(fx.n||1,1,5),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.max(0,n-(fx.hits==null?n:fx.hits));
-  SK.push({fx,from,to,dist,dur:reduce?0:dur,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:8},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
+  const D=reduce?0:dur,loops=!D?0:air_?3:4,cycle=D+1800+1600;
+  SK.push({fx,from,to,dist,dur:D,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:8},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
   while(SK.length>40)SK.shift();kick()}
- function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<k.dur+1800);if(!busy||!st.el||!st.el.isConnected){skLoop=0;redraw();return}
+ function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<Math.max(k.dur+1800,k.loops*k.cycle));skBanner(now);if(!busy||!st.el||!st.el.isConnected){skLoop=0;redraw();return}
   if(st.baseOk&&!st.anim&&!st.raf)fastFrame();else if(!st.raf)draw();skLoop=requestAnimationFrame(step)};skLoop=requestAnimationFrame(step)}
+ let skBan=null,skBanKey='';
+ function skBanner(now){const act=SK.filter(k=>k.loops&&now-k.t0<k.loops*k.cycle);if(!st.el||!st.el.isConnected||!act.length){if(skBan){skBan.remove();skBan=null;skBanKey=''}return}
+  const k=act[act.length-1],key=k.fx.id+':'+act.length;if(skBan&&skBan.parentNode!==st.el){skBan.remove();skBan=null}
+  if(!skBan){skBan=document.createElement('div');skBan.className='skban';skBan.addEventListener('click',e=>{const b=e.target.closest('[data-skf]');if(!b)return;const t=SK.find(x=>x.fx.id===b.dataset.skf);if(t){flyTo(t.to,Math.max(st.scale,1.7));setTimeout(kick,950)}});st.el.appendChild(skBan);skBanKey=''}
+  if(key!==skBanKey){skBanKey=key;const air_=k.fx.kind==='air';skBan.classList.toggle('air',air_);skBan.innerHTML=`<span class="dot"></span><b>${air_?'✈ AIR STRIKE':'🚀 MISSILE ALERT'}</b><span class="t">${esc(k.fx.byName)} → ${esc(k.fx.toName)}${act.length>1?` <span class="mu">+${act.length-1} more</span>`:''}</span><button data-skf="${esc(k.fx.id)}">Find it</button>`}}
  function drawStrikes(ctr,w,h,r){if(!SK.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2];
   for(let i=SK.length-1;i>=0;i--)if(wall-(SK[i].fx.t||0)>SMOKE_MS)SK.splice(i,1);
-  for(const k of SK){const el=now-k.t0,tgVis=d3.geoDistance(ctr,k.to)<1.55,tg=proj(k.to),lift=.05+Math.min(.1,k.dist*.06);
+  for(const k of SK){const el=now-k.t0,tgVis=d3.geoDistance(ctr,k.to)<1.55,tg=proj(k.to),lift=.05+Math.min(.1,k.dist*.06),li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle;
    const at=s=>{const p=k.ip(s),xy=proj(p),q=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*q,c0[1]+(xy[1]-c0[1])*q],vis:d3.geoDistance(ctr,p)<1.6||Math.sin(Math.PI*s)>.3}};
    // lingering smoke over the target (fades over ten minutes)
    const arrive=k.dur,age=el-arrive;if(age>0&&tgVis){const fade=Math.max(0,1-(wall-(k.fx.t||wall)-k.dur)/SMOKE_MS),drift=Math.min(1,age/60000);
     const sway=Math.sin(wall/1400+k.jit[0][0]*3)*1.5;for(let j=0;j<4;j++){const jx=k.jit[j][0]*3+sway*j*.6,jy=-3-j*6-drift*6,rr=5+j*2.6+drift*3,g=ctx.createRadialGradient(tg[0]+jx,tg[1]+jy,0,tg[0]+jx,tg[1]+jy,rr);g.addColorStop(0,`rgba(190,190,196,${(.62-j*.1)*fade})`);g.addColorStop(.6,`rgba(150,150,158,${(.3-j*.05)*fade})`);g.addColorStop(1,'rgba(140,140,150,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(tg[0]+jx,tg[1]+jy,rr,0,7);ctx.fill()}
     {const e=ctx.createRadialGradient(tg[0],tg[1],0,tg[0],tg[1],5);e.addColorStop(0,`rgba(255,200,120,${.9*fade})`);e.addColorStop(1,'rgba(255,90,30,0)');ctx.fillStyle=e;ctx.beginPath();ctx.arc(tg[0],tg[1],5,0,7);ctx.fill()}
-    if(age<1800){const t=age/1800;for(let j=0;j<(k.fx.kind==='air'?5:Math.max(1,k.n-k.lostN));j++){const d0=j*.12;if(t<d0)continue;const tt=Math.min(1,(t-d0)/.35);if(tt>=1)continue;const x=tg[0]+k.jit[j][0]*9,y=tg[1]+k.jit[j][1]*7,g=ctx.createRadialGradient(x,y,0,x,y,10);g.addColorStop(0,`rgba(255,250,220,${1-tt})`);g.addColorStop(.4,`rgba(255,150,50,${.8*(1-tt)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.fill()}
+    const ia=active?elc-k.dur:age;if(ia>=0&&ia<1800){const t=ia/1800;for(let j=0;j<(k.fx.kind==='air'?5:Math.max(1,k.n-k.lostN));j++){const d0=j*.12;if(t<d0)continue;const tt=Math.min(1,(t-d0)/.35);if(tt>=1)continue;const x=tg[0]+k.jit[j][0]*9,y=tg[1]+k.jit[j][1]*7,g=ctx.createRadialGradient(x,y,0,x,y,10);g.addColorStop(0,`rgba(255,250,220,${1-tt})`);g.addColorStop(.4,`rgba(255,150,50,${.8*(1-tt)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.fill()}
      ctx.strokeStyle=`rgba(255,190,110,${.8*(1-t)})`;ctx.lineWidth=2*(1-t)+.5;ctx.beginPath();ctx.arc(tg[0],tg[1],6+t*22,0,7);ctx.stroke()}
 }
-   if(!k.ip||el>=k.dur||el<0)continue;const prog=el/k.dur,air_=k.fx.kind==='air';
-   if(prog<1&&tgVis){const pl=.5+.5*Math.sin(el/150);ctx.strokeStyle=`rgba(255,120,90,${.35+.4*pl})`;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(tg[0],tg[1],7+pl*3,0,7);ctx.stroke()}
+   // while the strike is replaying: a faint dashed flight path, pulsing launch and target markers, and an arrow on the rim if the target is round the back
+   if(active&&k.ip){const pl=.5+.5*Math.sin(now/220),col=k.fx.kind==='air'?'235,242,255':'255,140,90';ctx.setLineDash([4,5]);ctx.strokeStyle=`rgba(${col},${.22+.18*pl})`;ctx.lineWidth=1.2;ctx.beginPath();let pen=false;for(let q=0;q<=40;q++){const a=at(q/40);if(!a.vis){pen=false;continue}pen?ctx.lineTo(a.xy[0],a.xy[1]):ctx.moveTo(a.xy[0],a.xy[1]);pen=true}ctx.stroke();ctx.setLineDash([]);
+    if(d3.geoDistance(ctr,k.from)<1.55){const lp=proj(k.from);ctx.strokeStyle=`rgba(255,170,60,${.4+.5*pl})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(lp[0],lp[1],5+pl*4,0,7);ctx.stroke()}
+    if(tgVis){ctx.strokeStyle=`rgba(255,80,60,${.45+.45*pl})`;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(tg[0],tg[1],9+pl*5,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(tg[0]-15,tg[1]);ctx.lineTo(tg[0]-6,tg[1]);ctx.moveTo(tg[0]+6,tg[1]);ctx.lineTo(tg[0]+15,tg[1]);ctx.moveTo(tg[0],tg[1]-15);ctx.lineTo(tg[0],tg[1]-6);ctx.moveTo(tg[0],tg[1]+6);ctx.lineTo(tg[0],tg[1]+15);ctx.lineWidth=1;ctx.stroke()}
+    else{const ang=Math.atan2(tg[1]-c0[1],tg[0]-c0[0]),R0=r-16,x=c0[0]+Math.cos(ang)*R0,y=c0[1]+Math.sin(ang)*R0;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(-6,-8);ctx.lineTo(-2,0);ctx.lineTo(-6,8);ctx.closePath();ctx.fillStyle=`rgba(255,90,60,${.6+.4*pl})`;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.stroke();ctx.restore()}}
+   if(!k.ip||!active&&el>=k.dur||elc>=k.dur||el<0)continue;const prog=elc/k.dur,air_=k.fx.kind==='air';
+   if(prog<1&&tgVis&&!active){const pl=.5+.5*Math.sin(elc/150);ctx.strokeStyle=`rgba(255,120,90,${.35+.4*pl})`;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(tg[0],tg[1],7+pl*3,0,7);ctx.stroke()}
    for(let j=0;j<k.n;j++){const lag=air_?Math.abs(j-(k.n-1)/2)*.022:j*.05,lost=j>=k.n-k.lostN,stop=lost?k.stops[j]:1,s=Math.min(prog-lag,stop);if(s<=0)continue;
     const dead=lost&&prog-lag>stop,deadT=dead?(prog-stop)*k.dur/700:0;if(dead&&deadT>1)continue;
     const a=at(s),b=at(Math.max(0,s-.012));if(!a.vis)continue;let dx=a.xy[0]-b.xy[0],dy=a.xy[1]-b.xy[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;
