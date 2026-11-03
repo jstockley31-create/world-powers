@@ -466,7 +466,7 @@ window.claude={use:async n=>{await authed;return n==='db'?db:n==='user'?user:nul
 window.WP={me:()=>st.me,api,extra:{}};
 const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
-function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
+function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 function connect(){const es=new EventSource('/api/stream');
  es.addEventListener('init',e=>applyInit(JSON.parse(e.data)));
  es.addEventListener('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
@@ -779,7 +779,7 @@ const GL=(()=>{
  function fastFrame(){if(!st.baseOk||!st.el||!st.el.isConnected)return draw();const w=st.w,h=st.h,r=radius();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(baseCv,0,0);ctx.setTransform(st.dpr,0,0,st.dpr,0,0);proj.rotate(st.rot).scale(r).translate([w/2,h/2]);overlay([-st.rot[0],-st.rot[1]],w,h,r)}
  let labW=null,labC=[],candW=null,candS=null,mineS=[];function labels(){if(labW===W)return labC;labW=W;labC=[];for(const[u,n]of Object.entries(A)){const hs=hexesOf(u);if(!hs.length)continue;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}labC.push([u,n,[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI]])}labC.sort((a,b)=>(b[0]===uid)-(a[0]===uid)||hexesOf(b[0]).length-hexesOf(a[0]).length);return labC}
  const redraw=()=>{st.baseOk=false;if(!st.raf)st.raf=requestAnimationFrame(draw)};
- function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);size();redraw();if(SK.length){setTimeout(kick,50);smokeLoop()}}
+ function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);size();redraw();if(SK.length)setTimeout(kick,50);if(BURN.size)smokeLoop()}
  function ll(ev){const r=cv.getBoundingClientRect();proj.rotate(st.rot).scale(radius()).translate([st.w/2,st.h/2]);const p=proj.invert([ev.clientX-r.left,ev.clientY-r.top]);if(!p||!isFinite(p[0]))return null;if(d3.geoDistance(p,[-st.rot[0],-st.rot[1]])>Math.PI/2)return null;return p}
  const ptr=new Map();let moved=0,pinch=0,lastHover=0;
  let downX=0,downY=0,downTouch=false;
@@ -806,14 +806,16 @@ const GL=(()=>{
  const nukePhase=()=>{const f=st.fx;if(!f)return null;const el=performance.now()-f.t0,p=el/f.dur;return{p,left:Math.max(0,f.dur-el),ph:p<.13?'BOOST PHASE':p<.76?'MIDCOURSE · IN SPACE':p<1?'RE-ENTRY':'IMPACT'}};
  function stopMissile(){if(st.fx){const d=st.fx.done;st.fx=null;redraw();return d}return null}
  // ---- air and missile strikes, seen by everyone: planes in formation (or missile streaks) from the attacker's capital, then flashes and lingering smoke ----
- const SK=[],SMOKE_MS=2*60*60e3,FIRE_MS=25*60e3,reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;let skLoop=0;
+ const SK=[],BURN=new Map(),SMOKE_MS=24*60*60e3,FIRE_MS=2*60*60e3,SK_KEEP=20*60e3,reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;let skLoop=0;
  const seedOf=id=>{let h=7;for(const ch of String(id))h=(h*31+ch.charCodeAt(0))>>>0;return()=>((h=(h*16807)%2147483647)/2147483647)};
- function strike(fx){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const from=P[fx.from]?P[fx.from].c:null,to=P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
+ function strike(fx,quiet){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const from=P[fx.from]?P[fx.from].c:null,to=P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
   const dur=!from?0:air_?clamp(3800+dist*1300,3800,6500):clamp(3000+dist*1100,3000,5200),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
   const R=seedOf(fx.id),n=air_?clamp(Math.round((fx.n||5)/8),3,7):clamp(fx.n||1,1,10),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.max(0,n-(fx.hits==null?n:fx.hits));
   const D=reduce?0:dur,cycle=D+1800+1600,loops=!D?0:Math.max(4,Math.ceil(75000/cycle)); // replays for about 75 seconds so everyone has time to find it
   SK.push({fx,from,to,dist,dur:D,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:12},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
-  while(SK.length>300)SK.shift();kick();smokeLoop()}
+  while(SK.length>80)SK.shift();{const b=BURN.get(fx.h),hit=(fx.t||Date.now())+D;burn(fx.h,hit,quiet?(b?b.n:1):(b&&hit-b.t<SMOKE_MS?b.n:0)+1)}kick();smokeLoop()}
+ // a province on fire: last hit time and number of hits (from the server at login, then live)
+ function burn(h,t,n){if(!P[h]||!P[h].c)return;const b=BURN.get(h);if(b&&b.t>t&&b.n>=n)return;BURN.set(h,{t:Math.max(t,b?b.t:0),n:Math.min(20,Math.max(n||1,1))});siteKey=''}
  function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<Math.max(k.dur+1800,k.loops*k.cycle));skBanner(now);if(!busy||!st.el||!st.el.isConnected){skLoop=0;if(st.skLo){st.skLo=false;st.lo=false;size()}redraw();return}
   if(coarse&&!st.lo){st.lo=true;st.skLo=true;size();st.baseOk=false} // phones animate strikes at standard resolution (much cheaper), then sharpen when they settle
   if(st.baseOk&&!st.anim&&!st.raf)fastFrame();else if(!st.raf)draw();skLoop=requestAnimationFrame(step)};skLoop=requestAnimationFrame(step)}
@@ -835,16 +837,17 @@ const GL=(()=>{
   ctx.fillStyle=fill;ctx.fill();if(line){ctx.lineWidth=.75/sz;ctx.strokeStyle=line;ctx.stroke();ctx.beginPath();ctx.ellipse(3.4,0,1.5,.55,0,0,7);ctx.fillStyle='#34495f';ctx.fill();ctx.beginPath();ctx.moveTo(-1.6,0);ctx.lineTo(6,0);ctx.lineWidth=.35/sz;ctx.strokeStyle='rgba(255,255,255,.45)';ctx.stroke()}ctx.restore()}
  // every province that has been hit burns, then smoulders: one plume per province, bigger when it was hit several times
  let siteKey='',sites=[];
- function smokeSites(){const key=SK.length+':'+(SK.length?SK[SK.length-1].fx.id:'');if(key===siteKey)return sites;siteKey=key;const m=new Map();
-  for(const k of SK){const t=(k.fx.t||0)+k.dur,x=m.get(k.fx.h);if(x){x.n++;if(t>x.t)x.t=t}else m.set(k.fx.h,{c:k.to,v:unit(k.to),t,n:1,seed:seedOf('s'+k.fx.h)()})}
-  return sites=[...m.values()]}
+ function smokeSites(){if(siteKey)return sites;siteKey='ok';const now=Date.now();sites=[];
+  for(const[h,b]of BURN){if(now-b.t>SMOKE_MS){BURN.delete(h);continue}sites.push({c:P[h].c,v:unit(P[h].c),t:b.t,n:b.n,seed:seedOf('s'+h)()})}
+  sites.sort((a,b)=>b.t-a.t);return sites}
  function drawPlumes(cv,V){const wall=Date.now(),z=Math.max(.55,Math.min(2.4,st.scale*.75)),vis=[];
   for(const x of smokeSites()){const a=wall-x.t;if(a>=0&&a<SMOKE_MS&&dot(x.v,cv)>V)vis.push(x)}
+  if(vis.length>60){for(const x of vis.slice(60)){const g=proj(x.c);blit('scorch',G_SCORCH,g[0],g[1],(4.5+1.6*Math.min(4,x.n))*z,.5)}vis.length=60}
   const lite=vis.length>(coarse?10:25);
-  for(const x of vis){const a=wall-x.t,g=proj(x.c),life=a<SMOKE_MS*.55?1:1-(a-SMOKE_MS*.55)/(SMOKE_MS*.45),heat=Math.max(0,1-a/FIRE_MS),big=Math.min(1.9,.75+.25*x.n),H=(30+26*heat)*z*big*(.55+.45*life);
+  for(const x of vis){const a=wall-x.t,g=proj(x.c),life=a<SMOKE_MS*.5?1:1-(a-SMOKE_MS*.5)/(SMOKE_MS*.5),heat=Math.max(0,1-a/(FIRE_MS+Math.min(4,x.n-1)*18e5)),big=Math.min(1.9,.75+.25*x.n),H=(30+26*heat)*z*big*(.55+.45*life);
    blit('scorch',G_SCORCH,g[0],g[1]+.5*z,(4.5+1.6*Math.min(4,x.n))*z,.6*Math.min(1,life*1.6));
    // smoke rises in puffs that grow, drift east with the wind, and fade; thick and dark while it burns, thin and pale as it smoulders out
-   const N=lite?5:8+Math.min(6,x.n*2),per=7000+x.seed*3500,stage=a<30*60e3?0:a<75*60e3?1:2,dens=(.78+.2*heat)*life*(stage===2?.7:1);
+   const N=lite?5:8+Math.min(6,x.n*2),per=7000+x.seed*3500,stage=a<6*36e5?0:a<12*36e5?1:2,dens=(.78+.2*heat)*life*(stage===2?.7:1);
    for(let i=N-1;i>=0;i--){const ph=(wall/per+i/N+x.seed)%1,y=ph*H,dx=ph*ph*H*.75+Math.sin(wall/1700+i*1.9+x.seed*9)*1.4*z,rr=(2.6+ph*10)*z*big*(.7+.3*life),al=Math.pow(Math.sin(Math.PI*Math.min(1,ph*1.1)),.65)*dens,px=g[0]+dx,py=g[1]-2*z-y;
     // dark at the base, lighter as it rises and spreads; pale grey once it is only smouldering
     const lo=stage===0?ph<.45:stage===1?ph<.25:false,k2=lo?(stage===0?'smokeD':'smokeM'):(stage===0?'smokeM':'smoke'),g2=k2==='smokeD'?G_SMOKED:k2==='smokeM'?G_SMOKEM:G_SMOKE;
@@ -854,13 +857,13 @@ const GL=(()=>{
     const fs=z*Math.sqrt(big)*(.55+.45*heat);for(let j=0;j<(lite?1:3);j++){const f=.88+.12*Math.sin(wall/(380+j*170)+x.seed*20+j*2.3)+.05*Math.sin(wall/(230+j*90)+j);blit('fire',G_FIRE,g[0]+(j===1?-.9:j===2?.9:0)*z,g[1]-(1.6+j*1.5)*z,(2.6-j*.55)*fs*f,heat*(.85-j*.12)*f)} /* anchored flames: they only swell and dim gently, never jump */}}}
  // keep the smoke moving at a gentle frame rate while any of it is on screen
  let smT=0;function smokeLoop(){if(smT)return;const go=()=>{smT=0;if(!st.el||!st.el.isConnected||document.hidden)return;const wall=Date.now();
-  if(!SK.some(k=>wall-((k.fx.t||0)+k.dur)<SMOKE_MS))return;
+  let any=false;for(const[h,b]of BURN){if(wall-b.t<SMOKE_MS)any=true;else{BURN.delete(h);siteKey=''}}if(!any)return;
   const cv=unit([-st.rot[0],-st.rot[1]]),V=Math.cos(1.55);if(!skLoop&&!st.anim&&!st.raf&&!st.fx&&smokeSites().some(x=>wall-x.t>=0&&wall-x.t<SMOKE_MS&&dot(x.v,cv)>V))fastFrame();
   smT=setTimeout(go,coarse?130:66)};smT=setTimeout(go,66)}
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)smokeLoop()});
  const SAMP=48;function samples(k){if(k.sm||!k.ip)return k.sm;k.sm=[];for(let q=0;q<=SAMP;q++){const p=k.ip(q/SAMP);k.sm.push({p,v:unit(p)})}k.fv=unit(k.from);k.tv=unit(k.to);return k.sm}
  function drawStrikes(ctr,w,h,r){if(!SK.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2],cv=unit(ctr),V16=Math.cos(1.6),V155=Math.cos(1.55);
-  for(let i=SK.length-1;i>=0;i--)if(wall-(SK[i].fx.t||0)>SMOKE_MS+60e3){SK.splice(i,1);siteKey=''}
+  for(let i=SK.length-1;i>=0;i--)if(wall-(SK[i].fx.t||0)>SK_KEEP)SK.splice(i,1)
   drawPlumes(cv,V155);
   // at most six flights are animated at once (the newest), and none while a nuclear missile is in the air
   const nukeOn=!!st.fx&&now-st.fx.t0<st.fx.dur+1400;let animLeft=nukeOn?0:6;
@@ -922,7 +925,7 @@ const GL=(()=>{
     else{const q=(prog-RE)/(1-RE),fl=.8+Math.random()*.4,rr=(10+q*14)*fl,g=ctx.createRadialGradient(x,y,0,x,y,rr);g.addColorStop(0,'rgba(255,255,240,1)');g.addColorStop(.25,`rgba(255,${200-q*60|0},110,.95)`);g.addColorStop(.6,'rgba(255,90,30,.45)');g.addColorStop(1,'rgba(255,60,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,rr,0,7);ctx.fill()}}}
   else{const t=(el-f.dur)/1400;for(const[k,col]of[[1,'255,240,200'],[.65,'255,140,40'],[.35,'160,255,90']]){const rr=r*.32*k*Math.pow(t,.6);ctx.strokeStyle=`rgba(${col},${(1-t)*.9})`;ctx.lineWidth=3*(1-t)+1;ctx.beginPath();ctx.arc(tg[0],tg[1],rr,0,7);ctx.stroke()}
    const g=ctx.createRadialGradient(tg[0],tg[1],0,tg[0],tg[1],r*.22);g.addColorStop(0,`rgba(255,255,235,${1-t})`);g.addColorStop(.4,`rgba(255,150,50,${.7*(1-t)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(tg[0],tg[1],r*.22,0,7);ctx.fill()}}
- return{attach,redraw,flyTo,missile,stopMissile,nukePhase,coarse,strike,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
+ return{attach,redraw,flyTo,missile,stopMissile,nukePhase,coarse,strike,burn,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
 function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl"><button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
@@ -1575,7 +1578,7 @@ refreshW();
  if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
  let gotN=false,gotC=false,hadMine=false;
  db.collection('nations').onSnapshot(s=>{N={};s.docs.forEach(d=>{if(d.exists)N[d.id]=d.data()});
-  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const fx of (WP.extra&&WP.extra.strikes)||[])GL.strike(fx)}catch(e){}setTimeout(function away_(){if(nukeBusy||document.querySelector('.nkflash'))return setTimeout(away_,3000);if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
+  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const b of (WP.extra&&WP.extra.burn)||[])GL.burn(b[0],b[1],b[2]);for(const fx of (WP.extra&&WP.extra.strikes)||[])GL.strike(fx,true)}catch(e){}setTimeout(function away_(){if(nukeBusy||document.querySelector('.nkflash'))return setTimeout(away_,3000);if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
   if(N[uid])hadMine=true;else if(hadMine){hadMine=false;if(!X().fallen)toast('Your nation was reset by an administrator.')}
   refreshSoon();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
  db.collection('chat').onSnapshot(s=>{CH={};s.docs.forEach(d=>{if(d.exists)CH[d.id]=d.data()});if(uid&&CH[uid]&&!gotC)myChat=(CH[uid].m||[]).slice();gotC=true;if(uid&&myChat.length&&CH[uid])CH[uid]={m:myChat};renderChat();if(page==='chat'||deskChatOpen())markChatSeen();else chatBadge();renderSide()},()=>{});
