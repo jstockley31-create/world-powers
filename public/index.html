@@ -341,6 +341,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 /* strike note */
 .sknote{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 20px));background:#0f151cf2;border:1px solid var(--bd2);border-left:3px solid #e3b341;border-radius:10px;padding:8px 8px 8px 12px;box-shadow:0 10px 30px #0009;font-size:13px;animation:skIn .25s ease-out}
 .sknote.hit{border-left-color:var(--rd);background:#1c1012f2}
+.sknote.win{border-left-color:var(--gn);background:#0f1a14f2}#btCard{bottom:140px}@media(max-width:820px){#btCard{bottom:calc(130px + env(safe-area-inset-bottom))}}
 .sknote .ic{font-size:18px;line-height:1}.sknote>span:nth-child(2){flex:1;min-width:0}.sknote small{display:block;color:var(--mu);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .incal{position:fixed;will-change:transform;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:12px;width:min(620px,calc(100vw - 16px));background:#2a0f12f7;border:1px solid #e5534b;border-radius:12px;padding:10px 10px 10px 14px;box-shadow:0 0 0 1px #e5534b55,0 14px 40px #000c,0 0 40px #e5534b44;animation:skIn .25s ease-out}
 .incal::after{content:'';position:absolute;inset:-2px;border-radius:13px;border:2px solid #ff5b52;opacity:0;pointer-events:none}.incal.pulse::after{animation:incP .9s ease-out 3}@keyframes incP{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
@@ -678,7 +679,16 @@ async function cmd(body,okMsg,url='/api/cmd'){if(busy)return null;busy=true;cons
  finally{busy=false;document.body.style.cursor='';if(btn)btn.classList.remove('loading')}}
 const doAct=(k,arg)=>cmd({c:'act',k,arg:arg!=null?+arg:undefined});
 const decide=(id,o)=>cmd({c:'decide',id,o});
+// after you attack: close the planner, take you to the battlefield on the globe, and show the result as a small card (full report one tap away)
+function goWatch(h,scale){if(!P[h])return;closeModal();const go=()=>GL.flyTo(P[h].c,Math.max(GL.st.scale,scale||2));if(page!=='world'){page='world';render();setTimeout(go,350)}else go()}
+function battleCard(b){const old=$('btCard');if(old)old.remove();const el=document.createElement('div');el.id='btCard';el.className='sknote bt '+(b.win?'win':'hit');
+ const t=b.conquered?'CONQUEST':b.win?'VICTORY':'DEFEAT';
+ el.innerHTML=`<span class="ic">${b.win?'🏆':'⚔'}</span><span><b>${t}</b> — ${esc(pname(b.h))}${b.win&&!b.conquered?' is now yours':''}<small>Your losses ${num(b.lossA)} · enemy losses ${num(b.lossD)}${b.loot?` · seized ${money(b.loot)}`:''}${b.sanctioned?' · sanctions imposed':''}</small></span><button class="btn sm" data-bt="d">Details</button><button class="btn sm ghost" data-bt="x" aria-label="Dismiss">✕</button>`;
+ el.addEventListener('click',ev=>{const k=ev.target.closest('[data-bt]');if(!k)return;el.remove();if(k.dataset.bt==='d')battleReport(b)});
+ document.body.appendChild(el);setTimeout(()=>{if(el.isConnected){el.classList.add('out');setTimeout(()=>el.remove(),400)}},12000)}
 async function attack(h,Xt,AIR){const r=await cmd({c:'attack',h,x:Xt,air:AIR},false);if(!r||!r.battle)return;planner=null;const b=r.battle;
+ goWatch(b.h,2.2);setTimeout(()=>battleCard(b),450);setTimeout(()=>{if(b.win){SND.play('win');confetti()}else SND.play('lose')},700)}
+function battleReport(b){
  const bar=(l,v,max,col)=>`<div>${l} — <b style="color:#fff">${num(v)}</b><div class="b"><i style="background:${col}" data-w="${Math.min(100,v/max*100)}"></i></div></div>`;
  const mx=Math.max(b.atk,b.def,1),nv=b.naval;
  modal(`<header><h2>${b.conquered?'Conquest':b.win?'Victory':'Defeat'}${b.route==='ocean'?' — overseas invasion':b.route==='sea'?' — amphibious assault':b.route==='march'?` — ${num(b.km)} km offensive`:''}</h2></header><div class="bd"><p style="margin-top:0">You committed <b>${num(b.X)}</b> troops${b.air?` and <b>${num(b.air)}</b> aircraft`:''} against ${esc(pname(b.h))}.</p>
@@ -686,8 +696,7 @@ async function attack(h,Xt,AIR){const r=await cmd({c:'attack',h,x:Xt,air:AIR},fa
  ${b.atk?`<div class="bars">${bar('Your strength',b.atk,mx,'var(--bl)')}${bar('Their defense',b.def,mx,'var(--rd)')}</div>`:''}
  <div class="reveal"><div class="stats" style="margin:12px 0"><div class="st"><span>Your losses</span><b class="rd">${num(b.lossA)}</b>${b.airLostA?`<small>${b.airLostA} aircraft</small>`:''}</div><div class="st"><span>Enemy losses</span><b class="gn">${num(b.lossD)}</b>${b.airLostD?`<small>${b.airLostD} aircraft</small>`:''}</div></div>
  ${b.conquered?`<p><b>The capital has fallen and the nation is no more.</b> You seized ${money(b.loot)} and half its stockpiles.</p>`:b.win?`<p>The province is now under your control${b.loot?`, and ${money(b.loot)} was seized`:''}.</p>`:''}<p class="mu">Your forces regroup for 30 minutes (defense −25%). Aggression rises${b.sanctioned?'. <b class="rd">The international community has imposed sanctions on you.</b>':'.'}</p><button class="btn pri" data-act="close">Continue</button></div></div>`);
- requestAnimationFrame(()=>setTimeout(()=>document.querySelectorAll('#mod .bars i').forEach(i=>i.style.width=i.dataset.w+'%'),60));
- setTimeout(()=>{if(b.win){SND.play('win');confetti()}else{SND.play('lose');const p=document.querySelector('#mod .panel');if(p)p.classList.add('shake')}},950)}
+ requestAnimationFrame(()=>setTimeout(()=>document.querySelectorAll('#mod .bars i').forEach(i=>i.style.width=i.dataset.w+'%'),60))}
 const DIP={
  war(u){if(!CFG.war)return toast('Warfare is currently disabled by the administrators.');if(rankOf(me.xp)<2)return toast('You must reach the rank of Mayor to declare war.');ask(`Declare war on ${esc(nm(u))}?`,`This is public. Every 10 minutes at war lowers your approval and slows your economy, and any alliance or trade agreement with them ends.`,'Declare war',()=>cmd({c:'dip',kind:'war',v:u},false))},
  peace:u=>cmd({c:'dip',kind:'peace',v:u},false),ally:u=>cmd({c:'dip',kind:'ally',v:u},false),unally:u=>cmd({c:'dip',kind:'unally',v:u},false),trade:u=>cmd({c:'dip',kind:'trade',v:u},false),untrade:u=>cmd({c:'dip',kind:'untrade',v:u},false),noally:u=>cmd({c:'dip',kind:'noally',v:u}),notrade:u=>cmd({c:'dip',kind:'notrade',v:u}),nopeace:u=>cmd({c:'dip',kind:'nopeace',v:u}),
@@ -800,7 +809,7 @@ const GL=(()=>{
  function strike(fx){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const from=P[fx.from]?P[fx.from].c:null,to=P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
   const dur=!from?0:air_?clamp(3800+dist*1300,3800,6500):clamp(2200+dist*800,2200,3800),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
   const R=seedOf(fx.id),n=air_?clamp(Math.round((fx.n||5)/8),3,6):clamp(fx.n||1,1,5),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.max(0,n-(fx.hits==null?n:fx.hits));
-  const D=reduce?0:dur,loops=!D?0:air_?3:4,cycle=D+1800+1600;
+  const D=reduce?0:dur,cycle=D+1800+1600,loops=!D?0:Math.max(4,Math.ceil(75000/cycle)); // replays for about 75 seconds so everyone has time to find it
   SK.push({fx,from,to,dist,dur:D,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:8},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
   while(SK.length>40)SK.shift();kick()}
  function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<Math.max(k.dur+1800,k.loops*k.cycle));skBanner(now);if(!busy||!st.el||!st.el.isConnected){skLoop=0;if(st.skLo){st.skLo=false;st.lo=false;size()}redraw();return}
@@ -1422,7 +1431,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'bugsend':{const text=$('bgText').value.trim();if(text.length<5)return toast('Please describe what happened.');let img;const f=$('bgImg').files[0];if(f){try{img=await shrinkImage(f)}catch(err){return toast(err.message)}}
   const r=await cmd({text,img,page,screen:innerWidth+'x'+innerHeight,errors:ERRS},false,'/api/bug');if(r){closeModal();toast('Thank you — your report was sent to the administrator.')}break}
  case'saveacct':{const r=await cmd({name:$('svName').value,email:$('svEmail').value,password:$('svPw').value,agree:$('svAgree').checked},false,'/api/account/save');if(r){toast('Your account is saved. Welcome, '+r.me.name+'!');setTimeout(()=>location.reload(),900)}break}
- case'pstrike':{const v=planner.v,kind=$('skKind').value;const r=await cmd({c:'strike',v,kind,target:$('skTarget').value,n:+$('skN').value},false);if(r){toast(r.msg);SND.play('win');setTimeout(()=>{if(planner)drawPlanner()},500)}break}
+ case'pstrike':{const v=planner.v,kind=$('skKind').value;const r=await cmd({c:'strike',v,kind,target:$('skTarget').value,n:+$('skN').value},false);if(r){toast(r.msg);SND.play('win');followStrike=Date.now()+20000;planner=null;if(A[v]&&P[A[v].cap])goWatch(A[v].cap,1.6);else closeModal()}break}
  case'warhead':ask('Assemble a nuclear warhead?',`This costs ${money(C.WARHEAD.cash)}, ${num(C.WARHEAD.steel)} steel, ${num(C.WARHEAD.oil)} oil and ${num(C.WARHEAD.goods)} goods, and takes ${CFG.nukeTest?'1 minute (test mode)':C.WARHEAD.buildH+' hours'}. Every nation will be warned that you are building it, and your aggression rises by 20.`,'Begin assembly',()=>cmd({c:'warhead'}));break;
  case'launch':{const v=a,t=A[v];if(!t)break;const opts=hexesOf(v).map(h=>`<option value="${h}" ${h==t.cap?'selected':''}>${esc(pname(h))}${h==t.cap?' (capital)':''}</option>`).join('');ask(`☢ Launch a nuclear strike on ${esc(t.name)}?`,`There is no undo. 25% of ${esc(t.name)}'s people and half its army will die, its GDP falls 40% and its taxes stop for ${C.WARHEAD.nukedH} hours. Fallout will hit every nation within ${num(C.WARHEAD.km)} km — possibly your own — and the whole world enters a nuclear winter. You will be a rogue state for 72 hours, your allies will leave you${C.warheadReady(W,t)?`, and <b>${esc(t.name)} has an armed warhead that will fire back at your capital</b>`:''}.<br><br><label class="mu" style="font-size:13px">Target province</label><br><select id="nkH" style="width:100%;margin-top:4px">${opts}</select>`,'☢ LAUNCH',()=>{});const sel=()=>$('nkH')&&$('nkH').value;askFn=null;const yes=document.querySelector('[data-act=askyes]');if(yes){yes.dataset.act='launchgo';yes.dataset.a=v}break}
  case'launchgo':{const h=$('nkH')?$('nkH').value:'';closeModal();cmd({c:'launch',v:a,h}).then(r=>{if(r&&r.nuked)toast(r.msg)});break}
@@ -1457,9 +1466,10 @@ window.addEventListener('wp-config',e=>{CFG={...CFG,...e.detail};if(loaded)refre
 window.addEventListener('wp-announce',e=>{toast(e.detail.text);SND.play('note')});
 window.addEventListener('wp-nuke',e=>nukeQueue(e.detail));
 // strikes: everyone sees the flight on the globe and a short note; the camera only moves for the nation being hit, and only on the World page
-let skNoteAt=0,skFlyAt=0;
+let skNoteAt=0,skFlyAt=0,followStrike=0;
 window.addEventListener('wp-strike',e=>{const fx=e.detail;if(!fx)return;GL.strike(fx);const mine=fx.to===uid||fx.by===uid,ally=uid&&A[uid]&&(C.allies(W,uid).includes(fx.to)||C.allies(W,uid).includes(fx.by));
  if(fx.to===uid&&page==='world'&&P[fx.h]&&!nukeBusy&&Date.now()-skFlyAt>30000){skFlyAt=Date.now();GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6))} // swing to the first strike on you, not every one
+ if(fx.by===uid&&Date.now()<followStrike&&P[fx.h]&&!nukeBusy){followStrike=0;if(page==='world')GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6))}
  if(fx.to===uid){incoming(fx);return}
  if(nukeBusy||(!mine&&!ally&&Date.now()-skNoteAt<20000))return;skNoteAt=Date.now();strikeNote(fx)});
 // INCOMING: a strike on your nation pops a red alert on top of everything (any page, any open window) until you deal with it

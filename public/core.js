@@ -375,7 +375,7 @@ function Core(PD, CARDS) {
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, n); if (cf) return cf; }
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
-    const theyHitMe = (n.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR);
+    const theyHitMe = hitRecently(W, u, v);
     // AI nations get none of the protections meant for real players
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
     const fairWar = (R(W, u, v).fair || 0) === 1;
@@ -448,7 +448,17 @@ function Core(PD, CARDS) {
   function pushOut(W, u, e) { const n = W.A[u]; e.id = rid(); e.t = W.now; n.out = [e, ...(n.out || [])].slice(0, 80); }
   function news(W, u, t) { pushOut(W, u, { type: 'news', x: t }); log(W.A[u], t, W); W.news.push(t); }
   const note = (W, u, kind, text) => { if (W.A[u]) W.notes.push({ u, kind, text }); };
-  const aggrHit = (W, u, v, how) => (W.hits = W.hits || []).push({ u, v, how });
+  const aggrHit = (W, u, v, how) => { (W.hits = W.hits || []).push({ u, v, how }); const d = W.A[v]; if (d) { d.hitBy = d.hitBy || {}; d.hitBy[u] = W.now; } };
+  // did v hit u (any battle, air or missile strike, or nuke) in the last 24 hours?
+  const hitRecently = (W, u, v) => { const n = W.A[u], a = W.A[v]; if (!n || !a) return false; return (n.hitBy && W.now - (n.hitBy[v] || 0) < 24 * HOUR) || (a.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR); };
+  // fighting back is not aggression: u is defending against v if v started this war on u, joined it against u's pact, or v hit u or one of u's allies in the last day
+  function defending(W, u, v) {
+    const mine = R(W, u, v), theirs = R(W, v, u), since = warSince(W, u, v);
+    if (mine.def) return true;
+    for (const a of allies(W, u)) if (hitRecently(W, a, v)) return true;
+    if (since && (mine.war || 0) === since && (mine.war || 0) > (theirs.war || 0)) return false; // you started this war: you stay the aggressor
+    return (since && (theirs.war || 0) === since) || hitRecently(W, u, v);
+  }
   function gainXP(W, u, x) { const n = W.A[u]; const b = rankOf(n.xp); n.xp = (n.xp || 0) + Math.round(x * W.cfg.xp * fxMul(n, 'xp')); const a = rankOf(n.xp); if (a > b) { news(W, u, `${n.name} has risen to the rank of ${RANKS[a][1]}.`); W.promoted = RANKS[a][1]; note(W, u, 'rank', `You have been promoted to ${RANKS[a][1]}.`); } }
   const touch = (W, ...us) => us.forEach(u => W.changed.add(u));
   // a nation is conquered: remove it and every reference to it; the server deletes the document and tells the player
@@ -570,7 +580,7 @@ function Core(PD, CARDS) {
     if (shipsNeeded > me.ships) fail(`${OCEAN ? 'An overseas' : 'A sea'} invasion of ${num(X)} troops needs ${shipsNeeded} warships to carry them (${perShip} troops each). You have ${me.ships}.`);
     const c = atkCost(W, X), cx = routeCostX(RCH, me); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx); c.food = Math.ceil(c.food * cx); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${c.oil + AIR * 2} oil and ${c.food} food.`);
     const v = owner(W, h), d = W.A[v];
-    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN ? 60 : MARCH ? 45 : 30) * MIN; const retal = (d.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR); me.aggr = Math.min(100, (me.aggr || 0) + (rogue(W, d) ? 0 : retal ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1))); rogueCheck(W, u);
+    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN ? 60 : MARCH ? 45 : 30) * MIN; const retal = defending(W, u, v); me.aggr = Math.min(100, (me.aggr || 0) + (rogue(W, d) ? 0 : retal ? 1 : hitRecently(W, u, v) ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1))); rogueCheck(W, u);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : me.gov === 'dic' ? 1 : 2), 0, 100); me.stability = clamp(me.stability - 1.5, 0, 100);
     const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null };
     // 1) naval battle for sea invasions
@@ -631,7 +641,7 @@ function Core(PD, CARDS) {
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, n); if (cf) return cf; }
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
-    const theyHitMe = (n.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR);
+    const theyHitMe = hitRecently(W, u, v);
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
     if (left(W, me, 'strike')) return `Your strike forces are rearming: ${fmtT(left(W, me, 'strike'))}.`;
     return null;
@@ -658,7 +668,7 @@ function Core(PD, CARDS) {
     if (target === 'stock') { const f = Math.min(.3, P * .004); for (const r in RES) { dmg[r] = Math.floor((d.res[r] || 0) * f); d.res[r] -= dmg[r]; } }
     else if (target === 'infra') { const lv = P >= 40 ? 2 : P >= 15 ? 1 : 0; dmg.infra = Math.min(d.infra || 0, lv); d.infra -= dmg.infra; dmg.gdp = Math.min(.05, P * .0008); d.gdp = (d.gdp || 0) * (1 - dmg.gdp); }
     else { dmg.troops = Math.min(Math.floor((d.troops || 0) * .15), Math.round(P * 25)); d.troops -= dmg.troops; dmg.ships = Math.min(d.ships || 0, Math.floor(P / 15)); d.ships -= dmg.ships; dmg.air = Math.min(d.air || 0, Math.floor(P / 20)); d.air -= dmg.air; }
-    me.cd.strike = W.now + 30 * MIN; me.aggr = Math.min(100, (me.aggr || 0) + (rogue(W, d) ? 0 : 8) * (measure(W, d, 'guarantee') ? 2 : 1)); rogueCheck(W, u); me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : 2), 0, 100);
+    me.cd.strike = W.now + 30 * MIN; me.aggr = Math.min(100, (me.aggr || 0) + (rogue(W, d) ? 0 : defending(W, u, v) ? 1 : hitRecently(W, u, v) ? 3 : 8 * (measure(W, d, 'guarantee') ? 2 : 1))); rogueCheck(W, u); me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : 2), 0, 100);
     const what = target === 'stock' ? 'stockpiles' : target === 'infra' ? 'infrastructure' : 'military';
     const sum = target === 'stock' ? (Object.entries(dmg).filter(([, x]) => x > 0).map(([r, x]) => `${num(x)} ${r}`).join(', ') || 'almost nothing') + ' destroyed'
       : target === 'infra' ? (dmg.infra ? `infrastructure −${dmg.infra} level${dmg.infra > 1 ? 's' : ''}` : 'no infrastructure destroyed') + `, GDP −${(dmg.gdp * 100).toFixed(1)}%`
@@ -762,7 +772,7 @@ function Core(PD, CARDS) {
   // collective defense: a pact member goes to war with whoever attacked a fellow member (fair war: the aggressor started it)
   function pactWar(W, m, aggr, victim) {
     const me = W.A[m], them = W.A[aggr], vic = W.A[victim]; if (!me || !them || !vic || m === aggr || atWar(W, m, aggr)) return false;
-    const t = W.now; setRel(me, aggr, 'war', t); setRel(me, aggr, 'unally', t); setRel(me, aggr, 'untrade', t); me.rel[aggr].fair = 1;
+    const t = W.now; setRel(me, aggr, 'war', t); setRel(me, aggr, 'unally', t); setRel(me, aggr, 'untrade', t); me.rel[aggr].fair = 1; me.rel[aggr].def = 1;
     log(me, `Under the Collective Defense Pact you are now at war with ${them.name}, which attacked ${vic.name}.`, W); log(them, `${me.name} declared war on you under a Collective Defense Pact after your attack on ${vic.name}.`, W);
     note(W, m, 'war', `Collective Defense Pact: ${them.name} attacked ${vic.name}. You are now at war with ${them.name}.`); note(W, aggr, 'war', `${me.name} has declared war on you under a Collective Defense Pact.`);
     touch(W, m, aggr); return true;
@@ -932,7 +942,7 @@ function Core(PD, CARDS) {
       - Math.max(0, n.unemp - 6) * .8 - Math.max(0, n.infl - 4) * .5 + (n.health - 50) * .08 + (n.edu - 50) * .03 + W.m.apBonus + fxAdd(n, 'ap');
     n.approval = clamp(n.approval + (apT - n.approval) * .1, 0, 100);
     const stT = 30 + n.approval * .5 + g.st + n.fort + fxAdd(n, 'st') - w * 5 - (n.aggr || 0) * .1 - Math.max(0, n.unemp - 10) * .5; n.stability = clamp(n.stability + (stT - n.stability) * .08, 0, 100);
-    n.aggr = Math.max(0, (n.aggr || 0) - W.m.aggrDecay);
+    n.aggr = Math.max(0, (n.aggr || 0) - W.m.aggrDecay); if (n.hitBy) for (const k of Object.keys(n.hitBy)) if (W.now - n.hitBy[k] > 48 * HOUR) delete n.hitBy[k];
     if (nuked(W, n)) { n.pop *= .998; n.stability = clamp(n.stability - .2, 0, 100); }
     if (rogue(W, n)) { n.approval = clamp(n.approval - .1, 0, 100); n.stability = clamp(n.stability - .1, 0, 100); }
     if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; delete n.hexes[h]; delete W.OWN[h]; news(W, u, `Separatists in ${pname(h)} declared independence from ${n.name}.`); note(W, u, 'economy', `Separatists in ${pname(h)} declared independence.`); } }
@@ -1204,7 +1214,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
