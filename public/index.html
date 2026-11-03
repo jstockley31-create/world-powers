@@ -797,40 +797,49 @@ const GL=(()=>{
   const D=reduce?0:dur,loops=!D?0:air_?3:4,cycle=D+1800+1600;
   SK.push({fx,from,to,dist,dur:D,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:8},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
   while(SK.length>40)SK.shift();kick()}
- function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<Math.max(k.dur+1800,k.loops*k.cycle));skBanner(now);if(!busy||!st.el||!st.el.isConnected){skLoop=0;redraw();return}
+ function kick(){if(skLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now(),busy=SK.some(k=>now-k.t0<Math.max(k.dur+1800,k.loops*k.cycle));skBanner(now);if(!busy||!st.el||!st.el.isConnected){skLoop=0;if(st.skLo){st.skLo=false;st.lo=false;size()}redraw();return}
+  if(coarse&&!st.lo){st.lo=true;st.skLo=true;size();st.baseOk=false} // phones animate strikes at standard resolution (much cheaper), then sharpen when they settle
   if(st.baseOk&&!st.anim&&!st.raf)fastFrame();else if(!st.raf)draw();skLoop=requestAnimationFrame(step)};skLoop=requestAnimationFrame(step)}
  let skBan=null,skBanKey='';
  function skBanner(now){const act=SK.filter(k=>k.loops&&now-k.t0<k.loops*k.cycle);if(!st.el||!st.el.isConnected||!act.length){if(skBan){skBan.remove();skBan=null;skBanKey=''}return}
   const k=act[act.length-1],key=k.fx.id+':'+act.length;if(skBan&&skBan.parentNode!==st.el){skBan.remove();skBan=null}
   if(!skBan){skBan=document.createElement('div');skBan.className='skban';skBan.addEventListener('click',e=>{const b=e.target.closest('[data-skf]');if(!b)return;const t=SK.find(x=>x.fx.id===b.dataset.skf);if(t){flyTo(t.to,Math.max(st.scale,1.7));setTimeout(kick,950)}});st.el.appendChild(skBan);skBanKey=''}
   if(key!==skBanKey){skBanKey=key;const air_=k.fx.kind==='air';skBan.classList.toggle('air',air_);skBan.innerHTML=`<span class="dot"></span><b>${air_?'✈ AIR STRIKE':'🚀 MISSILE ALERT'}</b><span class="t">${esc(k.fx.byName)} → ${esc(k.fx.toName)}${act.length>1?` <span class="mu">+${act.length-1} more</span>`:''}</span><button data-skf="${esc(k.fx.id)}">Find it</button>`}}
- function drawStrikes(ctr,w,h,r){if(!SK.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2];
+ // cheap drawing helpers: glows are pre-rendered once and pasted, positions come from samples computed when the strike arrives
+ const SPR={},RAD=Math.PI/180,unit=c=>{const l=c[0]*RAD,f=c[1]*RAD,cf=Math.cos(f);return[cf*Math.cos(l),cf*Math.sin(l),Math.sin(f)]},dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+ function spr(key,stops){let c=SPR[key];if(c)return c;c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d'),g=x.createRadialGradient(32,32,0,32,32,32);for(const[o,col]of stops)g.addColorStop(o,col);x.fillStyle=g;x.fillRect(0,0,64,64);return SPR[key]=c}
+ const blit=(key,stops,x,y,rr,a)=>{if(a<=0)return;ctx.globalAlpha=Math.min(1,a);ctx.drawImage(spr(key,stops),x-rr,y-rr,rr*2,rr*2);ctx.globalAlpha=1};
+ const G_SMOKE=[[0,'rgba(190,190,196,1)'],[.6,'rgba(150,150,158,.48)'],[1,'rgba(140,140,150,0)']],G_EMBER=[[0,'rgba(255,200,120,1)'],[1,'rgba(255,90,30,0)']],G_FLASH=[[0,'rgba(255,250,220,1)'],[.4,'rgba(255,150,50,.8)'],[1,'rgba(255,80,20,0)']],G_HEAD=[[0,'rgba(255,255,235,1)'],[1,'rgba(255,140,50,0)']],G_BURST=[[0,'rgba(255,220,150,1)'],[1,'rgba(255,90,30,0)']];
+ const SAMP=48;function samples(k){if(k.sm||!k.ip)return k.sm;k.sm=[];for(let q=0;q<=SAMP;q++){const p=k.ip(q/SAMP);k.sm.push({p,v:unit(p)})}k.fv=unit(k.from);k.tv=unit(k.to);return k.sm}
+ function drawStrikes(ctr,w,h,r){if(!SK.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2],cv=unit(ctr),V16=Math.cos(1.6),V155=Math.cos(1.55);
   for(let i=SK.length-1;i>=0;i--)if(wall-(SK[i].fx.t||0)>SMOKE_MS)SK.splice(i,1);
-  for(const k of SK){const el=now-k.t0,tgVis=d3.geoDistance(ctr,k.to)<1.55,tg=proj(k.to),lift=.05+Math.min(.1,k.dist*.06),li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle;
-   const at=s=>{const p=k.ip(s),xy=proj(p),q=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*q,c0[1]+(xy[1]-c0[1])*q],vis:d3.geoDistance(ctr,p)<1.6||Math.sin(Math.PI*s)>.3}};
-   // lingering smoke over the target (fades over ten minutes)
-   const arrive=k.dur,age=el-arrive;if(age>0&&tgVis){const fade=Math.max(0,1-(wall-(k.fx.t||wall)-k.dur)/SMOKE_MS),drift=Math.min(1,age/60000);
-    const sway=Math.sin(wall/1400+k.jit[0][0]*3)*1.5;for(let j=0;j<4;j++){const jx=k.jit[j][0]*3+sway*j*.6,jy=-3-j*6-drift*6,rr=5+j*2.6+drift*3,g=ctx.createRadialGradient(tg[0]+jx,tg[1]+jy,0,tg[0]+jx,tg[1]+jy,rr);g.addColorStop(0,`rgba(190,190,196,${(.62-j*.1)*fade})`);g.addColorStop(.6,`rgba(150,150,158,${(.3-j*.05)*fade})`);g.addColorStop(1,'rgba(140,140,150,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(tg[0]+jx,tg[1]+jy,rr,0,7);ctx.fill()}
-    {const e=ctx.createRadialGradient(tg[0],tg[1],0,tg[0],tg[1],5);e.addColorStop(0,`rgba(255,200,120,${.9*fade})`);e.addColorStop(1,'rgba(255,90,30,0)');ctx.fillStyle=e;ctx.beginPath();ctx.arc(tg[0],tg[1],5,0,7);ctx.fill()}
-    const ia=active?elc-k.dur:age;if(ia>=0&&ia<1800){const t=ia/1800;for(let j=0;j<(k.fx.kind==='air'?5:Math.max(1,k.n-k.lostN));j++){const d0=j*.12;if(t<d0)continue;const tt=Math.min(1,(t-d0)/.35);if(tt>=1)continue;const x=tg[0]+k.jit[j][0]*9,y=tg[1]+k.jit[j][1]*7,g=ctx.createRadialGradient(x,y,0,x,y,10);g.addColorStop(0,`rgba(255,250,220,${1-tt})`);g.addColorStop(.4,`rgba(255,150,50,${.8*(1-tt)})`);g.addColorStop(1,'rgba(255,80,20,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.fill()}
-     ctx.strokeStyle=`rgba(255,190,110,${.8*(1-t)})`;ctx.lineWidth=2*(1-t)+.5;ctx.beginPath();ctx.arc(tg[0],tg[1],6+t*22,0,7);ctx.stroke()}
-}
-   // while the strike is replaying: a faint dashed flight path, pulsing launch and target markers, and an arrow on the rim if the target is round the back
-   if(active&&k.ip){const pl=.5+.5*Math.sin(now/220),col=k.fx.kind==='air'?'235,242,255':'255,140,90';ctx.setLineDash([4,5]);ctx.strokeStyle=`rgba(${col},${.22+.18*pl})`;ctx.lineWidth=1.2;ctx.beginPath();let pen=false;for(let q=0;q<=40;q++){const a=at(q/40);if(!a.vis){pen=false;continue}pen?ctx.lineTo(a.xy[0],a.xy[1]):ctx.moveTo(a.xy[0],a.xy[1]);pen=true}ctx.stroke();ctx.setLineDash([]);
-    if(d3.geoDistance(ctr,k.from)<1.55){const lp=proj(k.from);ctx.strokeStyle=`rgba(255,170,60,${.4+.5*pl})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(lp[0],lp[1],5+pl*4,0,7);ctx.stroke()}
+  // at most six flights are animated at once (the newest), and none while a nuclear missile is in the air
+  const nukeOn=!!st.fx&&now-st.fx.t0<st.fx.dur+1400;let animLeft=nukeOn?0:6;
+  for(let ki=SK.length-1;ki>=0;ki--){const k=SK[ki],el=now-k.t0,li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle;k.anim=active&&elc<k.dur&&animLeft-->0}
+  for(const k of SK){const el=now-k.t0,tv=k.tv||(k.tv=unit(k.to)),tgVis=dot(tv,cv)>V155,tg=proj(k.to),lift=.05+Math.min(.1,k.dist*.06),li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle,sm=samples(k);
+   const at=s=>{const x=Math.max(0,Math.min(1,s))*SAMP,i0=Math.min(SAMP-1,Math.floor(x)),t=x-i0,a=sm[i0],b=sm[i0+1];let dl=b.p[0]-a.p[0];if(dl>180)dl-=360;else if(dl<-180)dl+=360;
+    const xy=proj([a.p[0]+dl*t,a.p[1]+(b.p[1]-a.p[1])*t]),q=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*q,c0[1]+(xy[1]-c0[1])*q],vis:dot(a.v,cv)>V16||Math.sin(Math.PI*s)>.3}};
+   // lingering smoke and embers over the target (fades over ten minutes), and flashes on every impact
+   const age=el-k.dur;if(age>0&&tgVis){const fade=Math.max(0,1-(wall-(k.fx.t||wall)-k.dur)/SMOKE_MS),drift=Math.min(1,age/60000),sway=Math.sin(wall/1400+k.jit[0][0]*3)*1.5;
+    for(let j=0;j<4;j++)blit('smoke',G_SMOKE,tg[0]+k.jit[j][0]*3+sway*j*.6,tg[1]-3-j*6-drift*6,5+j*2.6+drift*3,(.62-j*.1)*fade);
+    blit('ember',G_EMBER,tg[0],tg[1],5,.9*fade);
+    const ia=active?elc-k.dur:age;if(ia>=0&&ia<1800){const t=ia/1800;for(let j=0;j<(k.fx.kind==='air'?5:Math.max(1,k.n-k.lostN));j++){const d0=j*.12;if(t<d0)continue;const tt=Math.min(1,(t-d0)/.35);if(tt<1)blit('flash',G_FLASH,tg[0]+k.jit[j][0]*9,tg[1]+k.jit[j][1]*7,10,1-tt)}
+     ctx.strokeStyle=`rgba(255,190,110,${.8*(1-t)})`;ctx.lineWidth=2*(1-t)+.5;ctx.beginPath();ctx.arc(tg[0],tg[1],6+t*22,0,7);ctx.stroke()}}
+   // while the strike is replaying: the dashed flight path, pulsing launch and target markers, and an arrow on the rim if the target is round the back
+   if(active&&sm){const pl=.5+.5*Math.sin(now/220),col=k.fx.kind==='air'?'235,242,255':'255,140,90';ctx.setLineDash([4,5]);ctx.strokeStyle=`rgba(${col},${.22+.18*pl})`;ctx.lineWidth=1.2;ctx.beginPath();let pen=false;for(let q=0;q<=SAMP;q+=2){const a=at(q/SAMP);if(!a.vis){pen=false;continue}pen?ctx.lineTo(a.xy[0],a.xy[1]):ctx.moveTo(a.xy[0],a.xy[1]);pen=true}ctx.stroke();ctx.setLineDash([]);
+    if(dot(k.fv,cv)>V155){const lp=proj(k.from);ctx.strokeStyle=`rgba(255,170,60,${.4+.5*pl})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(lp[0],lp[1],5+pl*4,0,7);ctx.stroke()}
     if(tgVis){ctx.strokeStyle=`rgba(255,80,60,${.45+.45*pl})`;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(tg[0],tg[1],9+pl*5,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(tg[0]-15,tg[1]);ctx.lineTo(tg[0]-6,tg[1]);ctx.moveTo(tg[0]+6,tg[1]);ctx.lineTo(tg[0]+15,tg[1]);ctx.moveTo(tg[0],tg[1]-15);ctx.lineTo(tg[0],tg[1]-6);ctx.moveTo(tg[0],tg[1]+6);ctx.lineTo(tg[0],tg[1]+15);ctx.lineWidth=1;ctx.stroke()}
     else{const ang=Math.atan2(tg[1]-c0[1],tg[0]-c0[0]),R0=r-16,x=c0[0]+Math.cos(ang)*R0,y=c0[1]+Math.sin(ang)*R0;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(-6,-8);ctx.lineTo(-2,0);ctx.lineTo(-6,8);ctx.closePath();ctx.fillStyle=`rgba(255,90,60,${.6+.4*pl})`;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.stroke();ctx.restore()}}
-   if(!k.ip||!active&&el>=k.dur||elc>=k.dur||el<0)continue;const prog=elc/k.dur,air_=k.fx.kind==='air';
-   if(prog<1&&tgVis&&!active){const pl=.5+.5*Math.sin(elc/150);ctx.strokeStyle=`rgba(255,120,90,${.35+.4*pl})`;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(tg[0],tg[1],7+pl*3,0,7);ctx.stroke()}
+   if(!k.anim||!sm)continue;const prog=elc/k.dur,air_=k.fx.kind==='air';
    for(let j=0;j<k.n;j++){const lag=air_?Math.abs(j-(k.n-1)/2)*.022:j*.05,lost=j>=k.n-k.lostN,stop=lost?k.stops[j]:1,s=Math.min(prog-lag,stop);if(s<=0)continue;
     const dead=lost&&prog-lag>stop,deadT=dead?(prog-stop)*k.dur/700:0;if(dead&&deadT>1)continue;
     const a=at(s),b=at(Math.max(0,s-.012));if(!a.vis)continue;let dx=a.xy[0]-b.xy[0],dy=a.xy[1]-b.xy[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;
     const off=air_?(j-(k.n-1)/2)*8:0,px=a.xy[0]-dy*off,py=a.xy[1]+dx*off;
-    // contrail
-    const tail=air_?.16:.1;ctx.lineCap='round';for(let q=1;q<=10;q++){const s1=Math.max(0,s-tail*q/10),s0=Math.max(0,s-tail*(q-1)/10),p1=at(s1),p0=at(s0);if(!p1.vis||!p0.vis)continue;ctx.strokeStyle=air_?`rgba(235,242,255,${.45*(1-q/10)*(dead?1-deadT:1)})`:`rgba(255,${200-q*8},120,${.8*(1-q/10)})`;ctx.lineWidth=air_?1.2:1.8*(1-q/12);ctx.beginPath();ctx.moveTo(p0.xy[0]-dy*off,p0.xy[1]+dx*off);ctx.lineTo(p1.xy[0]-dy*off,p1.xy[1]+dx*off);ctx.stroke()}
-    if(dead){const g=ctx.createRadialGradient(px,py,0,px,py,9);g.addColorStop(0,`rgba(255,220,150,${1-deadT})`);g.addColorStop(1,'rgba(255,90,30,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,9,0,7);ctx.fill();continue}
+    // contrail: two strokes (whole tail faint, the newest half brighter) instead of one per segment
+    const tail=air_?.16:.1;ctx.lineCap='round';for(const[part,al,lw]of[[1,air_?.16:.3,air_?1.1:1.4],[.5,air_?.34:.75,air_?1.3:1.8]]){if(dead&&part<1)continue;ctx.strokeStyle=air_?`rgba(235,242,255,${al*(dead?1-deadT:1)})`:`rgba(255,190,120,${al})`;ctx.lineWidth=lw;ctx.beginPath();let pen=false;for(let q=0;q<=6;q++){const ss=Math.max(0,s-tail*part*(1-q/6)),pp=at(ss);if(!pp.vis){pen=false;continue}const xx=pp.xy[0]-dy*off,yy=pp.xy[1]+dx*off;pen?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);pen=true}ctx.stroke()}
+    if(dead){blit('burst',G_BURST,px,py,9,1-deadT);continue}
     if(air_){ctx.save();ctx.translate(px,py);ctx.rotate(Math.atan2(dy,dx));ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-4.5,5);ctx.lineTo(-2,0);ctx.lineTo(-4.5,-5);ctx.closePath();ctx.fillStyle='#f4f7fb';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(5,9,14,.8)';ctx.stroke();ctx.restore()}
-    else{const g=ctx.createRadialGradient(px,py,0,px,py,6);g.addColorStop(0,'rgba(255,255,235,1)');g.addColorStop(1,'rgba(255,140,50,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,6,0,7);ctx.fill()}}}}
+    else blit('mhead',G_HEAD,px,py,6,1)}}}
  function drawFx(ctr,w,h,r){const f=st.fx;if(!f)return;const el=performance.now()-f.t0,prog=Math.min(1,el/f.dur),c0=[w/2,h/2];
   // altitude in globe radii: steep climb, long high arc well above the atmosphere, steep dive
   const H=.2+Math.min(.34,f.dist*.17),alt=s=>H*Math.pow(Math.max(0,Math.sin(Math.PI*Math.min(1,Math.max(0,s)))),.62);
@@ -1437,9 +1446,9 @@ window.addEventListener('wp-config',e=>{CFG={...CFG,...e.detail};if(loaded)refre
 window.addEventListener('wp-announce',e=>{toast(e.detail.text);SND.play('note')});
 window.addEventListener('wp-nuke',e=>nukeQueue(e.detail));
 // strikes: everyone sees the flight on the globe and a short note; the camera only moves for the nation being hit, and only on the World page
-let skNoteAt=0;
+let skNoteAt=0,skFlyAt=0;
 window.addEventListener('wp-strike',e=>{const fx=e.detail;if(!fx)return;GL.strike(fx);const mine=fx.to===uid||fx.by===uid,ally=uid&&A[uid]&&(C.allies(W,uid).includes(fx.to)||C.allies(W,uid).includes(fx.by));
- if(fx.to===uid&&page==='world'&&P[fx.h])GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6));
+ if(fx.to===uid&&page==='world'&&P[fx.h]&&!nukeBusy&&Date.now()-skFlyAt>30000){skFlyAt=Date.now();GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6))} // swing to the first strike on you, not every one
  if(nukeBusy||(!mine&&!ally&&Date.now()-skNoteAt<20000))return;skNoteAt=Date.now();strikeNote(fx)});
 function strikeNote(fx){const old=$('skNote');if(old)old.remove();const el=document.createElement('div');el.id='skNote';el.className='sknote'+(fx.to===uid?' hit':'');
  el.innerHTML=`<span class="ic">${fx.kind==='air'?'✈':'🚀'}</span><span><b>${esc(fx.byName)}</b> ${fx.kind==='air'?'launched an air strike':'fired missiles'} on <b>${fx.to===uid?'your nation':esc(fx.toName)}</b><small>${esc(fx.place||'')}</small></span><button class="btn sm" data-sk="show">Show me</button><button class="btn sm ghost" data-sk="x" aria-label="Dismiss">✕</button>`;
