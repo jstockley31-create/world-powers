@@ -847,7 +847,7 @@ const GL=(()=>{
     blit(k2,g2,px,py,rr,al);if(!lite&&!coarse&&ph>.2)blit('smoke',G_SMOKE,px-rr*.22,py-rr*.25,rr*.6,al*.32)}
    // flames and glow at the base while it is still burning
    if(heat>0){blit('ember',G_EMBER,g[0],g[1],7*z*big*(.5+.5*heat),.55*heat);
-    for(let j=0;j<(lite?1:3);j++){const f=.6+.4*Math.sin(wall/(85+j*37)+x.seed*20+j*2.3);blit('fire',G_FIRE,g[0]+(j-1)*1.1*z,g[1]-1.4*z-f*2.2*z-j*1.2*z,(1.6+f*1.5)*z*Math.sqrt(big)*(.55+.45*heat)*(1-j*.18),heat*(.7+.3*f))}}}}
+    const fs=z*Math.sqrt(big)*(.55+.45*heat);for(let j=0;j<(lite?1:3);j++){const f=.88+.12*Math.sin(wall/(380+j*170)+x.seed*20+j*2.3)+.05*Math.sin(wall/(230+j*90)+j);blit('fire',G_FIRE,g[0]+(j===1?-.9:j===2?.9:0)*z,g[1]-(1.6+j*1.5)*z,(2.6-j*.55)*fs*f,heat*(.85-j*.12)*f)} /* anchored flames: they only swell and dim gently, never jump */}}}
  // keep the smoke moving at a gentle frame rate while any of it is on screen
  let smT=0;function smokeLoop(){if(smT)return;const go=()=>{smT=0;if(!st.el||!st.el.isConnected||document.hidden)return;const wall=Date.now();
   if(!SK.some(k=>wall-((k.fx.t||0)+k.dur)<SMOKE_MS))return;
