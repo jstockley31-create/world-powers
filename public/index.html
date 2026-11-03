@@ -157,6 +157,7 @@ tr.hl td{background:#1a1508}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--
 #chat .m{padding:2px 0;line-height:1.5;word-wrap:break-word}#chat .m time{color:var(--mu2);font:11px var(--mono);margin-right:8px}
 #chat .m .who{font-weight:600;cursor:pointer;margin-right:6px}
 #chat .m.n{color:#d8c79d}#chat .m.n .lbl{color:var(--ac);font-weight:600;margin-right:6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+#chat .m.n.hot{color:#f3c4bd;background:rgba(220,60,50,.08);border-left:2px solid #e5534b;padding-left:6px}#chat .m.n.hot .lbl{color:#ff7b72}
 #chat .m.sys{color:#f0d9a4;background:#241c0d;border-left:2px solid var(--ac);padding:4px 8px;margin:3px 0;border-radius:3px}
 #chatin{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--bd)}#chatin input{flex:1}
 #onl{overflow-y:auto;padding:8px 10px}
@@ -341,6 +342,11 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .sknote{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;max-width:min(560px,calc(100vw - 20px));background:#0f151cf2;border:1px solid var(--bd2);border-left:3px solid #e3b341;border-radius:10px;padding:8px 8px 8px 12px;box-shadow:0 10px 30px #0009;font-size:13px;animation:skIn .25s ease-out}
 .sknote.hit{border-left-color:var(--rd);background:#1c1012f2}
 .sknote .ic{font-size:18px;line-height:1}.sknote>span:nth-child(2){flex:1;min-width:0}.sknote small{display:block;color:var(--mu);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.incal{position:fixed;will-change:transform;top:calc(12px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:12px;width:min(620px,calc(100vw - 16px));background:#2a0f12f7;border:1px solid #e5534b;border-radius:12px;padding:10px 10px 10px 14px;box-shadow:0 0 0 1px #e5534b55,0 14px 40px #000c,0 0 40px #e5534b44;animation:skIn .25s ease-out}
+.incal::after{content:'';position:absolute;inset:-2px;border-radius:13px;border:2px solid #ff5b52;opacity:0;pointer-events:none}.incal.pulse::after{animation:incP .9s ease-out 3}@keyframes incP{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
+.incal .incic{font-size:24px;line-height:1}.incal .inctx{flex:1;min-width:0;font-size:13px}.incal .inctx b{display:block;color:#ff7b72;letter-spacing:.06em;font-size:13px}.incal .inctx span{color:#f3d0cb;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.incal .incbt{display:flex;gap:6px;flex-shrink:0}.incal.out{opacity:0;transition:.35s}
+@media(max-width:560px){.incal{flex-wrap:wrap;gap:8px;padding:10px}.incal .inctx span{white-space:normal}.incal .incbt{width:100%}.incal .incbt .btn{flex:1}.incal .incbt [data-in=x]{flex:0 0 auto}}
 .sknote.out{opacity:0;transform:translate(-50%,8px);transition:.35s}
 @keyframes skIn{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 @media(max-width:820px){.sknote{bottom:calc(76px + env(safe-area-inset-bottom))}}
@@ -1304,11 +1310,16 @@ function renderOnline(){const now=Date.now();const on=[],idle=[];
  const item=(u,st)=>{const n=A[u];const cls=[st,allies.has(u)?'ally':'',u===uid?'me':''].join(' ');const col=n?n.color:'#8b98a5';const tip=n?`${n.name} — ${rankName(n)}${allies.has(u)?' · your ally':''}${st==='idle'?' · active '+ago(ON[u].t):''}`:'No nation yet';return`<a class="${cls}" style="color:${esc(col)}" ${n?`data-act="prof" data-a="${esc(u)}"`:''} title="${esc(tip)}">${st==='idle'?'*':''}${esc(label(u))}</a>`};
  const total=on.length+idle.length,hum=[...on,...idle].filter(u=>!isAI(u)).length,ais=total-hum;$('onlCount').textContent=`· ${on.length} online`;
  $('onlstrip').innerHTML=`<div class="oh">${total} Leader${total===1?'':'s'} online in the past 30 minutes:</div><div class="names">${on.map(u=>item(u,'on')).join('')}${idle.map(u=>item(u,'idle')).join('')||''}</div>${total?'<div class="legend"><b>Bold</b> online now · <i>*Italic</i> recently active · <u>Underlined</u> your allies</div>':''}`}
+// Chat shows war news only (strikes, battles, nukes, wars, falls). Everything else stays in World Times.
+const WARNEWS=/launched (air strikes|missiles)|☢|⚠|☠|declared war|captured .* from|repelled|has conquered|last stand|fell in battle|seized .* from|peace treaty|Collective Defense/;
+const HOTNEWS=/launched (air strikes|missiles)|☢|has conquered|declared war/;
+function chatNews(){const r=[];for(const n of Object.values(A))for(const e of n.out||[])if(e.type==='news'&&WARNEWS.test(e.x))r.push(e);r.sort((a,b)=>b.t-a.t);const last=new Map();
+ return r.filter(e=>{const p=last.get(e.x);if(p!=null&&p-e.t<(HOTNEWS.test(e.x)?60e3:6*HOUR))return false;last.set(e.x,e.t);return true}).slice(0,60)}
 let lastChatKey='';
 function renderChat(force){const msgs=[];for(const[u,c]of Object.entries(CH)){if(u==='_system'){for(const m of c.m||[])msgs.push({s:1,t:m.t,x:m.x});continue}if(!A[u])continue;for(const m of c.m||[])msgs.push({u,t:m.t,x:m.x})}
- for(const e of worldNews().slice(0,25))if(!/^A new nation has been founded/.test(e.x))msgs.push({n:1,t:e.t,x:e.x});msgs.sort((a,b)=>a.t-b.t);{const seen=new Map();for(let i=msgs.length-1;i>=0;i--){const m=msgs[i];if(!m.n)continue;const k=m.x,p=seen.get(k);if(p!=null&&p-m.t<6*HOUR)msgs.splice(i,1);else seen.set(k,m.t)}}const show=msgs.slice(-150);const key=show.length+':'+(show.at(-1)?.t||0)+':'+Object.keys(A).length+':'+(X().muted||[]).length;if(!force&&key===lastChatKey)return;lastChatKey=key;
+ for(const e of chatNews())msgs.push({n:1,t:e.t,x:e.x,hot:HOTNEWS.test(e.x)});msgs.sort((a,b)=>a.t-b.t);{const seen=new Map();for(let i=msgs.length-1;i>=0;i--){const m=msgs[i];if(!m.n||m.hot)continue;const k=m.x,p=seen.get(k);if(p!=null&&p-m.t<6*HOUR)msgs.splice(i,1);else seen.set(k,m.t)}}const show=msgs.slice(-150);const key=show.length+':'+(show.at(-1)?.t||0)+':'+Object.keys(A).length+':'+(X().muted||[]).length;if(!force&&key===lastChatKey)return;lastChatKey=key;
  const el=$('chat');const atBot=el.scrollHeight-el.scrollTop-el.clientHeight<40;
- el.innerHTML=show.map(m=>{const ts=new Date(m.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});if(m.s)return`<div class="m sys"><time>${ts}</time><b>Announcement</b> — ${esc(m.x)}</div>`;if(m.n)return`<div class="m n"><time>${ts}</time><span class="lbl">News</span>${esc(m.x)}</div>`;if(isMutedByMe(m.u))return`<div class="m muted-msg"><time>${ts}</time>Message from a muted leader</div>`;const mt=mentionHtml(m.x);return`<div class="m${mt.me?' mention':''}"><time>${ts}</time><span class="who" data-act="prof" data-a="${esc(m.u)}" style="color:${esc(A[m.u].color)}">${esc(A[m.u].name)}</span>${mt.html}</div>`}).join('')||'<div class="mu">No messages yet.</div>';
+ el.innerHTML=show.map(m=>{const ts=new Date(m.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});if(m.s)return`<div class="m sys"><time>${ts}</time><b>Announcement</b> — ${esc(m.x)}</div>`;if(m.n)return`<div class="m n${m.hot?' hot':''}"><time>${ts}</time><span class="lbl">${m.hot?'Alert':'War'}</span>${esc(m.x)}</div>`;if(isMutedByMe(m.u))return`<div class="m muted-msg"><time>${ts}</time>Message from a muted leader</div>`;const mt=mentionHtml(m.x);return`<div class="m${mt.me?' mention':''}"><time>${ts}</time><span class="who" data-act="prof" data-a="${esc(m.u)}" style="color:${esc(A[m.u].color)}">${esc(A[m.u].name)}</span>${mt.html}</div>`}).join('')||'<div class="mu">No messages yet.</div>';
  if(atBot||force)el.scrollTop=el.scrollHeight}
 // @Name in chat: highlight it, link to that leader's profile, and mark messages that mention you
 function mentionHtml(x){let h=esc(x),mine=false;if(!x.includes('@'))return{html:h,me:false};
@@ -1449,7 +1460,22 @@ window.addEventListener('wp-nuke',e=>nukeQueue(e.detail));
 let skNoteAt=0,skFlyAt=0;
 window.addEventListener('wp-strike',e=>{const fx=e.detail;if(!fx)return;GL.strike(fx);const mine=fx.to===uid||fx.by===uid,ally=uid&&A[uid]&&(C.allies(W,uid).includes(fx.to)||C.allies(W,uid).includes(fx.by));
  if(fx.to===uid&&page==='world'&&P[fx.h]&&!nukeBusy&&Date.now()-skFlyAt>30000){skFlyAt=Date.now();GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6))} // swing to the first strike on you, not every one
+ if(fx.to===uid){incoming(fx);return}
  if(nukeBusy||(!mine&&!ally&&Date.now()-skNoteAt<20000))return;skNoteAt=Date.now();strikeNote(fx)});
+// INCOMING: a strike on your nation pops a red alert on top of everything (any page, any open window) until you deal with it
+let inc=null,incTitle=null;
+function incoming(fx){const now=Date.now();if(inc&&inc.el.isConnected&&now-inc.t<120000){inc.n++;inc.fx=fx;inc.t=now;if(!inc.by.includes(fx.byName))inc.by.push(fx.byName)}else{if(inc&&inc.el.isConnected)inc.el.remove();inc={n:1,fx,t:now,by:[fx.byName],el:document.createElement('div')};inc.el.id='incAl';inc.el.className='incal';inc.el.setAttribute('role','alert');document.body.appendChild(inc.el);
+  inc.el.addEventListener('click',ev=>{const k=ev.target.closest('[data-in]');if(!k)return;const f=inc.fx;inc.el.remove();incStop();
+   if(k.dataset.in==='watch'&&P[f.h]){closeModal&&closeModal();if(page!=='world'){page='world';render()}setTimeout(()=>GL.flyTo(P[f.h].c,Math.max(GL.st.scale,1.8)),page==='world'?60:350)}
+   else if(k.dataset.in==='hit'&&A[f.by]){closeModal&&closeModal();const hs=hexesOf(f.by);if(hs.length)warPlanner(f.by,hs.includes(A[f.by].cap)?A[f.by].cap:hs[0])}})}
+ const f=inc.fx;if(inc.n>1&&inc.el.firstChild){const b=inc.el.querySelector('.inctx b'),sp=inc.el.querySelector('.inctx span');if(b)b.textContent=`${inc.n} STRIKES ON YOUR NATION`;if(sp)sp.textContent=`${inc.by.slice(0,3).join(', ')}${inc.by.length>3?` +${inc.by.length-3}`:''} ${inc.by.length>1?'are hitting':'is hitting'} you${f.place?` · ${f.place}`:''}`;clearTimeout(inc.hide);const k_=inc;inc.hide=setTimeout(()=>{if(k_.el.isConnected){k_.el.classList.add('out');setTimeout(()=>k_.el.remove(),400)}},90000);return}
+ const canHit=A[f.by]&&wars(uid).includes(f.by)&&hexesOf(f.by).length;
+ inc.el.innerHTML=`<div class="incic">${f.kind==='air'?'✈':'🚀'}</div><div class="inctx"><b>${inc.n>1?`${inc.n} STRIKES ON YOUR NATION`:`INCOMING ${f.kind==='air'?'AIR STRIKE':'MISSILES'}`}</b><span>${esc(inc.by.slice(0,3).join(', '))}${inc.by.length>3?` +${inc.by.length-3}`:''} ${inc.n>1?(inc.by.length>1?'are hitting':'is hitting'):f.kind==='air'?'is bombing':'is firing on'} you${f.place?` · ${esc(f.place)}`:''}</span></div><div class="incbt"><button class="btn sm" data-in="watch">Watch it</button>${canHit?'<button class="btn sm pri" data-in="hit">Strike back</button>':''}<button class="btn sm ghost" data-in="x" aria-label="Dismiss">✕</button></div>`;
+ if(!inc.pz||now-inc.pz>3000){inc.pz=now;inc.el.classList.remove('pulse');void inc.el.offsetWidth;inc.el.classList.add('pulse')}
+ try{SND.play('lose')}catch(e){}try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+ clearTimeout(inc.hide);const me_=inc;inc.hide=setTimeout(()=>{if(me_.el.isConnected){me_.el.classList.add('out');setTimeout(()=>me_.el.remove(),400)}},90000);
+ if(document.hidden&&!incTitle){const t0=document.title;let on=0;incTitle=setInterval(()=>{document.title=(on^=1)?'🚨 UNDER ATTACK':t0},1000);const stop=()=>{if(!document.hidden){incStop();document.title=t0;document.removeEventListener('visibilitychange',stop)}};incTitle.t0=t0;document.addEventListener('visibilitychange',stop)}}
+function incStop(){if(incTitle){clearInterval(incTitle);document.title=incTitle.t0;incTitle=null}}
 function strikeNote(fx){const old=$('skNote');if(old)old.remove();const el=document.createElement('div');el.id='skNote';el.className='sknote'+(fx.to===uid?' hit':'');
  el.innerHTML=`<span class="ic">${fx.kind==='air'?'✈':'🚀'}</span><span><b>${esc(fx.byName)}</b> ${fx.kind==='air'?'launched an air strike':'fired missiles'} on <b>${fx.to===uid?'your nation':esc(fx.toName)}</b><small>${esc(fx.place||'')}</small></span><button class="btn sm" data-sk="show">Show me</button><button class="btn sm ghost" data-sk="x" aria-label="Dismiss">✕</button>`;
  el.addEventListener('click',ev=>{const k=ev.target.closest('[data-sk]');if(!k)return;el.remove();if(k.dataset.sk==='show'&&P[fx.h]){if(page!=='world'){page='world';render()}setTimeout(()=>GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.8)),page==='world'?0:350)}});
