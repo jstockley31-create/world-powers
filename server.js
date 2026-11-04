@@ -36,7 +36,7 @@ try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { 
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
-for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes']) S[k] = S[k] || [];
+for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog']) S[k] = S[k] || [];
 // provinces still burning after air and missile strikes: { province: { t: last hit, n: hits } }. Fires smoulder for a day; a new hit re-ignites them.
 const BURN_MS = 24 * HOUR; S.burn = S.burn && typeof S.burn === 'object' && !Array.isArray(S.burn) ? S.burn : {};
 function burnList() { const now = Date.now(), out = []; for (const [h, b] of Object.entries(S.burn)) { if (now - b.t < BURN_MS) out.push([+h, b.t, b.n]); else delete S.burn[h]; } return out; }
@@ -234,7 +234,7 @@ function sendNation(id) {
   let own = null; for (const c of clients) { if (c.uid === id && n != null) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } else writeRaw(c, pub); }
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
-const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, ...p }) => p), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
+const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => p), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
 function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
@@ -283,7 +283,7 @@ function commit(W) {
   for (const u of W.changed) { if (W.A[u]) S.docs['nations/' + u] = W.A[u]; sendNation(u); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
-  if ((W.strikeFx || []).length) { const now = Date.now(); for (const fx of W.strikeFx) { broadcast('strike', fx); S.strikes.unshift(fx); const b = S.burn[fx.h]; S.burn[fx.h] = { t: now, n: Math.min(20, (b && now - b.t < BURN_MS ? b.n : 0) + 1) }; } S.strikes = S.strikes.filter(x => now - x.t < 20 * 60e3).slice(0, 80); burnList(); }
+  if ((W.strikeFx || []).length) { const now = Date.now(); for (const fx of W.strikeFx) { broadcast('strike', fx); S.strikes.unshift(fx); S.strikeLog.unshift({ t: now, by: fx.by, byName: fx.byName, to: fx.to, toName: fx.toName, kind: fx.kind, n: fx.n, hits: fx.hits, lost: fx.lost, place: fx.place, target: fx.target }); const b = S.burn[fx.h]; S.burn[fx.h] = { t: now, n: Math.min(20, (b && now - b.t < BURN_MS ? b.n : 0) + 1) }; } S.strikes = S.strikes.filter(x => now - x.t < 20 * 60e3).slice(0, 80); S.strikeLog = S.strikeLog.slice(0, 400); burnList(); }
   for (const fx of W.nukeFx || []) { const t = `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`; systemMessage(t); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50); persist(); }
   if (W.welcome) { systemMessage(W.welcome); broadcast('announce', { text: W.welcome }); }
 }
@@ -313,7 +313,7 @@ function endEvent(silent) { if (!S.event) return; const e = WP.EVENTS[S.event.ke
 const RES_KEYS = Object.keys(WP.RESOLUTIONS);
 const isTargeted = type => ['punish', 'protect'].includes(WP.RESOLUTIONS[type].kind);
 const PACT_SCOPE = { ai: 'against AI attackers', all: 'against any attacker' };
-const resLabel = (type, name, p) => type === 'custom' && p ? `Custom resolution: “${p.text}”` : WP.RESOLUTIONS[type].n + (type === 'pact' && p ? ` (${PACT_SCOPE[p.scope] || ''})` : '') + (name ? (WP.RESOLUTIONS[type].kind === 'protect' ? ' for ' : ' against ') + name : '');
+const resLabel = (type, name, p) => p && p.plea ? `${name || 'A nation'}'s petition to have its sanctions lifted` : type === 'custom' && p ? `Custom resolution: “${p.text}”` : WP.RESOLUTIONS[type].n + (type === 'pact' && p ? ` (${PACT_SCOPE[p.scope] || ''})` : '') + (name ? (WP.RESOLUTIONS[type].kind === 'protect' ? ' for ' : ' against ') + name : '');
 const nukedRecently = (u, now) => S.nukes.some(x => x.by === u && now - x.t < 72 * HOUR);
 // why a resolution cannot be put to the vote against/for this nation right now (null = fine)
 function resBlocked(W, type, v) {
@@ -321,16 +321,18 @@ function resBlocked(W, type, v) {
   if (type === 'inspect' && !n.nuke) return `${n.name} has no nuclear program to inspect.`;
   if (type === 'ceasefire' && !core.wars(W, v).length) return `${n.name} is not at war with anyone.`;
   if ((type === 'aid' || type === 'guarantee') && core.rogue(W, n)) return `${n.name} is a rogue state. The Council will not support it until sanctions are lifted.`;
-  if (type === 'lift') { if (!(M('embargo') || M('armsEmb') || M('frozen') || M('condemned') || core.rogue(W, n))) return `${n.name} is not under any sanctions.`; if (nukedRecently(v, now)) return `${n.name} launched a nuclear strike less than 72 hours ago. Its sanctions cannot be lifted yet.`; }
+  if (type === 'lift') { if (!(M('embargo') || M('armsEmb') || M('frozen') || M('condemned') || core.rogue(W, n) || core.sanctioned(n))) return `${n.name} is not under any sanctions.`; if (nukedRecently(v, now)) return `${n.name} launched a nuclear strike less than 72 hours ago. Its sanctions cannot be lifted yet.`; }
   return null;
 }
 function councilPropose(uid, b) {
   const W = mkWorld(), n = W.A[uid]; if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
-  if (core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
+  const plea = type === 'lift' && b.target === uid; // a nation under sanctions petitioning for its own sanctions to be lifted
+  if (!plea && core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
+  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 12 * HOUR) { const h = Math.ceil((12 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 12 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   const R = WP.RESOLUTIONS[type]; let target = null;
   if (isTargeted(type)) {
-    target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || target === uid) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
+    target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || (target === uid && !plea)) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
     const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
   }
   const open = S.council.props.filter(p => p.status === 'open');
@@ -348,13 +350,13 @@ function councilPropose(uid, b) {
     if (MOD.isProfane(text)) throw Object.assign(new Error('Please reword your resolution.'), { status: 400 });
     hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
   }
-  if (n.cash < 1e5) throw Object.assign(new Error('Submitting a resolution costs $100,000.'), { status: 400 });
-  n.cash -= 1e5; W.changed.add(uid); commit(W);
+  if (!plea) { if (n.cash < 1e5) throw Object.assign(new Error('Submitting a resolution costs $100,000.'), { status: 400 }); n.cash -= 1e5; W.changed.add(uid); commit(W); }
+  else (S.council.plea = S.council.plea || {})[uid] = Date.now();
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + 6 * HOUR, votes: { [uid]: 'y' }, status: 'open' };
-  if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; }
+  if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
   if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
   S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); broadcast('council', councilView());
-  const txt = `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
+  const txt = plea ? `${n.name} petitions the World Council to lift its sanctions and welcome it back. Vote now.` : `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
   systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ' Voting closes in 6 hours.');
   return p;
 }
@@ -362,16 +364,27 @@ function councilVote(uid, b) {
   if (!S.docs['nations/' + uid]) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   const p = S.council.props.find(x => x.id === b.id && x.status === 'open'); if (!p || Date.now() >= p.end) throw Object.assign(new Error('That vote has closed.'), { status: 400 });
   if (!['y', 'n'].includes(b.vote)) throw Object.assign(new Error('Vote yes or no.'), { status: 400 });
-  p.votes[uid] = b.vote; persist(); broadcast('council', councilView()); return p;
+  if (!p.votes[uid]) { const twins = Object.keys(p.votes).filter(o => o !== uid && S.users[o] && sharesNetwork(uid, o)); if (twins.length) { flag(uid, `Voted on the same World Council resolution as ${twins.map(o => S.users[o].name).join(', ')}, from the same network (possible second account)`); (p.net = p.net || []).push(uid); } }
+  p.votes[uid] = b.vote; { const W = mkWorld(); if (decideEarly(W, p)) { councilResolve(W); commit(W); } } persist(); broadcast('council', councilView()); return p;
+}
+// who could still vote: AI nations (not on written resolutions) and players active in the last 3 days who have a nation
+function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of Object.keys(W.A)) { if (p.votes[u]) continue; if (BOTS.isBot(u)) { if (p.type !== 'custom') n++; } else if (S.users[u] && now - ((S.meta[u] || {}).lastSeen || 0) < 72 * HOUR) n++; } return n; }
+// a vote closes early once the outcome is certain: it passes when yes leads by more than the votes still out (and has at least 3), and fails when yes can no longer win
+function decideEarly(W, p) {
+  if (p.status !== 'open' || Date.now() >= p.end) return false;
+  const ys = Object.values(p.votes).filter(v => v === 'y').length, ns = Object.values(p.votes).filter(v => v === 'n').length, left = canStillVote(W, p);
+  if ((ys >= 3 && ys > ns + left) || ys + left <= ns || ys + left < 3) { p.end = Date.now(); p.early = true; return true; }
+  return false;
 }
 function councilResolve(W) {
   const now = Date.now(); let changed = false;
+  for (const p of S.council.props) { if (decideEarly(W, p)) changed = true; }
   for (const p of S.council.props) {
     if (p.status !== 'open' || now < p.end) continue;
     const ys = Object.values(p.votes).filter(v => v === 'y').length, ns = Object.values(p.votes).filter(v => v === 'n').length;
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
-    p.status = ys > ns && ys >= 3 ? 'passed' : 'failed'; p.result = `${ys}–${ns}`; changed = true;
+    p.status = ys > ns && ys >= 3 ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
     const label = resLabel(p.type, tn && tn.name, p);
     if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
@@ -437,6 +450,7 @@ function pactCheck(W) {
   for (const h of hits) for (const pc of pacts) {
     const a = W.A[h.u], v = W.A[h.v]; if (!a || !v || !pc.members.includes(h.v)) continue;
     if (pc.scope === 'ai' && !BOTS.isBot(h.u)) continue; // this pact only covers attacks by AI nations
+    if (core.defending(W, h.u, h.v)) continue; // fighting back against a member is not aggression: the pact only answers real aggressors
     if (pc.members.includes(h.u)) { pc.members = pc.members.filter(m => m !== h.u); systemMessage(`🛡 ${a.name} attacked a fellow member of the Collective Defense Pact and has been expelled from it.`); }
     const joined = pc.members.filter(m => m !== h.v && m !== h.u && W.A[m] && core.pactWar(W, m, h.u, h.v));
     const key = pc.id + h.u; if (joined.length && !said.has(key)) { said.add(key); systemMessage(`🛡 Collective Defense Pact invoked: ${a.name} attacked ${v.name}. ${joined.map(m => W.A[m].name).join(', ')} ${joined.length === 1 ? 'is' : 'are'} now at war with ${a.name}.`); }
@@ -496,6 +510,10 @@ function botVotes(W) {
           if (p.type === 'freeze' && per === 'merchant') yes *= .7; // bankers dislike seizing deposits
         } else { // support for a nation
           if (war) yes = p.type === 'aid' ? .25 : .03; else if (ally) yes = .95;
+          else if (p.type === 'lift' && p.plea) { // a petition: judged on whether it has stopped fighting
+            const since = Date.now() - 12 * HOUR, fought = (t.out || []).some(e => e.type === 'battle' && e.t > since) || Object.values(W.A).some(x => x.hitBy && (x.hitBy[p.target] || 0) > since);
+            yes = fought ? .05 : Math.min(.9, .6 + ((t.aggr || 0) < 60 ? .15 : 0) + (per === 'merchant' ? .1 : per === 'warlord' ? -.15 : 0));
+          }
           else if (p.type === 'lift') yes = Math.max(.05, .8 - bad);
           else if (p.type === 'aid') yes = Math.min(.95, .35 + victim + (per === 'merchant' || per === 'isolationist' ? .1 : 0) - bad * .5);
           else if (p.type === 'ceasefire') yes = Math.min(.9, .45 + victim + (per === 'warlord' ? -.25 : per === 'isolationist' ? .15 : 0));
@@ -780,8 +798,22 @@ function overview() {
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackupT || (S.lastBackup ? Date.parse(S.lastBackup + 'T09:00:00Z') : null), pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
     players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
-    analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.slice(0, 100), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView()
+    analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.slice(0, 100), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView(), war: warRoom(W, nations)
   };
+}
+// the admin's war room: every war, who started it, aggression, strikes, fires, pacts
+function warRoom(W, nations) {
+  const now = Date.now(), nm = id => (nations[id] || {}).name || (S.users[id] || {}).name || '?', seen = new Set(), wars = [];
+  for (const id of Object.keys(nations)) for (const v of core.wars(W, id)) {
+    const key = [id, v].sort().join('|'); if (seen.has(key)) continue; seen.add(key);
+    const ra = ((nations[id] || {}).rel || {})[v] || {}, rb = ((nations[v] || {}).rel || {})[id] || {}, since = Math.max(ra.war || 0, rb.war || 0), by = (ra.war || 0) >= (rb.war || 0) ? id : v, other = by === id ? v : id;
+    const hits = k => (nations[k] && nations[k].out || []).filter(e => e.type === 'battle' && e.to === (k === by ? other : by) && now - e.t < 864e5).length;
+    wars.push({ by, byName: nm(by), byAI: BOTS.isBot(by), vs: other, vsName: nm(other), vsAI: BOTS.isBot(other), since, aggrBy: Math.round((nations[by] || {}).aggr || 0), aggrVs: Math.round((nations[other] || {}).aggr || 0), battlesBy: hits(by), battlesVs: hits(other), pact: !!(ra.def || rb.def) });
+  }
+  wars.sort((a, b) => b.since - a.since);
+  const hot = Object.entries(nations).filter(([, n]) => (n.aggr || 0) >= 20).map(([id, n]) => ({ id, name: n.name, ai: BOTS.isBot(id), boss: !!(n.ai && n.ai.boss), aggr: Math.round(n.aggr), sanctioned: core.sanctioned(n), rogue: core.rogue(W, n), wars: core.wars(W, id).length })).sort((a, b) => b.aggr - a.aggr);
+  const boss = Object.entries(nations).find(([, n]) => n.ai && n.ai.boss);
+  return { wars, hot, strikes: S.strikeLog.slice(0, 150), fires: burnList().length, pacts: (S.council.pacts || []).filter(x => x.until > now).map(x => ({ scope: x.scope, until: x.until, members: x.members.map(nm) })), boss: boss ? { id: boss[0], name: boss[1].name, aggr: Math.round(boss[1].aggr || 0), provinces: core.hexesOf(W, boss[0]).length } : null };
 }
 const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl'];
 async function adminRoute(p, req, res, me) {
@@ -793,6 +825,14 @@ async function adminRoute(p, req, res, me) {
   }
   const bi = p.match(/^\/api\/admin\/bug-img\/([a-z0-9]{8,40})$/);
   if (bi && req.method === 'GET') { const f = path.join(BUG_DIR, bi[1] + '.jpg'); if (!fs.existsSync(f)) return send(res, 404, { error: 'Not found.' }); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' }); return fs.createReadStream(f).pipe(res); }
+  if (p === '/api/admin/peace' && req.method === 'POST') {
+    const b = await readBody(req, 1024), A_ = S.docs['nations/' + b.a], B_ = S.docs['nations/' + b.b];
+    if (typeof b.a !== 'string' || typeof b.b !== 'string' || b.a === b.b || !A_ || !B_ || !Object.prototype.hasOwnProperty.call(S.docs, 'nations/' + b.a) || !Object.prototype.hasOwnProperty.call(S.docs, 'nations/' + b.b)) return send(res, 400, { error: 'Pick two nations.' });
+    const t = Date.now(); for (const [x, y] of [[A_, b.b], [B_, b.a]]) { x.rel = x.rel || {}; x.rel[y] = { ...(x.rel[y] || {}), peace: t }; }
+    setDoc('nations', b.a, A_); setDoc('nations', b.b, B_); systemMessage(`🕊 The administrators have imposed peace between ${A_.name} and ${B_.name}.`);
+    audit(me.name, 'Forced peace', `${A_.name} ↔ ${B_.name}`); return send(res, 200, { ok: true });
+  }
+  if (p === '/api/admin/fires-out' && req.method === 'POST') { const n = Object.keys(S.burn).length; S.burn = {}; S.strikes = []; persist(); broadcast('firesout', {}); audit(me.name, 'Put out all fires', null, `${n} burning provinces`); return send(res, 200, { ok: true, n }); }
   if (p === '/api/admin/backup' && req.method === 'GET') {
     audit(me.name, 'Downloaded a backup');
     res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="world-powers-backup-${today()}.json"`, 'Cache-Control': 'no-store' });
