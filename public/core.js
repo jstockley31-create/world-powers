@@ -295,7 +295,7 @@ function Core(PD, CARDS) {
   }
   function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(tcap(n), traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
-  const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0)) * W.m.upkeep;
+  const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + (n.dome && n.dome.ready <= W.now ? DOME.upkeep : 0)) * W.m.upkeep;
   function production(W, u) {
     const n = W.A[u]; const p = { food: 0, oil: 0, steel: 0, goods: 0 };
     for (const h of hexesOf(W, u)) {
@@ -652,7 +652,7 @@ function Core(PD, CARDS) {
   function strike(W, u, v, kind, target, count, rng) {
     const why = canStrike(W, u, v); if (why) fail(why);
     const me = W.A[u], d = W.A[v]; if (!['stock', 'infra', 'mil'].includes(target)) fail('Choose a target.');
-    count = Math.floor(Number(count)); let P = 0, lost = 0, hits = 0;
+    count = Math.floor(Number(count)); let P = 0, lost = 0, hits = 0, icept = 0;
     if (kind === 'air') {
       if (!(count >= 5) || count > (me.air || 0)) fail(`Send between 5 and ${me.air || 0} aircraft.`);
       if (me.res.oil < count * 3) fail(`Needs ${count * 3} oil.`);
@@ -664,7 +664,7 @@ function Core(PD, CARDS) {
       const c = { cash: MISSILE.cash * count, steel: MISSILE.steel * count, oil: MISSILE.oil * count };
       if (me.cash < c.cash || me.res.steel < c.steel || me.res.oil < c.oil) fail(`${count} missile${count > 1 ? 's need' : ' needs'} ${money(c.cash)}, ${c.steel} steel and ${c.oil} oil.`);
       me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil;
-      const hp = clamp(.85 - soft(d.fort, 8) * .04, .4, .9); for (let i = 0; i < count; i++) if (rng() < hp) hits++; P = hits * 12 * techF(me);
+      const hp = clamp(.85 - soft(d.fort, 8) * .04, .4, .9), dm = domeOn(W, d); for (let i = 0; i < count; i++) { if (dm && rng() < DOME.mis) { icept++; continue; } if (rng() < hp) hits++; } P = hits * 12 * techF(me);
     } else fail('Unknown strike.');
     const dmg = {};
     if (target === 'stock') { const f = Math.min(.3, P * .004); for (const r in RES) { dmg[r] = Math.floor((d.res[r] || 0) * f); d.res[r] -= dmg[r]; } }
@@ -682,8 +682,28 @@ function Core(PD, CARDS) {
     gainXP(W, u, 10); touch(W, u, v);
     // what everyone sees on the globe: the flight from the attacker's capital to one of the target's provinces
     aggrHit(W, u, v, kind === 'air' ? 'air strike' : 'missile strike');
-    { const hs = hexesOf(W, v), hh = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap; (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: hh, place: pname(hh), kind, n: count, lost, hits, target, t: W.now }); }
-    return { msg: `Strike complete — ${sum}.`, strike: { kind, target, count, lost, hits, dmg, sum } };
+    { const hs = hexesOf(W, v), hh = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap; (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: hh, place: pname(hh), kind, n: count, lost, hits, icept, target, t: W.now }); }
+    if (icept) { note(W, v, 'attack', `🛡 Your Golden Dome shot down ${icept} of ${count} missile${count > 1 ? 's' : ''} fired by ${me.name}.`); }
+    return { msg: `Strike complete — ${sum}.${icept ? ` Their Golden Dome shot down ${icept} of your ${count} missiles.` : ''}`, strike: { kind, target, count, lost, hits, icept, dmg, sum } };
+  }
+  // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.
+  const DOME = { tech: 14, rank: 5, cash: 150e6, steel: 4000, goods: 3000, oil: 2000, buildH: 12, upkeep: 2e5, mis: .75, nuke: .4 };
+  const domeOn = (W, n) => !!(n && n.dome && n.dome.ready <= (W ? W.now : Date.now()) && !n.dome.off && (n.cash || 0) >= 0);
+  function canDome(W, u) {
+    const n = W.A[u]; if (!n) return 'Found a nation first.';
+    if (n.dome) return n.dome.ready > W.now ? 'Your Golden Dome is under construction.' : 'Your Golden Dome is already protecting your nation.';
+    if ((n.tech || 0) < DOME.tech) return `The Golden Dome requires tech level ${DOME.tech}.`;
+    if (!W.cfg.nukeTest && rankOf(n.xp) < DOME.rank) return `The Golden Dome requires the rank of ${RANKS[DOME.rank][1]}.`;
+    if (n.cash < DOME.cash || (n.res.steel || 0) < DOME.steel || (n.res.goods || 0) < DOME.goods || (n.res.oil || 0) < DOME.oil) return `The Golden Dome costs ${money(DOME.cash)}, ${num(DOME.steel)} steel, ${num(DOME.goods)} goods and ${num(DOME.oil)} oil.`;
+    return null;
+  }
+  function buildDome(W, u) {
+    const why = canDome(W, u); if (why) fail(why); const n = W.A[u];
+    n.cash -= DOME.cash; n.res.steel -= DOME.steel; n.res.goods -= DOME.goods; n.res.oil -= DOME.oil;
+    n.dome = { t: W.now, ready: W.now + (W.cfg.nukeTest ? 60e3 : DOME.buildH * HOUR) }; n.approval = clamp(n.approval + 4, 0, 100);
+    news(W, u, `🛡 ${n.name} has begun building a Golden Dome: a missile shield over the whole nation.`);
+    log(n, `Construction of your Golden Dome has begun. It will be operational in ${W.cfg.nukeTest ? '1 minute' : DOME.buildH + ' hours'}.`, W); touch(W, u);
+    return { msg: `🛡 Golden Dome construction has begun. It will protect your nation in ${W.cfg.nukeTest ? '1 minute' : DOME.buildH + ' hours'}.` };
   }
   // nuclear test in the open ocean: for nations with a nuclear program but no warhead. Once a week; it pushes aggression to 70 (sanctions, nearly rogue).
   const NTEST = { cash: 5e6, cdD: 7, aggr: 70 };
@@ -804,13 +824,25 @@ function Core(PD, CARDS) {
     aggrHit(W, u, v, 'nuclear strike'); (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, t: W.now });
     touch(W, u, v); return sum;
   }
-  function launchNuke(W, u, v, h) {
-    const why = canLaunch(W, u, v); if (why) fail(why); const d = W.A[v];
+  // a Golden Dome destroyed the nuclear missile in flight: no detonation, but the warhead is spent and the launch still counts
+  function interceptNuke(W, u, v, h, retaliation) {
+    const me = W.A[u], d = W.A[v], secondStrike = retaliation || !!(me.nuked && me.nuked.by === v && W.now - me.nuked.t < 72 * HOUR);
+    me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR;
+    if (!secondStrike) { me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + 72 * HOUR); for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after it launched a nuclear missile.`); touch(W, a); } }
+    me.approval = clamp(me.approval - (secondStrike ? 3 : 12), 0, 100); d.approval = clamp(d.approval + 8, 0, 100); d.stability = clamp(d.stability + 5, 0, 100);
+    news(W, u, `☢ ${me.name} launched a nuclear missile at ${d.name}, but ${d.name}'s Golden Dome intercepted it high above ${pname(h)}.`);
+    note(W, v, 'attack', `🛡 Your Golden Dome intercepted a nuclear missile launched by ${me.name}!`); log(d, `🛡 Your Golden Dome intercepted a nuclear missile launched by ${me.name} at ${pname(h)}.`, W);
+    aggrHit(W, u, v, 'nuclear strike'); (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, intercepted: true, t: W.now });
+    touch(W, u, v);
+  }
+  function launchNuke(W, u, v, h, rng) {
+    const why = canLaunch(W, u, v); if (why) fail(why); const d = W.A[v]; const R = rng || Math.random;
     h = h == null || h === '' ? d.cap : Number(h); if (owner(W, h) !== v) fail(`That province does not belong to ${d.name}.`);
+    if (domeOn(W, d) && R() < DOME.nuke) { interceptNuke(W, u, v, h, false); return { msg: `☢ Launch confirmed, but ${d.name}'s Golden Dome intercepted your missile before it could detonate. Your warhead is spent.`, intercepted: true }; }
     const sum = detonate(W, u, v, h, false);
-    // mutually assured destruction: an armed warhead fires back automatically
+    // mutually assured destruction: an armed warhead fires back automatically (and the attacker's own dome may stop it)
     let mad = '';
-    if (warheadReady(W, d) && W.A[u]) { detonate(W, v, u, W.A[u].cap, true); mad = ` ${d.name} had an armed warhead and retaliated automatically against your capital.`; }
+    if (warheadReady(W, d) && W.A[u]) { if (domeOn(W, W.A[u]) && R() < DOME.nuke) { interceptNuke(W, v, u, W.A[u].cap, true); mad = ` ${d.name} fired back automatically, but your Golden Dome intercepted its missile.`; } else { detonate(W, v, u, W.A[u].cap, true); mad = ` ${d.name} had an armed warhead and retaliated automatically against your capital.`; } }
     return { msg: `☢ Detonation confirmed — ${sum}.${mad}`, nuked: { h, sum, mad: !!mad } };
   }
   // collective defense: a pact member goes to war with whoever attacked a fellow member (fair war: the aggressor started it)
@@ -1230,7 +1262,8 @@ function Core(PD, CARDS) {
       case 'offerno': return answerOffer(W, u, String(c.id), false);
       case 'offercancel': return cancelOffer(W, u, String(c.id));
       case 'flag': return setFlag(W, u, c.flag, c.motto);
-      case 'launch': return launchNuke(W, u, String(c.v), c.h);
+      case 'launch': return launchNuke(W, u, String(c.v), c.h, rng);
+      case 'dome': return buildDome(W, u);
       case 'dip': return dip(W, u, String(c.kind), String(c.v));
       case 'aid': return aid(W, u, String(c.v), c.amt || {});
       case 'market': return market(W, u, String(c.r), c.q, !!c.buy);
@@ -1259,7 +1292,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
