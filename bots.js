@@ -128,20 +128,40 @@ module.exports = function makeBots(core, WP, rng) {
     return b;
   }
   function bossAssist(W, u) {
+    // runs every world tick (30 s): every rate below is per tick, sized for about an hour of real time (120 ticks)
     const n = W.A[u], H = humans(W).map(v => W.A[v]).filter(Boolean); if (!H.length) return;
-    const top = k => Math.max(...H.map(h => h[k] || 0)), topPow = Math.max(...humans(W).map(v => core.power(W, v)));
-    // money, materials and an army that grow toward the strongest player (about 90% of them), never past them
-    const behind = core.power(W, u) < topPow * .9, saving = (!n.nuke && n.cash < core.NUKE.cash * 1.2) || (n.nuke && !n.warhead && n.cash < core.WARHEAD.cash * 1.2);
-    if (behind || saving) n.cash += Math.max(2.5e5, top('gdp') * .0004); // backing only while it is behind the top player or saving for its nuclear program and warhead
-    for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 5000) n.res[r] = (n.res[r] || 0) + 40;
-    if (core.power(W, u) < topPow * .9) { n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .006)); if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(20, Math.ceil(n.troops * .004))); }
-    if (n.pop < top('pop') * .6) n.pop *= 1.002;
-    // overstretched: well past the strongest player, its backers pull out and its forces thin (keeps it a rival, not a steamroller)
-    if (core.power(W, u) > topPow * 1.15) { n.air = Math.floor((n.air || 0) * .996); n.troops = Math.floor(n.troops * .997); n.ships = Math.floor((n.ships || 0) * .998); }
-    if (rng() < 1 / 90 && (n.tech || 0) < Math.max(core.WARHEAD.tech, top('tech'))) n.tech = (n.tech || 0) + 1;
-    if ((n.xp || 0) < Math.max(WP.RANKS[core.WARHEAD.rank][0], top('xp') * .9)) n.xp = (n.xp || 0) + 15;
-    if (rng() < 1 / 240 && (n.fort || 0) < 12) n.fort = (n.fort || 0) + 1;
-    n.approval = Math.max(n.approval, 55); n.stability = Math.max(n.stability, 60); core.touch(W, u);
+    const top = k => Math.max(...H.map(h => h[k] || 0)), topPow = Math.max(...humans(W).map(v => core.power(W, v))), now = W.now;
+    const pow = core.power(W, u), behind = pow < topPow * .9;
+    // the world united: 3 or more nations at war with it and its foreign backers pull out completely
+    const coalition = core.wars(W, u).filter(v => !isBot(v)).length + core.wars(W, u).filter(v => isBot(v)).length * .5;
+    const isolated = coalition >= 3;
+    if (isolated && !n.ai.isolated) { n.ai.isolated = now; core.news(W, u, `🌍 ${core.wars(W, u).length} nations have united against ${n.name}. Its foreign backers are pulling out: no more money or weapons will reach it.`); }
+    if (!isolated && n.ai.isolated && coalition < 2) n.ai.isolated = 0;
+    // damage sticks: no rebuilding for 2 hours after it is attacked or struck
+    const lastHit = Math.max(0, ...Object.values(n.hitBy || {}));
+    const hurt = now - lastHit < 2 * 3600e3;
+    const saving = (!n.nuke && n.cash < core.NUKE.cash * 1.2) || (n.nuke && !n.warhead && n.cash < core.WARHEAD.cash * 1.2);
+    if (!isolated && (behind || saving)) n.cash += Math.max(6e4, top('gdp') * .0001); // about $7M+ an hour while it is behind or saving for its nuclear program
+    if (!isolated) for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 5000) n.res[r] = (n.res[r] || 0) + 10;
+    if (!isolated && !hurt && behind) { // rebuild toward 90% of the strongest player, a few percent an hour
+      if (rng() < .5) n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .0005));
+      if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(5, Math.ceil(n.troops * .0003)));
+    }
+    if (n.pop < top('pop') * .6 && !isolated) n.pop *= 1.0005;
+    // never a sky full of planes: at most 1.5x the biggest player air force; anything above that drains away within about an hour
+    const airCap = Math.max(300, top('air') * 1.5);
+    if ((n.air || 0) > airCap) n.air = Math.max(airCap, Math.floor(n.air - Math.max(1, (n.air - airCap) * .02)));
+    // overstretched or isolated: its forces wear down
+    if (pow > topPow * 1.15) { n.air = Math.floor((n.air || 0) * .998); n.troops = Math.floor(n.troops * .998); n.ships = Math.floor((n.ships || 0) * .999); }
+    if (isolated) { n.air = Math.floor((n.air || 0) * .9995); n.troops = Math.floor(n.troops * .9995); }
+    // fortifications: at most 2 levels above the best-fortified player
+    const fortCap = Math.min(12, top('fort') + 2);
+    if ((n.fort || 0) > fortCap && rng() < 1 / 240) n.fort = n.fort - 1;
+    else if (!isolated && rng() < 1 / 720 && (n.fort || 0) < fortCap) n.fort = (n.fort || 0) + 1;
+    if (!isolated && rng() < 1 / 200 && (n.tech || 0) < Math.max(core.WARHEAD.tech, top('tech'))) n.tech = (n.tech || 0) + 1;
+    if (!isolated && (n.xp || 0) < Math.max(WP.RANKS[core.WARHEAD.rank][0], top('xp') * .9)) n.xp = (n.xp || 0) + 4;
+    if (!isolated) { n.approval = Math.max(n.approval, 55); n.stability = Math.max(n.stability, 60); }
+    core.touch(W, u);
   }
   function bossMove(W, u, cfg) {
     const n = W.A[u], H = humans(W);
