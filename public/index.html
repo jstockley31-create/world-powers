@@ -377,6 +377,8 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .ntwarn{position:fixed;top:calc(64px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:9996;display:flex;align-items:center;gap:10px;width:max-content;max-width:min(620px,calc(100vw - 16px));background:rgba(36,26,4,.95);border:1px solid #f0b429;border-radius:12px;padding:8px 8px 8px 12px;color:#ffeab0;font-size:13px;box-shadow:0 10px 30px #000a;animation:skIn .25s ease-out}
 .ntwarn.hide{display:none}.ntwarn .ic{font-size:20px}.ntwarn>span:nth-child(2){flex:1;min-width:0}.ntwarn b{display:block;color:#ffd36b;letter-spacing:.05em;font-variant-numeric:tabular-nums}
 @media(max-width:560px){.ntwarn{flex-wrap:wrap;top:calc(56px + env(safe-area-inset-top))}.ntwarn>span:nth-child(2){flex-basis:calc(100% - 36px)}}
+.upnote{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:10px;background:#0f151cf2;border:1px solid var(--bd2);border-radius:10px;padding:10px 14px;font-size:13px;color:#e6edf3;box-shadow:0 10px 30px #0009}
+.upnote .spin{width:14px;height:14px;border:2px solid #f0c35c55;border-top-color:#f0c35c;border-radius:50%;animation:upspin .8s linear infinite}@keyframes upspin{to{transform:rotate(360deg)}}
 </style>
 <script src="/vendor/d3.min.js"></script>
 <script src="/core.js"></script>
@@ -477,7 +479,10 @@ const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
 function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 function connect(){const es=new EventSource('/api/stream');
- es.addEventListener('init',e=>{const d=JSON.parse(e.data);applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}))});
+ es.addEventListener('init',e=>{const d=JSON.parse(e.data);
+  // a new version was deployed while this page stayed open (phones keep apps alive for days): reload into it
+  if(d.ver){if(!WP.ver)WP.ver=d.ver;else if(d.ver!==WP.ver&&!WP.updating){WP.updating=true;window.dispatchEvent(new CustomEvent('wp-update'))}}
+  applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}))});
  es.addEventListener('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
  es.addEventListener('mail',e=>{WP.extra.mailUnread=JSON.parse(e.data).unread;emit('wp-mail',WP.extra.mailUnread)});
  es.addEventListener('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fallen)});
@@ -1617,6 +1622,9 @@ function ntWarnDraw(){for(const[id,f]of ntWarns)if(f.go<=Date.now()-5000)ntWarns
  const f=list[0],left=Math.max(0,f.go-Date.now()),m=Math.floor(left/60000),sec=Math.floor(left/1000)%60;
  el.innerHTML=`<span class="ic">☢</span><span><b>NUCLEAR TEST ${left>0?`in ${m}:${String(sec).padStart(2,'0')}`:'starting'}</b>${esc(f.byName)} · ${esc(ntWhere(f.ocean))}${list.length>1?` · +${list.length-1} more`:''}</span><button class="btn sm" data-w="see">Show me where</button><button class="btn sm ghost" data-w="x" aria-label="Hide">✕</button>`}
 window.addEventListener('wp-ntestwarn',e=>ntWarn(e.detail));
+// update: show a short notice, then reload once nothing important is happening (not while typing, and not during a nuke or a test)
+window.addEventListener('wp-update',()=>{const n=document.createElement('div');n.className='upnote';n.innerHTML='<span class="spin"></span>Updating to the latest version…';document.body.appendChild(n);
+ const t0=Date.now();const go=()=>{const a=document.activeElement,typing=a&&/INPUT|TEXTAREA/.test(a.tagName)&&a.value&&a.value.length>0;if((nukeBusy||typing)&&Date.now()-t0<120000)return setTimeout(go,2000);location.reload()};setTimeout(go,1800)});
 function nukeNext(){const fx=nukeQ.shift();if(!fx){nukeBusy=false;return}nukeBusy=true;
  if(fx.test){testSeq(fx);return}
  if(fx.from==null||!P[fx.from]||!P[fx.h]){nukeFlash(fx);setTimeout(nukeNext,3000);return}
