@@ -37,7 +37,18 @@ try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { 
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
-for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests']) S[k] = S[k] || [];
+for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
+// nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
+const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
+function armTest(fx) { setTimeout(() => fireTest(fx.id), Math.max(0, fx.go - Date.now())); }
+function fireTest(id) {
+  const i = S.ntestPending.findIndex(x => x.id === id); if (i < 0) return;
+  const fx = { ...S.ntestPending.splice(i, 1)[0], fired: Date.now() }; S.ntests.unshift(fx); S.ntests = S.ntests.slice(0, 50); persist();
+  broadcast('ntest', fx);
+  setTimeout(() => systemMessage(`☢ NUCLEAR TEST: ${fx.byName} detonated a nuclear device in ${oceanPhrase(fx.ocean)}. The world condemns the test.`), NT_COUNT + 500);
+}
+// after a restart: re-arm tests still to come; one that should have fired more than 3 minutes ago is simply recorded
+setTimeout(() => { for (const fx of S.ntestPending.slice()) { if (Date.now() - fx.go > 3 * 60e3) { S.ntestPending = S.ntestPending.filter(x => x.id !== fx.id); S.ntests.unshift({ ...fx, fired: fx.go, missed: true }); } else armTest(fx); } }, 2000);
 // provinces still burning after air and missile strikes: { province: { t: last hit, n: hits } }. Fires smoulder for a day; a new hit re-ignites them.
 const BURN_MS = 24 * HOUR; S.burn = S.burn && typeof S.burn === 'object' && !Array.isArray(S.burn) ? S.burn : {};
 function burnList() { const now = Date.now(), out = []; for (const [h, b] of Object.entries(S.burn)) { if (now - b.t < BURN_MS) out.push([+h, b.t, b.n]); else delete S.burn[h]; } return out; }
@@ -240,7 +251,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { cols, users, config: effCfg(), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), burn: burnList(), ntests: S.ntests.filter(x => Date.now() - x.t < 3 * 60e3) };
+  return { cols, users, config: effCfg(), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 setInterval(() => { for (const c of clients) writeRaw(c, ': ping\n\n'); }, 25000).unref();
 function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 300) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
@@ -286,9 +297,9 @@ function commit(W) {
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
   // nuclear tests: everyone online watches it happen
   for (const fx of W.ntestFx || []) {
-    S.ntests.unshift(fx); S.ntests = S.ntests.slice(0, 50); broadcast('ntest', fx);
-    const where = fx.ocean === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + fx.ocean;
-    for (const id of Object.keys(S.users)) if (id !== fx.by && S.docs['nations/' + id]) addNote(id, 'war', `☢ ${fx.byName} has carried out a nuclear test in ${where}.`);
+    S.ntestPending.push(fx); if (fx.delay) broadcast('ntestwarn', fx);
+    for (const id of Object.keys(S.users)) if (id !== fx.by && S.docs['nations/' + id]) addNote(id, 'war', fx.delay ? `☢ ${fx.byName} will conduct a nuclear test in ${oceanPhrase(fx.ocean)} in ${fx.delay} minutes. Watch it live on the globe.` : `☢ ${fx.byName} is conducting a nuclear test in ${oceanPhrase(fx.ocean)} right now. Watch the globe.`);
+    armTest(fx);
   }
   W.ntestFx = [];
   if ((W.strikeFx || []).length) { const now = Date.now(); for (const fx of W.strikeFx) { broadcast('strike', fx); S.strikes.unshift(fx); S.strikeLog.unshift({ t: now, by: fx.by, byName: fx.byName, to: fx.to, toName: fx.toName, kind: fx.kind, n: fx.n, hits: fx.hits, lost: fx.lost, place: fx.place, target: fx.target }); const b = S.burn[fx.h]; S.burn[fx.h] = { t: now, n: Math.min(20, (b && now - b.t < BURN_MS ? b.n : 0) + 1) }; } S.strikes = S.strikes.filter(x => now - x.t < 20 * 60e3).slice(0, 80); S.strikeLog = S.strikeLog.slice(0, 400); burnList(); }

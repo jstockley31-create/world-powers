@@ -704,21 +704,24 @@ function Core(PD, CARDS) {
   }
   const oceanName = ([lon, lat]) => (lat > 51 && lat < 66 && lon > -95 && lon < -76) ? 'Hudson Bay' : (lat > 36 && lat < 47.5 && lon > 46.5 && lon < 55.5) ? 'Caspian Sea' : (lat > 40.5 && lat < 47 && lon > 27 && lon < 42) ? 'Black Sea' : lat > 66 ? 'Arctic Ocean' : lat < -55 ? 'Southern Ocean' : (lat > 30 && lat < 46 && lon > -6 && lon < 36) ? 'Mediterranean Sea' : (lon > -80 && lon < 20 && !(lat < 10 && lon < -70)) ? 'Atlantic Ocean' : ((lon >= 20 && lon < 120 && lat < 28) || (lon >= 115 && lon < 147 && lat < -30)) ? 'Indian Ocean' : 'Pacific Ocean';
   const inOcean = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
-  function nukeTest(W, u, rng) {
+  function nukeTest(W, u, rng, delay) {
+    delay = [0, 5, 10, 15].includes(Number(delay)) ? Number(delay) : 5; // minutes of warning before the 30-second countdown
     const n = W.A[u]; if (!n) fail('Found a nation first.');
     if (!n.nuke) fail('You need a nuclear deterrent before you can test one.');
     if (n.warhead) fail('Your program has moved on to a launchable warhead. Tests are for nations with a nuclear program and no warhead.');
     if (W.m.npt) fail('The Non-proliferation Treaty is in force: nuclear tests are banned until it expires.');
     const wait = (n.cd && n.cd.ntest || 0) - W.now; if (wait > 0) fail(`Your next nuclear test can be held in ${wait > 48 * HOUR ? Math.ceil(wait / 864e5) + ' days' : fmtT(wait)}.`);
+    if (n.ntestAt && n.ntestAt > W.now) fail('Your test is already scheduled.');
     if (n.cash < NTEST.cash) fail(`A nuclear test costs ${money(NTEST.cash)}.`);
-    n.cash -= NTEST.cash; n.cd = n.cd || {}; n.cd.ntest = W.now + NTEST.cdD * 24 * HOUR; n.ntest = W.now;
+    const go = W.now + delay * 60e3;
+    n.cash -= NTEST.cash; n.cd = n.cd || {}; n.cd.ntest = W.now + NTEST.cdD * 24 * HOUR; n.ntest = go; n.ntestAt = go;
     n.aggr = Math.max(n.aggr || 0, NTEST.aggr); n.stability = clamp(n.stability + 4, 0, 100); n.approval = clamp(n.approval + 3, 0, 100); rogueCheck(W, u);
     const at = oceanSite(W, u, rng), ocean = oceanName(at);
-    news(W, u, `☢ NUCLEAR TEST: ${n.name} detonated a nuclear device in ${inOcean(ocean)}. The world condemns the test.`);
-    log(n, `Your nuclear test in ${inOcean(ocean)} was a success. The world is alarmed: your aggression is now ${Math.round(n.aggr)} and you are under international sanctions.`, W);
-    (W.ntestFx = W.ntestFx || []).push({ id: rid(), by: u, byName: n.name, at, ocean, t: W.now });
+    news(W, u, delay ? `☢ ${n.name} has announced a nuclear test in ${inOcean(ocean)} in ${delay} minutes. Watch the globe.` : `☢ ${n.name} has begun the countdown to a nuclear test in ${inOcean(ocean)}. Watch the globe.`);
+    log(n, `You announced a nuclear test in ${inOcean(ocean)}. The world is alarmed: your aggression is now ${Math.round(n.aggr)} and you are under international sanctions.`, W);
+    (W.ntestFx = W.ntestFx || []).push({ id: rid(), by: u, byName: n.name, at, ocean, t: W.now, go, delay });
     touch(W, u);
-    return { msg: `Nuclear test successful in ${inOcean(ocean)}. The whole world saw it. Your aggression is now ${Math.round(n.aggr)}: you are under sanctions, one step from rogue status.` };
+    return { msg: `${delay ? `Nuclear test scheduled: the world has been warned, and the countdown begins in ${delay} minutes` : 'The countdown has begun'} in ${inOcean(ocean)}. Your aggression is now ${Math.round(n.aggr)}: you are under sanctions, one step from rogue status.` };
   }
   function buildNuke(W, u) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (n.nuke) fail('You already have a nuclear deterrent.');
@@ -1216,7 +1219,7 @@ function Core(PD, CARDS) {
       case 'attack': return attack(W, u, c.h, c.x, c.air, rng);
       case 'strike': return strike(W, u, String(c.v), String(c.kind), String(c.target), c.n, rng);
       case 'nuke': return buildNuke(W, u);
-      case 'ntest': return nukeTest(W, u, rng);
+      case 'ntest': return nukeTest(W, u, rng, c.delay);
       case 'warhead': return buildWarhead(W, u);
       case 'law': return setLaw(W, u, String(c.k), !!c.on);
       case 'wonder': return wonder(W, u, String(c.k), !!c.abandon);
