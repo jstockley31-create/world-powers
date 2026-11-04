@@ -101,34 +101,90 @@ const ACH = {
   general: ['Legendary General', 'Have a 5-star general'], senator: ['Senator', 'Reach the rank of Senator'], president: ['President', 'Reach the rank of President'],
   explorer: ['Explorer', 'Complete 5 expeditions'], lawmaker: ['Lawmaker', 'Have 3 laws in force at once'], missions: ['Dedicated', 'Complete 30 daily missions'], dealmaker: ['Dealmaker', 'Complete 5 direct trades with other nations']
 };
-const FLAG_LAYOUTS = ['solid', 'h2', 'h3', 'v2', 'v3', 'cross', 'nordic', 'diag', 'tri', 'border', 'quad', 'circle'];
-const FLAG_EMBLEMS = ['none', 'star', 'stars', 'sun', 'moon', 'circle', 'shield', 'cross', 'triangle', 'diamond'];
-const FLAG_COLORS = ['#c8102e', '#e8551e', '#f2c230', '#1e8f4e', '#0b6e4f', '#1f4fa8', '#0a2b6e', '#5fb6e8', '#6b2fa3', '#111111', '#ffffff', '#7a4a1f', '#d4a64a', '#e07a9c'];
-// a flag as an SVG string (used in the game, on public nation pages and on the server)
-function flagSVG(f, w, h) {
-  w = w || 30; h = h || 20; f = f || {}; const c = (f.c || []).map(x => FLAG_COLORS.includes(x) ? x : '#888'); while (c.length < 3) c.push(c[c.length - 1] || '#888');
-  const [a, b, d] = c, R = (x, y, ww, hh, col) => `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" fill="${col}"/>`; let g = '';
+const FLAG_LAYOUTS = ['solid', 'h2', 'h3', 'h3w', 'v2', 'v3', 'stripes', 'vstripes', 'cross', 'nordic', 'nordic1', 'saltire', 'union', 'diag', 'diag2', 'bend', 'tri', 'tri3', 'chevron', 'pall', 'hoistband', 'canton', 'starsstripes', 'border', 'frame', 'quad', 'quadcross', 'xquad', 'circle', 'lozenge', 'rays', 'checker', 'wavy', 'mountain'];
+const FLAG_EMBLEMS = ['none', 'star', 'star6', 'star8', 'stars', 'starring', 'sun', 'moon', 'moonstar', 'circle', 'ring', 'shield', 'cross', 'triangle', 'diamond', 'crown', 'laurel', 'anchor', 'gear', 'tree', 'peak', 'waves', 'bolt', 'leaf', 'tower', 'swords', 'eagle', 'atom', 'flame', 'heart'];
+const FLAG_COLORS = ['#c8102e', '#e8551e', '#f2c230', '#1e8f4e', '#0b6e4f', '#1f4fa8', '#0a2b6e', '#5fb6e8', '#6b2fa3', '#111111', '#ffffff', '#7a4a1f', '#d4a64a', '#e07a9c',
+  '#8b0000', '#ff7f00', '#ffd700', '#7cc242', '#00a86b', '#00838f', '#1565c0', '#3949ab', '#002147', '#4a148c', '#9c27b0', '#c2185b', '#f48fb1', '#795548', '#9e9e9e', '#37474f', '#f5f0e1', '#b8860b'];
+const FLAG_HEX = /^#[0-9a-fA-F]{6}$/;
+const FLAG_HOIST = ['tri', 'tri3', 'chevron', 'pall', 'hoistband'], FLAG_CANTON = ['canton', 'starsstripes'];
+// a flag as an SVG string (used in the game, on public nation pages and on the server). Older flags ({ l, c: [3 colours], e }) draw exactly as before.
+function flagSVG(f, w, h, ns) {
+  w = w || 30; h = h || 20; f = f || {}; const c = (Array.isArray(f.c) ? f.c : []).slice(0, 4).map(x => FLAG_HEX.test(x) ? x : '#888'); while (c.length < 4) c.push(c.length === 3 ? c[0] : (c[c.length - 1] || '#888'));
+  const [a, b, d, q] = c, R = (x, y, ww, hh, col) => `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" fill="${col}"/>`, Pth = (p, col) => `<path d="${p}" fill="${col}"/>`;
+  const sn = Math.max(3, Math.min(15, Math.round(f.sn || (f.l === 'starsstripes' ? 13 : 7)))); let g = '';
   switch (f.l) {
     case 'h2': g = R(0, 0, 30, 10, a) + R(0, 10, 30, 10, b); break;
     case 'h3': g = R(0, 0, 30, 7, a) + R(0, 6.67, 30, 6.67, b) + R(0, 13.33, 30, 6.67, d); break;
+    case 'h3w': g = R(0, 0, 30, 20, a) + R(0, 5, 30, 10, b); break;
     case 'v2': g = R(0, 0, 15, 20, a) + R(15, 0, 15, 20, b); break;
     case 'v3': g = R(0, 0, 10, 20, a) + R(10, 0, 10, 20, b) + R(20, 0, 10, 20, d); break;
+    case 'stripes': case 'starsstripes': { const sh = 20 / sn; for (let i = 0; i < sn; i++) g += R(0, +(i * sh).toFixed(3), 30, +(sh + .05).toFixed(3), i % 2 ? b : a); if (f.l === 'starsstripes') g += R(0, 0, 12.5, +(sh * Math.ceil(sn / 2)).toFixed(3), d); break; }
+    case 'vstripes': { const n = Math.min(sn, 11), sw = 30 / n; for (let i = 0; i < n; i++) g += R(+(i * sw).toFixed(3), 0, +(sw + .05).toFixed(3), 20, i % 2 ? b : a); break; }
     case 'cross': g = R(0, 0, 30, 20, a) + R(12, 0, 6, 20, b) + R(0, 7, 30, 6, b); break;
     case 'nordic': g = R(0, 0, 30, 20, a) + R(8, 0, 6, 20, b) + R(0, 7, 30, 6, b) + R(9.5, 0, 3, 20, d) + R(0, 8.5, 30, 3, d); break;
-    case 'diag': g = R(0, 0, 30, 20, a) + `<path d="M0 20 L30 0 L30 20 Z" fill="${b}"/>`; break;
-    case 'tri': g = R(0, 0, 30, 10, b) + R(0, 10, 30, 10, d) + `<path d="M0 0 L13 10 L0 20 Z" fill="${a}"/>`; break;
+    case 'nordic1': g = R(0, 0, 30, 20, a) + R(8.5, 0, 4, 20, b) + R(0, 8, 30, 4, b); break;
+    case 'saltire': g = R(0, 0, 30, 20, a) + `<path d="M0 0 L30 20 M30 0 L0 20" stroke="${b}" stroke-width="3.4"/>`; break;
+    case 'union': g = R(0, 0, 30, 20, a) + `<path d="M0 0 L30 20 M30 0 L0 20" stroke="${b}" stroke-width="3.6"/><path d="M0 0 L30 20 M30 0 L0 20" stroke="${d}" stroke-width="1.3"/>` + R(12, 0, 6, 20, b) + R(0, 7, 30, 6, b) + R(13, 0, 4, 20, d) + R(0, 8, 30, 4, d); break;
+    case 'diag': g = R(0, 0, 30, 20, a) + Pth('M0 20 L30 0 L30 20 Z', b); break;
+    case 'diag2': g = R(0, 0, 30, 20, a) + Pth('M0 0 L30 20 L0 20 Z', b); break;
+    case 'bend': g = R(0, 0, 30, 20, a) + Pth('M0 20 L30 0 L30 20 Z', d) + `<path d="M0 20 L30 0" stroke="${q === a ? '#f2c230' : q}" stroke-width="5"/><path d="M0 20 L30 0" stroke="${b}" stroke-width="3"/>`; break;
+    case 'tri': g = R(0, 0, 30, 10, b) + R(0, 10, 30, 10, d) + Pth('M0 0 L13 10 L0 20 Z', a); break;
+    case 'tri3': g = R(0, 0, 30, 6.67, b) + R(0, 6.67, 30, 6.67, d) + R(0, 13.33, 30, 6.67, q) + Pth('M0 0 L12 10 L0 20 Z', a); break;
+    case 'chevron': g = R(0, 0, 30, 10, b) + R(0, 10, 30, 10, d) + Pth('M0 0 L16 10 L0 20 Z', q) + Pth('M0 0 L12 10 L0 20 Z', a); break;
+    case 'pall': g = R(0, 0, 30, 10, b) + R(0, 10, 30, 10, d) + `<path d="M0 0 L13 10 L30 10 M0 20 L13 10" stroke="${q}" stroke-width="5" fill="none"/><path d="M0 0 L13 10 L30 10 M0 20 L13 10" stroke="${a}" stroke-width="2.6" fill="none"/>` + Pth('M0 3 L9 10 L0 17 Z', a); break;
+    case 'hoistband': g = R(0, 0, 30, 10, b) + R(0, 10, 30, 10, d) + R(0, 0, 10, 20, a); break;
+    case 'canton': g = R(0, 0, 30, 20, a) + R(0, 0, 13, 10, b); break;
     case 'border': g = R(0, 0, 30, 20, b) + R(3, 3, 24, 14, a); break;
+    case 'frame': g = R(0, 0, 30, 20, b) + R(1.6, 1.6, 26.8, 16.8, d) + R(3.2, 3.2, 23.6, 13.6, a); break;
     case 'quad': g = R(0, 0, 15, 10, a) + R(15, 0, 15, 10, b) + R(0, 10, 15, 10, b) + R(15, 10, 15, 10, a); break;
+    case 'quadcross': g = R(0, 0, 15, 10, a) + R(15, 0, 15, 10, b) + R(0, 10, 15, 10, b) + R(15, 10, 15, 10, a) + R(13, 0, 4, 20, d) + R(0, 8, 30, 4, d); break;
+    case 'xquad': g = Pth('M0 0 L30 0 L15 10 Z', a) + Pth('M30 0 L30 20 L15 10 Z', b) + Pth('M0 20 L30 20 L15 10 Z', a) + Pth('M0 0 L0 20 L15 10 Z', b) + `<path d="M0 0 L30 20 M30 0 L0 20" stroke="${d}" stroke-width="2.6"/>`; break;
     case 'circle': g = R(0, 0, 30, 20, a) + `<circle cx="15" cy="10" r="6" fill="${b}"/>`; break;
+    case 'lozenge': g = R(0, 0, 30, 20, a) + Pth('M15 2 L28 10 L15 18 L2 10 Z', b) + `<circle cx="15" cy="10" r="4.6" fill="${d}"/>`; break;
+    case 'rays': { g = R(0, 0, 30, 20, a); for (let i = 0; i < 16; i += 2) { const t1 = i / 16 * Math.PI * 2, t2 = (i + 1) / 16 * Math.PI * 2; g += Pth(`M15 10 L${(15 + 40 * Math.cos(t1)).toFixed(1)} ${(10 + 40 * Math.sin(t1)).toFixed(1)} L${(15 + 40 * Math.cos(t2)).toFixed(1)} ${(10 + 40 * Math.sin(t2)).toFixed(1)} Z`, b); } g = `<g>${g}</g>`; break; }
+    case 'checker': { for (let y = 0; y < 4; y++) for (let x = 0; x < 6; x++) g += R(x * 5, y * 5, 5, 5, (x + y) % 2 ? b : a); break; }
+    case 'wavy': g = R(0, 0, 30, 20, a) + Pth('M0 7 Q7.5 4 15 7 T30 7 L30 13 Q22.5 16 15 13 T0 13 Z', b) + `<path d="M0 7 Q7.5 4 15 7 T30 7 M0 13 Q7.5 10 15 13 T30 13" stroke="${d}" stroke-width=".9" fill="none"/>`; break;
+    case 'mountain': g = R(0, 0, 30, 20, a) + Pth('M0 20 L9 9 L14 14 L20 6 L30 17 L30 20 Z', b) + Pth('M18.2 8.3 L20 6 L21.9 8.4 L20.6 9 L20 8 L19.3 9 Z', d); break;
     default: g = R(0, 0, 30, 20, a);
   }
-  const e = d, cx = f.l === 'tri' ? 5.5 : f.l === 'nordic' || f.l === 'cross' ? 15 : 15, cy = 10;
-  const star = (x, y, r, col) => { let p = ''; for (let i = 0; i < 10; i++) { const rr = i % 2 ? r * .45 : r, t = Math.PI / 5 * i - Math.PI / 2; p += (i ? 'L' : 'M') + (x + rr * Math.cos(t)).toFixed(2) + ' ' + (y + rr * Math.sin(t)).toFixed(2); } return `<path d="${p}Z" fill="${col}"/>`; };
-  const em = { star: star(cx, cy, 4.5, e), stars: star(cx - 6, cy, 2.6, e) + star(cx, cy, 2.6, e) + star(cx + 6, cy, 2.6, e), sun: `<circle cx="${cx}" cy="${cy}" r="3.2" fill="${e}"/>` + [0, 1, 2, 3, 4, 5, 6, 7].map(i => { const t = i * Math.PI / 4; return `<line x1="${(cx + 4.2 * Math.cos(t)).toFixed(2)}" y1="${(cy + 4.2 * Math.sin(t)).toFixed(2)}" x2="${(cx + 6 * Math.cos(t)).toFixed(2)}" y2="${(cy + 6 * Math.sin(t)).toFixed(2)}" stroke="${e}" stroke-width="1.1"/>`; }).join(''),
-    moon: `<circle cx="${cx}" cy="${cy}" r="4.5" fill="${e}"/><circle cx="${cx + 1.8}" cy="${cy - .6}" r="3.8" fill="${f.l === 'circle' ? b : a}"/>`, circle: `<circle cx="${cx}" cy="${cy}" r="4" fill="${e}"/>`,
-    shield: `<path d="M${cx - 4} ${cy - 5} H${cx + 4} V${cy} Q${cx + 4} ${cy + 4} ${cx} ${cy + 5.5} Q${cx - 4} ${cy + 4} ${cx - 4} ${cy} Z" fill="${e}"/>`, cross: R(cx - 1.2, cy - 5, 2.4, 10, e) + R(cx - 5, cy - 1.2, 10, 2.4, e),
-    triangle: `<path d="M${cx} ${cy - 5} L${cx + 5} ${cy + 4} L${cx - 5} ${cy + 4} Z" fill="${e}"/>`, diamond: `<path d="M${cx} ${cy - 5} L${cx + 5} ${cy} L${cx} ${cy + 5} L${cx - 5} ${cy} Z" fill="${e}"/>` }[f.e] || '';
-  return `<svg class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag">${g}${em}<rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/></svg>`;
+  // emblem: colour, position (centre, canton or hoist), size and count
+  const ec = FLAG_HEX.test(f.ec) ? f.ec : f.l === 'starsstripes' ? b : d, ep = ['c', 'k', 'h'].includes(f.ep) ? f.ep : FLAG_CANTON.includes(f.l) ? 'k' : FLAG_HOIST.includes(f.l) ? 'h' : 'c';
+  const sc = ({ 1: .72, 2: 1, 3: 1.3 })[f.es] || 1, en = f.en ? Math.max(1, Math.min(15, Math.round(f.en) || 1)) : 0;
+  const [cx, cy, k0] = ep === 'k' ? [f.l === 'starsstripes' ? 6.25 : 6.5, f.l === 'starsstripes' ? 20 / sn * Math.ceil(sn / 2) / 2 : 5, .8] : ep === 'h' ? [f.l === 'hoistband' ? 5 : 5.2, 10, .78] : [15, 10, 1];
+  const r = 5 * sc * k0, e = ec, fx = n => (+n).toFixed(2);
+  const starP = (x, y, rr, pts, inner) => { let p = ''; for (let i = 0; i < pts * 2; i++) { const t = Math.PI / pts * i - Math.PI / 2, s = i % 2 ? rr * inner : rr; p += (i ? 'L' : 'M') + fx(x + s * Math.cos(t)) + ' ' + fx(y + s * Math.sin(t)); } return p + 'Z'; };
+  const star = (x, y, rr, col) => Pth(starP(x, y, rr, 5, .45), col);
+  const crescent = (x, y, rr) => Pth(`M${fx(x + rr * .3)} ${fx(y - rr * .95)} A${fx(rr)} ${fx(rr)} 0 1 0 ${fx(x + rr * .3)} ${fx(y + rr * .95)} A${fx(rr * .8)} ${fx(rr * .8)} 0 1 1 ${fx(x + rr * .3)} ${fx(y - rr * .95)} Z`, e);
+  const S = (p, sw) => `<path d="${p}" stroke="${e}" stroke-width="${fx(sw)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const x = cx, y = cy;
+  const em = {
+    star: () => star(x, y, r * .95, e), star6: () => Pth(starP(x, y, r, 6, .55), e), star8: () => Pth(starP(x, y, r, 8, .4), e),
+    stars: () => { const n = en || 3; if (n === 1) return star(x, y, r * .8, e); if (n > 5) { const cols = Math.ceil(Math.sqrt(n * 1.6)), rows = Math.ceil(n / cols), sx = r * 2 / cols, sy = r * 1.6 / rows, rr = Math.min(sx, sy) * .5; let s = ''; for (let i = 0; i < n; i++) { const rw = Math.floor(i / cols), inRow = Math.min(cols, n - rw * cols), cI = i - rw * cols; s += star(x - sx * (inRow - 1) / 2 + sx * cI, y - sy * (rows - 1) / 2 + sy * rw, rr, e); } return s; } const sp = Math.min(r * 2.4 / (n - 1), r * .95), rr = Math.min(r * .55, sp * .55); let s = ''; for (let i = 0; i < n; i++) s += star(x - sp * (n - 1) / 2 + sp * i, y, rr, e); return s; },
+    starring: () => { const n = en || 12; let s = ''; for (let i = 0; i < n; i++) { const t = i / n * Math.PI * 2 - Math.PI / 2; s += star(x + r * .8 * Math.cos(t), y + r * .8 * Math.sin(t), r * .2, e); } return s; },
+    sun: () => `<circle cx="${fx(x)}" cy="${fx(y)}" r="${fx(r * .64)}" fill="${e}"/>` + [0, 1, 2, 3, 4, 5, 6, 7].map(i => { const t = i * Math.PI / 4; return `<line x1="${fx(x + r * .84 * Math.cos(t))}" y1="${fx(y + r * .84 * Math.sin(t))}" x2="${fx(x + r * 1.2 * Math.cos(t))}" y2="${fx(y + r * 1.2 * Math.sin(t))}" stroke="${e}" stroke-width="${fx(r * .22)}"/>`; }).join(''),
+    moon: () => crescent(x, y, r * .9), moonstar: () => crescent(x - r * .2, y, r * .85) + star(x + r * .55, y, r * .35, e),
+    circle: () => `<circle cx="${fx(x)}" cy="${fx(y)}" r="${fx(r * .8)}" fill="${e}"/>`, ring: () => `<circle cx="${fx(x)}" cy="${fx(y)}" r="${fx(r * .75)}" stroke="${e}" stroke-width="${fx(r * .25)}" fill="none"/>`,
+    shield: () => Pth(`M${fx(x - r * .8)} ${fx(y - r)} H${fx(x + r * .8)} V${fx(y)} Q${fx(x + r * .8)} ${fx(y + r * .8)} ${fx(x)} ${fx(y + r * 1.1)} Q${fx(x - r * .8)} ${fx(y + r * .8)} ${fx(x - r * .8)} ${fx(y)} Z`, e),
+    cross: () => R(fx(x - r * .24), fx(y - r), fx(r * .48), fx(r * 2), e) + R(fx(x - r), fx(y - r * .24), fx(r * 2), fx(r * .48), e),
+    triangle: () => Pth(`M${fx(x)} ${fx(y - r)} L${fx(x + r)} ${fx(y + r * .8)} L${fx(x - r)} ${fx(y + r * .8)} Z`, e),
+    diamond: () => Pth(`M${fx(x)} ${fx(y - r)} L${fx(x + r)} ${fx(y)} L${fx(x)} ${fx(y + r)} L${fx(x - r)} ${fx(y)} Z`, e),
+    crown: () => Pth(`M${fx(x - r)} ${fx(y + r * .6)} L${fx(x - r)} ${fx(y - r * .35)} L${fx(x - r * .5)} ${fx(y + r * .1)} L${fx(x)} ${fx(y - r * .75)} L${fx(x + r * .5)} ${fx(y + r * .1)} L${fx(x + r)} ${fx(y - r * .35)} L${fx(x + r)} ${fx(y + r * .6)} Z`, e) + [-1, 0, 1].map(i => `<circle cx="${fx(x + i * r)}" cy="${fx(y - (i ? r * .35 : r * .75) - r * .16)}" r="${fx(r * .16)}" fill="${e}"/>`).join(''),
+    laurel: () => { let s = ''; for (const side of [-1, 1]) for (let i = 0; i < 6; i++) { const t = (Math.PI * .15) + i / 5 * Math.PI * .7, lx = x + side * r * .85 * Math.sin(t), ly = y + r * .85 * Math.cos(t); s += `<ellipse cx="${fx(lx)}" cy="${fx(ly)}" rx="${fx(r * .17)}" ry="${fx(r * .36)}" transform="rotate(${fx(side * (90 - t * 180 / Math.PI) + (side > 0 ? 0 : 180))} ${fx(lx)} ${fx(ly)})" fill="${e}"/>`; } return s; },
+    anchor: () => S(`M${fx(x)} ${fx(y - r * .6)} V${fx(y + r)} M${fx(x - r * .5)} ${fx(y - r * .25)} H${fx(x + r * .5)} M${fx(x - r * .85)} ${fx(y + r * .35)} Q${fx(x - r * .7)} ${fx(y + r * 1.05)} ${fx(x)} ${fx(y + r)} Q${fx(x + r * .7)} ${fx(y + r * 1.05)} ${fx(x + r * .85)} ${fx(y + r * .35)}`, r * .2) + `<circle cx="${fx(x)}" cy="${fx(y - r * .8)}" r="${fx(r * .22)}" stroke="${e}" stroke-width="${fx(r * .16)}" fill="none"/>`,
+    gear: () => { let s = `<circle cx="${fx(x)}" cy="${fx(y)}" r="${fx(r * .55)}" stroke="${e}" stroke-width="${fx(r * .3)}" fill="none"/>`; for (let i = 0; i < 8; i++) s += `<rect x="${fx(x - r * .14)}" y="${fx(y - r)}" width="${fx(r * .28)}" height="${fx(r * .32)}" fill="${e}" transform="rotate(${i * 45} ${fx(x)} ${fx(y)})"/>`; return s; },
+    tree: () => Pth(`M${fx(x)} ${fx(y - r)} L${fx(x + r * .55)} ${fx(y - r * .25)} L${fx(x + r * .3)} ${fx(y - r * .25)} L${fx(x + r * .75)} ${fx(y + r * .35)} L${fx(x + r * .45)} ${fx(y + r * .35)} L${fx(x + r * .9)} ${fx(y + r * .8)} L${fx(x - r * .9)} ${fx(y + r * .8)} L${fx(x - r * .45)} ${fx(y + r * .35)} L${fx(x - r * .75)} ${fx(y + r * .35)} L${fx(x - r * .3)} ${fx(y - r * .25)} L${fx(x - r * .55)} ${fx(y - r * .25)} Z`, e) + R(fx(x - r * .12), fx(y + r * .8), fx(r * .24), fx(r * .3), e),
+    peak: () => Pth(`M${fx(x - r)} ${fx(y + r * .7)} L${fx(x - r * .3)} ${fx(y - r * .4)} L${fx(x)} ${fx(y)} L${fx(x + r * .35)} ${fx(y - r * .85)} L${fx(x + r)} ${fx(y + r * .7)} Z`, e),
+    waves: () => S(`M${fx(x - r)} ${fx(y - r * .3)} q${fx(r * .25)} ${fx(-r * .3)} ${fx(r * .5)} 0 t${fx(r * .5)} 0 t${fx(r * .5)} 0 t${fx(r * .5)} 0 M${fx(x - r)} ${fx(y + r * .35)} q${fx(r * .25)} ${fx(-r * .3)} ${fx(r * .5)} 0 t${fx(r * .5)} 0 t${fx(r * .5)} 0 t${fx(r * .5)} 0`, r * .2),
+    bolt: () => Pth(`M${fx(x + r * .25)} ${fx(y - r)} L${fx(x - r * .55)} ${fx(y + r * .15)} L${fx(x - r * .05)} ${fx(y + r * .15)} L${fx(x - r * .3)} ${fx(y + r)} L${fx(x + r * .55)} ${fx(y - r * .2)} L${fx(x + r * .05)} ${fx(y - r * .2)} Z`, e),
+    leaf: () => Pth(`M${fx(x)} ${fx(y - r)} Q${fx(x + r * .9)} ${fx(y - r * .1)} ${fx(x)} ${fx(y + r * .75)} Q${fx(x - r * .9)} ${fx(y - r * .1)} ${fx(x)} ${fx(y - r)} Z`, e) + `<path d="M${fx(x)} ${fx(y - r * .6)} V${fx(y + r)}" stroke="${e}" stroke-width="${fx(r * .12)}"/>`,
+    tower: () => Pth(`M${fx(x - r * .6)} ${fx(y + r)} V${fx(y - r * .5)} H${fx(x - r * .8)} V${fx(y - r)} H${fx(x - r * .45)} V${fx(y - r * .75)} H${fx(x - r * .15)} V${fx(y - r)} H${fx(x + r * .15)} V${fx(y - r * .75)} H${fx(x + r * .45)} V${fx(y - r)} H${fx(x + r * .8)} V${fx(y - r * .5)} H${fx(x + r * .6)} V${fx(y + r)} Z`, e),
+    swords: () => S(`M${fx(x - r * .8)} ${fx(y - r * .8)} L${fx(x + r * .65)} ${fx(y + r * .65)} M${fx(x + r * .8)} ${fx(y - r * .8)} L${fx(x - r * .65)} ${fx(y + r * .65)}`, r * .18) + S(`M${fx(x + r * .35)} ${fx(y + r * .8)} L${fx(x + r * .8)} ${fx(y + r * .35)} M${fx(x - r * .35)} ${fx(y + r * .8)} L${fx(x - r * .8)} ${fx(y + r * .35)}`, r * .2),
+    eagle: () => Pth(`M${fx(x - r)} ${fx(y - r * .45)} Q${fx(x - r * .55)} ${fx(y - r * .1)} ${fx(x - r * .2)} ${fx(y - r * .15)} L${fx(x)} ${fx(y - r * .55)} L${fx(x + r * .2)} ${fx(y - r * .15)} Q${fx(x + r * .55)} ${fx(y - r * .1)} ${fx(x + r)} ${fx(y - r * .45)} Q${fx(x + r * .75)} ${fx(y + r * .25)} ${fx(x + r * .25)} ${fx(y + r * .2)} L${fx(x + r * .3)} ${fx(y + r * .9)} L${fx(x)} ${fx(y + r * .6)} L${fx(x - r * .3)} ${fx(y + r * .9)} L${fx(x - r * .25)} ${fx(y + r * .2)} Q${fx(x - r * .75)} ${fx(y + r * .25)} ${fx(x - r)} ${fx(y - r * .45)} Z`, e) + `<circle cx="${fx(x)}" cy="${fx(y - r * .65)}" r="${fx(r * .2)}" fill="${e}"/>`,
+    atom: () => [0, 60, 120].map(t => `<ellipse cx="${fx(x)}" cy="${fx(y)}" rx="${fx(r)}" ry="${fx(r * .36)}" stroke="${e}" stroke-width="${fx(r * .13)}" fill="none" transform="rotate(${t} ${fx(x)} ${fx(y)})"/>`).join('') + `<circle cx="${fx(x)}" cy="${fx(y)}" r="${fx(r * .2)}" fill="${e}"/>`,
+    flame: () => Pth(`M${fx(x)} ${fx(y - r)} Q${fx(x + r * .2)} ${fx(y - r * .4)} ${fx(x + r * .55)} ${fx(y - r * .15)} Q${fx(x + r * .85)} ${fx(y + r * .3)} ${fx(x + r * .45)} ${fx(y + r * .75)} Q${fx(x)} ${fx(y + r * 1.05)} ${fx(x - r * .45)} ${fx(y + r * .75)} Q${fx(x - r * .85)} ${fx(y + r * .3)} ${fx(x - r * .4)} ${fx(y - r * .25)} Q${fx(x - r * .2)} ${fx(y)} ${fx(x - r * .1)} ${fx(y + r * .1)} Q${fx(x - r * .25)} ${fx(y - r * .6)} ${fx(x)} ${fx(y - r)} Z`, e),
+    heart: () => Pth(`M${fx(x)} ${fx(y + r * .85)} C${fx(x - r * 1.3)} ${fx(y)} ${fx(x - r * .7)} ${fx(y - r * 1.05)} ${fx(x)} ${fx(y - r * .35)} C${fx(x + r * .7)} ${fx(y - r * 1.05)} ${fx(x + r * 1.3)} ${fx(y)} ${fx(x)} ${fx(y + r * .85)} Z`, e)
+  }[FLAG_EMBLEMS.includes(f.e) ? f.e : 'none'];
+  return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g><rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/></svg>`;
 }
 const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
 const NUKE = { tech: 12, rank: 4, cash: 25e6, steel: 1500, oil: 1500, goods: 500, upkeep: 1e5 };
@@ -1236,10 +1292,20 @@ function Core(PD, CARDS) {
   // ================= flag and motto =================
   function setFlag(W, u, f, motto) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); f = f || {};
-    const l = FLAG_LAYOUTS.includes(f.l) ? f.l : 'solid', e = FLAG_EMBLEMS.includes(f.e) ? f.e : 'none', c = (Array.isArray(f.c) ? f.c : []).slice(0, 3).map(x => FLAG_COLORS.includes(x) ? x : FLAG_COLORS[0]);
+    const l = FLAG_LAYOUTS.includes(f.l) ? f.l : 'solid', e = FLAG_EMBLEMS.includes(f.e) ? f.e : 'none', c = (Array.isArray(f.c) ? f.c : []).slice(0, 4).map(x => FLAG_HEX.test(x) ? String(x).toLowerCase() : FLAG_COLORS[0]);
     while (c.length < 3) c.push(FLAG_COLORS[10]);
-    n.flag = { l, c, e }; if (motto != null) { const m = String(motto).replace(/\s+/g, ' ').trim().slice(0, 60); n.motto = m; }
+    const fl = { l, c, e }, int = (v, a, b) => { v = Math.round(+v); return v >= a && v <= b ? v : 0; };
+    if (['stripes', 'vstripes', 'starsstripes'].includes(l) && int(f.sn, 3, 15)) fl.sn = int(f.sn, 3, 15);
+    if (e !== 'none') { if (['c', 'k', 'h'].includes(f.ep)) fl.ep = f.ep; if (int(f.es, 1, 3)) fl.es = int(f.es, 1, 3); if (FLAG_HEX.test(f.ec)) fl.ec = String(f.ec).toLowerCase(); if (['stars', 'starring'].includes(e) && int(f.en, 1, 15)) fl.en = int(f.en, 1, 15); }
+    n.flag = fl; if (motto != null) { const m = String(motto).replace(/\s+/g, ' ').trim().slice(0, 60); n.motto = m; }
     touch(W, u); return { msg: 'Flag and motto saved.' };
+  }
+  // map colour: change once a day
+  function setColor(W, u, col) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!COLORS.includes(col)) fail('Pick a colour from the list.');
+    if (col === n.color) fail('That is already your map colour.'); n.cd = n.cd || {}; const now = W.now || Date.now();
+    if (n.cd.color && now < n.cd.color) fail('You can change your map colour again in ' + Math.ceil((n.cd.color - now) / 36e5) + 'h.');
+    n.color = col; n.cd.color = now + 864e5; touch(W, u); return { msg: 'Map colour changed.' };
   }
 
   function exec0(W, u, cmd, rng) {
@@ -1262,6 +1328,7 @@ function Core(PD, CARDS) {
       case 'offerno': return answerOffer(W, u, String(c.id), false);
       case 'offercancel': return cancelOffer(W, u, String(c.id));
       case 'flag': return setFlag(W, u, c.flag, c.motto);
+      case 'color': return setColor(W, u, c.color);
       case 'launch': return launchNuke(W, u, String(c.v), c.h, rng);
       case 'dome': return buildDome(W, u);
       case 'dip': return dip(W, u, String(c.kind), String(c.v));
@@ -1297,5 +1364,5 @@ function Core(PD, CARDS) {
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { Core, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { Core, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });
