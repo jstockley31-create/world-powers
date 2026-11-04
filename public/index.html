@@ -468,7 +468,7 @@ const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
 function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 function connect(){const es=new EventSource('/api/stream');
- es.addEventListener('init',e=>applyInit(JSON.parse(e.data)));
+ es.addEventListener('init',e=>{const d=JSON.parse(e.data);applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}))});
  es.addEventListener('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
  es.addEventListener('mail',e=>{WP.extra.mailUnread=JSON.parse(e.data).unread;emit('wp-mail',WP.extra.mailUnread)});
  es.addEventListener('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fallen)});
@@ -765,7 +765,7 @@ const GL=(()=>{
    const gz=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],rr);gz.addColorStop(0,`rgba(255,${age<1?230:140},60,${.85*pul})`);gz.addColorStop(.25,`rgba(255,90,20,${.45*pul})`);gz.addColorStop(1,'rgba(150,255,60,0)');ctx.fillStyle=gz;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.fill();
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
   // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
-  if(SK.length||st.fx){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+  if(SK.length||st.fx||BURN.size){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  function overlay(ctr,w,h,r){drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);
@@ -870,7 +870,7 @@ const GL=(()=>{
   smT=setTimeout(go,coarse?130:66)};smT=setTimeout(go,66)}
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)smokeLoop()});
  const SAMP=48;function samples(k){if(k.sm||!k.ip)return k.sm;k.sm=[];for(let q=0;q<=SAMP;q++){const p=k.ip(q/SAMP);k.sm.push({p,v:unit(p)})}k.fv=unit(k.from);k.tv=unit(k.to);return k.sm}
- function drawStrikes(ctr,w,h,r){if(!SK.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2],cv=unit(ctr),V16=Math.cos(1.6),V155=Math.cos(1.55);
+ function drawStrikes(ctr,w,h,r){if(!SK.length&&!BURN.size)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2],cv=unit(ctr),V16=Math.cos(1.6),V155=Math.cos(1.55);
   for(let i=SK.length-1;i>=0;i--)if(wall-(SK[i].fx.t||0)>SK_KEEP)SK.splice(i,1)
   drawPlumes(cv,V155);
   // at most six flights are animated at once (the newest), and none while a nuclear missile is in the air
@@ -1076,7 +1076,7 @@ function drawPlanner(){if(!planner)return;const v=planner.v,t=A[v];if(!t){closeM
 const shortfall=p=>{const miss=[];if(me.cash<p.cost.cash)miss.push(`${money(p.cost.cash)} (you have ${money(me.cash)})`);if(me.res.oil<p.cost.oil)miss.push(`${num(p.cost.oil)} oil (you have ${num(me.res.oil)})`);if(me.res.food<p.cost.food)miss.push(`${num(p.cost.food)} food (you have ${num(me.res.food)})`);return miss};
 function genLine(t){const a=C.bestGen(me,'attack'),l=C.bestGen(me,'logistics'),d=C.bestGen(t,'defense');const bits=[a?`Your field marshal <b>${esc(a.name)}</b> ${stars(a.stars)} (+${a.stars*4}% attack)`:'',l?`quartermaster <b>${esc(l.name)}</b> ${stars(l.stars)} (−${l.stars*10}% distance penalty)`:'',d?`their defense commander <b>${esc(d.name)}</b> ${stars(d.stars)} (+${d.stars*4}% defense)`:''].filter(Boolean);return bits.length?`<p style="font-size:13px;margin:0 0 10px">${bits.join(' · ')}</p>`:''}
 function strikeBox(v){const why=C.canStrike(W,uid,v),hasMis=(me.tech||0)>=C.MISSILE.tech;
- return`<div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:14px"><b style="font-size:15px">Strike without invading</b><p class="mu" style="font-size:12.5px;margin:4px 0 10px">Air strikes use your aircraft (some may be shot down by their air force). Missiles need tech level ${C.MISSILE.tech} and cost ${money(C.MISSILE.cash)}, ${C.MISSILE.steel} steel and ${C.MISSILE.oil} oil each, but can't be intercepted (forts reduce hits). ${hasMis?`You can fire up to <b>${C.maxMissiles(me)}</b> per strike`:'Up to 5 per strike at first'}; higher tech and rank raise it to 10. A strike adds 8 aggression if you start the fight, only 1 when you're defending. Strike forces rearm for 30 minutes.</p>
+ return`<div style="border-top:1px solid var(--bd);padding-top:12px;margin-top:14px"><b style="font-size:15px">Strike without invading</b><p class="mu" style="font-size:12.5px;margin:4px 0 10px">Air strikes use your aircraft (some may be shot down by their air force). Missiles need tech level ${C.MISSILE.tech} and cost ${money(C.MISSILE.cash)}, ${C.MISSILE.steel} steel and ${C.MISSILE.oil} oil each, but can't be intercepted (forts reduce hits). ${hasMis?`You can fire up to <b>${C.maxMissiles(me)}</b> per strike`:'Up to 5 per strike at first'}; higher tech and rank raise it to 10. A strike adds 8 aggression if you start the fight, and none when you're defending. Strike forces rearm for 30 minutes.</p>
  <div class="cols" style="gap:10px;grid-template-columns:1fr 1fr 1fr"><div class="field" style="margin:0"><label>Weapon</label><select id="skKind"><option value="air">Air strike (${me.air||0} aircraft)</option><option value="missile" ${hasMis?'':'disabled'}>Missiles${hasMis?'':` (tech ${C.MISSILE.tech})`}</option></select></div><div class="field" style="margin:0"><label>Target</label><select id="skTarget"><option value="mil">Their military</option><option value="stock">Their stockpiles</option><option value="infra">Their infrastructure</option></select></div><div class="field" style="margin:0"><label id="skNl">How many</label><input id="skN" type="number" min="1" value="${Math.max(5,Math.floor((me.air||0)*.6))}"></div></div>
  ${why?`<p class="mu" style="font-size:12.5px;margin:8px 0 0">${esc(why)}</p>`:''}<button class="btn dng" style="width:100%;margin-top:10px" data-act="pstrike" ${why?'disabled':''}>${I('plane')} Launch strike</button></div>`}
 function planEst(p){const miss=shortfall(p);return(miss.length?`<div class="motd" style="margin:0 0 8px;font-size:13px;border-color:#5f2b2e;background:#2a1517;color:#ffc1bd">${I('alert')}<span>Not enough supplies for this many troops. You need ${miss.join(', ')}. Send fewer troops, or buy oil and food on the Economy page.</span></div>`:'')+`<div class="stats" style="grid-template-columns:repeat(3,minmax(0,1fr))">${stat('Win chance',`${Math.round(p.chance*100)}%`,chanceCls(p.chance),chanceTxt(p.chance))}${stat('Cost',moneyS(p.cost.cash),'',`${num(p.cost.oil)} oil · ${num(p.cost.food)} food`)}${stat('Strength',`${num(p.atk)} vs ${num(p.def)}`,'',`Regroup ${p.regroupMin} min`)}</div>`}
@@ -1528,6 +1528,7 @@ window.addEventListener('wp-nuke',e=>nukeQueue(e.detail));
 // strikes: everyone sees the flight on the globe and a short note; the camera only moves for the nation being hit, and only on the World page
 let skNoteAt=0,skFlyAt=0,followStrike=0;
 window.addEventListener('wp-firesout',()=>GL.firesOut());
+window.addEventListener('wp-burn',e=>{try{for(const b of e.detail||[])GL.burn(b[0],b[1],b[2])}catch(err){}});
 window.addEventListener('wp-strike',e=>{const fx=e.detail;if(!fx)return;GL.strike(fx);const mine=fx.to===uid||fx.by===uid,ally=uid&&A[uid]&&(C.allies(W,uid).includes(fx.to)||C.allies(W,uid).includes(fx.by));
  if(fx.to===uid&&page==='world'&&P[fx.h]&&!nukeBusy&&Date.now()-skFlyAt>30000){skFlyAt=Date.now();GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6))} // swing to the first strike on you, not every one
  if(fx.by===uid&&Date.now()<followStrike&&P[fx.h]&&!nukeBusy){followStrike=0;if(page==='world')GL.flyTo(P[fx.h].c,Math.max(GL.st.scale,1.6))}

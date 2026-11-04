@@ -314,7 +314,7 @@ const RES_KEYS = Object.keys(WP.RESOLUTIONS);
 const isTargeted = type => ['punish', 'protect'].includes(WP.RESOLUTIONS[type].kind);
 const PACT_SCOPE = { ai: 'against AI attackers', all: 'against any attacker' };
 const resLabel = (type, name, p) => p && p.plea ? `${name || 'A nation'}'s petition to have its sanctions lifted` : type === 'custom' && p ? `Custom resolution: “${p.text}”` : WP.RESOLUTIONS[type].n + (type === 'pact' && p ? ` (${PACT_SCOPE[p.scope] || ''})` : '') + (name ? (WP.RESOLUTIONS[type].kind === 'protect' ? ' for ' : ' against ') + name : '');
-const nukedRecently = (u, now) => S.nukes.some(x => x.by === u && now - x.t < 72 * HOUR);
+const nukedRecently = (u, now) => S.nukes.some(x => x.by === u && !x.retaliation && now - x.t < 72 * HOUR);
 // why a resolution cannot be put to the vote against/for this nation right now (null = fine)
 function resBlocked(W, type, v) {
   const n = W.A[v], now = Date.now(), M = k => core.measure(W, n, k);
