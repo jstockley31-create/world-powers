@@ -167,6 +167,8 @@ module.exports = function makeBots(core, WP, rng) {
     const n = W.A[u], H = humans(W);
     // nuclear ambitions
     if (!n.nuke && rng() < .4) { const r = tryExec(W, u, { c: 'nuke' }); if (r) return r; }
+    // a show of strength while it works toward a warhead: a nuclear test in the ocean now and then (once a week at most)
+    if (n.nuke && !n.warhead && rng() < .03) { const r = tryExec(W, u, { c: 'ntest' }); if (r) return r; }
     if (n.nuke && !n.warhead && !core.canWarhead(W, u) && rng() < .4) { const r = tryExec(W, u, { c: 'warhead' }); if (r) return r; }
     const foes = core.wars(W, u).filter(v => !isBot(v));
     // the launch: only against a player it has been at war with for 6+ hours
@@ -190,6 +192,7 @@ module.exports = function makeBots(core, WP, rng) {
     if ((hourUTC - n.ai.sleep + 24) % 24 < (boss ? 4 : 9)) return;
     if (rng() > (boss ? .18 : core.wars(W, u).length ? .14 : .085)) return;
     if (boss) { const r = bossMove(W, u, cfg); if (r) return r; }
+    if (!boss && n.nuke && !n.warhead && per !== PERS.merchant && rng() < .003) { const r = tryExec(W, u, { c: 'ntest' }); if (r) return r; }
     // 1) decisions
     if (n.cards.length && rng() < .5) { const c = n.cards[0]; const card = core.getCard(c.i); if (card) return tryExec(W, u, { c: 'decide', id: c.id, o: chooseOption(W, u, card) }); }
     // finances: borrow when broke, repay when flush, campaign before elections

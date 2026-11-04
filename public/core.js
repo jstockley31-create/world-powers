@@ -685,6 +685,41 @@ function Core(PD, CARDS) {
     { const hs = hexesOf(W, v), hh = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap; (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: hh, place: pname(hh), kind, n: count, lost, hits, target, t: W.now }); }
     return { msg: `Strike complete — ${sum}.`, strike: { kind, target, count, lost, hits, dmg, sum } };
   }
+  // nuclear test in the open ocean: for nations with a nuclear program but no warhead. Once a week; it pushes aggression to 70 (sanctions, nearly rogue).
+  const NTEST = { cash: 5e6, cdD: 7, aggr: 70 };
+  const RAD_ = Math.PI / 180;
+  const gcDist = (a, b) => { const p1 = a[1] * RAD_, p2 = b[1] * RAD_, dl = (b[0] - a[0]) * RAD_; return Math.acos(Math.max(-1, Math.min(1, Math.sin(p1) * Math.sin(p2) + Math.cos(p1) * Math.cos(p2) * Math.cos(dl)))) * 6371; };
+  const destPt = (c, brg, km) => { const d = km / 6371, b = brg * RAD_, p1 = c[1] * RAD_, l1 = c[0] * RAD_, p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b)), l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2)); return [((l2 / RAD_ + 540) % 360) - 180, p2 / RAD_]; };
+  // the server can supply a real coastline test (point -> is it land?); without it, distance from provinces is used
+  let landTest = null; const setLandTest = fn => { landTest = fn; };
+  const openWater = pt => !landTest || ![0, 60, 120, 180, 240, 300].some(b => landTest(destPt(pt, b, 100))) && !landTest(pt);
+  // the open-water point (far from every province, at least 100 km from any coast) closest to the nation's capital, 500 to 2,500 km out
+  function oceanSite(W, u, rng) {
+    const c = P[W.A[u].cap].c; let best = null;
+    for (const km of [500, 800, 1200, 1700, 2500]) {
+      for (let i = 0; i < 36; i++) { const pt = destPt(c, i * 10 + (rng ? rng() * 6 : 0), km); if (Math.abs(pt[1]) > 72) continue; let m = 1e9; for (const p of P) { const d = gcDist(pt, p.c); if (d < m) m = d; if (m < (landTest ? 250 : 380)) break; } if (m >= (landTest ? 250 : 380) && openWater(pt) && (!best || m > best.m)) best = { pt, m }; }
+      if (best) break;
+    }
+    return best ? best.pt.map(x => Math.round(x * 100) / 100) : destPt(c, 180, 1500);
+  }
+  const oceanName = ([lon, lat]) => (lat > 51 && lat < 66 && lon > -95 && lon < -76) ? 'Hudson Bay' : (lat > 36 && lat < 47.5 && lon > 46.5 && lon < 55.5) ? 'Caspian Sea' : (lat > 40.5 && lat < 47 && lon > 27 && lon < 42) ? 'Black Sea' : lat > 66 ? 'Arctic Ocean' : lat < -55 ? 'Southern Ocean' : (lat > 30 && lat < 46 && lon > -6 && lon < 36) ? 'Mediterranean Sea' : (lon > -80 && lon < 20 && !(lat < 10 && lon < -70)) ? 'Atlantic Ocean' : ((lon >= 20 && lon < 120 && lat < 28) || (lon >= 115 && lon < 147 && lat < -30)) ? 'Indian Ocean' : 'Pacific Ocean';
+  const inOcean = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
+  function nukeTest(W, u, rng) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.');
+    if (!n.nuke) fail('You need a nuclear deterrent before you can test one.');
+    if (n.warhead) fail('Your program has moved on to a launchable warhead. Tests are for nations with a nuclear program and no warhead.');
+    if (W.m.npt) fail('The Non-proliferation Treaty is in force: nuclear tests are banned until it expires.');
+    const wait = (n.cd && n.cd.ntest || 0) - W.now; if (wait > 0) fail(`Your next nuclear test can be held in ${wait > 48 * HOUR ? Math.ceil(wait / 864e5) + ' days' : fmtT(wait)}.`);
+    if (n.cash < NTEST.cash) fail(`A nuclear test costs ${money(NTEST.cash)}.`);
+    n.cash -= NTEST.cash; n.cd = n.cd || {}; n.cd.ntest = W.now + NTEST.cdD * 24 * HOUR; n.ntest = W.now;
+    n.aggr = Math.max(n.aggr || 0, NTEST.aggr); n.stability = clamp(n.stability + 4, 0, 100); n.approval = clamp(n.approval + 3, 0, 100); rogueCheck(W, u);
+    const at = oceanSite(W, u, rng), ocean = oceanName(at);
+    news(W, u, `☢ NUCLEAR TEST: ${n.name} detonated a nuclear device in ${inOcean(ocean)}. The world condemns the test.`);
+    log(n, `Your nuclear test in ${inOcean(ocean)} was a success. The world is alarmed: your aggression is now ${Math.round(n.aggr)} and you are under international sanctions.`, W);
+    (W.ntestFx = W.ntestFx || []).push({ id: rid(), by: u, byName: n.name, at, ocean, t: W.now });
+    touch(W, u);
+    return { msg: `Nuclear test successful in ${inOcean(ocean)}. The whole world saw it. Your aggression is now ${Math.round(n.aggr)}: you are under sanctions, one step from rogue status.` };
+  }
   function buildNuke(W, u) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (n.nuke) fail('You already have a nuclear deterrent.');
     if (W.m.npt) fail('The Non-proliferation Treaty is in force. No nation may start a nuclear program until it expires.');
@@ -1181,6 +1216,7 @@ function Core(PD, CARDS) {
       case 'attack': return attack(W, u, c.h, c.x, c.air, rng);
       case 'strike': return strike(W, u, String(c.v), String(c.kind), String(c.target), c.n, rng);
       case 'nuke': return buildNuke(W, u);
+      case 'ntest': return nukeTest(W, u, rng);
       case 'warhead': return buildWarhead(W, u);
       case 'law': return setLaw(W, u, String(c.k), !!c.on);
       case 'wonder': return wonder(W, u, String(c.k), !!c.abandon);
@@ -1220,7 +1256,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
