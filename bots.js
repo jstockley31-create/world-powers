@@ -134,7 +134,7 @@ module.exports = function makeBots(core, WP, rng) {
     // runs every world tick (30 s): every rate below is per tick, sized for about an hour of real time (120 ticks)
     const n = W.A[u], H = humans(W).map(v => W.A[v]).filter(Boolean); if (!H.length) return;
     const top = k => Math.max(...H.map(h => h[k] || 0)), topPow = Math.max(...humans(W).map(v => core.power(W, v))), now = W.now;
-    const pow = core.power(W, u), behind = pow < topPow * .9;
+    const pow = core.power(W, u), behind = pow < topPow * .95;
     // the world united: 3 or more nations at war with it and its foreign backers pull out completely
     const coalition = core.wars(W, u).filter(v => !isBot(v)).length + core.wars(W, u).filter(v => isBot(v)).length * .5;
     const isolated = coalition >= 3;
@@ -142,28 +142,28 @@ module.exports = function makeBots(core, WP, rng) {
     if (!isolated && n.ai.isolated && coalition < 2) n.ai.isolated = 0;
     // damage sticks: no rebuilding for 2 hours after it is attacked or struck
     const lastHit = Math.max(0, ...Object.values(n.hitBy || {}));
-    const hurt = now - lastHit < 2 * 3600e3;
+    const hurt = now - lastHit < 1.75 * 3600e3;
     const saving = (!n.nuke && n.cash < core.NUKE.cash * 1.2) || (n.nuke && !n.warhead && n.cash < core.WARHEAD.cash * 1.2);
-    if (!isolated && (behind || saving)) n.cash += Math.max(6e4, top('gdp') * .0001); // about $7M+ an hour while it is behind or saving for its nuclear program
-    if (!isolated) for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 5000) n.res[r] = (n.res[r] || 0) + 10;
-    if (!isolated && !hurt && behind) { // rebuild toward 90% of the strongest player, a few percent an hour
-      if (rng() < .5) n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .0005));
-      if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(5, Math.ceil(n.troops * .0003)));
+    if (!isolated && (behind || saving)) n.cash += Math.max(7e4, top('gdp') * .00012); // about $8M+ an hour while it is behind or saving for its nuclear program
+    if (!isolated) for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 6000) n.res[r] = (n.res[r] || 0) + 14;
+    if (!isolated && !hurt && behind) { // rebuild toward 95% of the strongest player, a few percent an hour
+      if (rng() < .5) n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .0006));
+      if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(6, Math.ceil(n.troops * .00036)));
     }
     if (n.pop < top('pop') * .6 && !isolated) n.pop *= 1.0005;
-    // never a sky full of planes: at most 1.5x the biggest player air force; anything above that drains away within about an hour
-    const airCap = Math.max(300, top('air') * 1.5);
+    // never a sky full of planes: at most 1.75x the biggest player air force; anything above that drains away within about an hour
+    const airCap = Math.max(300, top('air') * 1.75);
     if ((n.air || 0) > airCap) n.air = Math.max(airCap, Math.floor(n.air - Math.max(1, (n.air - airCap) * .02)));
     // overstretched or isolated: its forces wear down
-    if (pow > topPow * 1.15) { n.air = Math.floor((n.air || 0) * .998); n.troops = Math.floor(n.troops * .998); n.ships = Math.floor((n.ships || 0) * .999); }
+    if (pow > topPow * 1.2) { n.air = Math.floor((n.air || 0) * .998); n.troops = Math.floor(n.troops * .998); n.ships = Math.floor((n.ships || 0) * .999); }
     if (isolated) { n.air = Math.floor((n.air || 0) * .9995); n.troops = Math.floor(n.troops * .9995); }
-    // fortifications: at most 2 levels above the best-fortified player
-    const fortCap = Math.min(12, top('fort') + 2);
+    // fortifications: at most 3 levels above the best-fortified player
+    const fortCap = Math.min(12, top('fort') + 3);
     if ((n.fort || 0) > fortCap && rng() < 1 / 240) n.fort = n.fort - 1;
-    else if (!isolated && rng() < 1 / 720 && (n.fort || 0) < fortCap) n.fort = (n.fort || 0) + 1;
-    if (!isolated && rng() < 1 / 200 && (n.tech || 0) < Math.max(core.WARHEAD.tech, top('tech'))) n.tech = (n.tech || 0) + 1;
+    else if (!isolated && rng() < 1 / 600 && (n.fort || 0) < fortCap) n.fort = (n.fort || 0) + 1;
+    if (!isolated && rng() < 1 / 170 && (n.tech || 0) < Math.max(core.WARHEAD.tech, top('tech'))) n.tech = (n.tech || 0) + 1;
     if (!isolated && (n.xp || 0) < Math.max(WP.RANKS[core.WARHEAD.rank][0], top('xp') * .9)) n.xp = (n.xp || 0) + 4;
-    if (!isolated) { n.approval = Math.max(n.approval, 55); n.stability = Math.max(n.stability, 60); }
+    if (!isolated) { n.approval = Math.max(n.approval, 60); n.stability = Math.max(n.stability, 65); }
     core.touch(W, u);
   }
   function bossMove(W, u, cfg) {
@@ -177,12 +177,12 @@ module.exports = function makeBots(core, WP, rng) {
     // the launch: only against a player it has been at war with for 6+ hours
     if (core.warheadReady(W, n) && rng() < .05) { const tg = foes.filter(v => W.now - core.warSince(W, u, v) > 6 * HOUR && !core.canLaunch(W, u, v)).sort((a, b) => core.score(W, b) - core.score(W, a))[0]; if (tg) { const r = tryExec(W, u, { c: 'launch', v: tg }); if (r) return r; } }
     // war on the strongest players it can reach (one or two wars at a time)
-    if (cfg.war && cfg.botWar === 'yes' && foes.length < 2 && rng() < .03 && core.rankOf(n.xp) >= 2) {
+    if (cfg.war && cfg.botWar === 'yes' && foes.length < 2 && rng() < .035 && core.rankOf(n.xp) >= 2) {
       const t = H.filter(v => !core.atWar(W, u, v) && W.now - W.A[v].created > cfg.protectH * HOUR && core.hexesOf(W, v).some(h => core.attackPlan(W, u, h))).sort((a, b) => core.score(W, b) - core.score(W, a));
       if (t.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: t[Math.floor(rng() * Math.min(2, t.length))] });
     }
-    if (foes.length && rng() < .5) { const r = farStrike(W, u, foes); if (r) return r; }
-    if (foes.length && (n.air || 0) >= 10 && rng() < .3) { const v = foes[Math.floor(rng() * foes.length)]; if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: rng() < .6 ? 'mil' : 'infra', n: Math.floor(n.air * .6) }); if (r) return r; } }
+    if (foes.length && rng() < .55) { const r = farStrike(W, u, foes); if (r) return r; }
+    if (foes.length && (n.air || 0) >= 10 && rng() < .3) { const v = foes[Math.floor(rng() * foes.length)]; if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: rng() < .6 ? 'mil' : 'infra', n: Math.floor(n.air * .65) }); if (r) return r; } }
     return null;
   }
   function turn(W, u, cfg) {
@@ -192,8 +192,8 @@ module.exports = function makeBots(core, WP, rng) {
     // AI nations act at the pace of a dedicated human player, not every instant, and take a long break each day
     if (core.wars(W, u).length && handlePeace(W, u)) return;
     const hourUTC = new Date(W.now).getUTCHours(); n.ai.sleep = n.ai.sleep != null ? n.ai.sleep : Math.floor(rng() * 24);
-    if ((hourUTC - n.ai.sleep + 24) % 24 < (boss ? 4 : 9)) return;
-    if (rng() > (boss ? .18 : core.wars(W, u).length ? .14 : .085)) return;
+    if ((hourUTC - n.ai.sleep + 24) % 24 < (boss ? 3 : 9)) return;
+    if (rng() > (boss ? .2 : core.wars(W, u).length ? .14 : .085)) return;
     if (boss) { const r = bossMove(W, u, cfg); if (r) return r; }
     if (!boss && n.nuke && !n.warhead && per !== PERS.merchant && rng() < .003) { const r = tryExec(W, u, { c: 'ntest' }); if (r) return r; }
     // 1) decisions

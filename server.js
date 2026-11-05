@@ -842,7 +842,7 @@ function overview() {
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackupT || (S.lastBackup ? Date.parse(S.lastBackup + 'T09:00:00Z') : null), pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
     players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
-    analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.slice(0, 100), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView(), war: warRoom(W, nations)
+    analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.filter(x => x.kind !== 'idea').slice(0, 100), ideas: S.bugs.filter(x => x.kind === 'idea').slice(0, 150), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView(), war: warRoom(W, nations)
   };
 }
 // the admin's war room: every war, who started it, aggression, strikes, fires, pacts
@@ -1125,13 +1125,15 @@ async function handle(req, res) {
       return send(res, 200, { code, joined, rewarded });
     }
     if (p === '/api/bug' && req.method === 'POST') {
-      if (limited('bug:' + me.id, 6, 60 * 60e3)) return send(res, 429, { error: 'Thanks — you have sent several reports already. Try again later.' });
-      const b = await readBody(req, 1200 * 1024); const text = String(b.text || '').trim().slice(0, 2000); if (text.length < 5) return send(res, 400, { error: 'Please describe what happened.' });
+      const b = await readBody(req, 1200 * 1024); const idea = b.kind === 'idea';
+      if (limited((idea ? 'idea:' : 'bug:') + me.id, idea ? 10 : 6, 60 * 60e3)) return send(res, 429, { error: `Thanks — you have sent several ${idea ? 'ideas' : 'reports'} already. Try again later.` });
+      const text = String(b.text || '').trim().slice(0, 2000); if (text.length < 5) return send(res, 400, { error: idea ? 'Please write your idea first.' : 'Please describe what happened.' });
       const id = rid(); let img = false;
-      if (typeof b.img === 'string' && b.img.startsWith('data:image/jpeg;base64,')) { const buf = Buffer.from(b.img.slice(23), 'base64'); if (buf.length > 100 && buf.length < 1100 * 1024 && buf[0] === 0xff && buf[1] === 0xd8) { fs.mkdirSync(BUG_DIR, { recursive: true }); fs.writeFileSync(path.join(BUG_DIR, id + '.jpg'), buf); img = true; } }
+      if (!idea && typeof b.img === 'string' && b.img.startsWith('data:image/jpeg;base64,')) { const buf = Buffer.from(b.img.slice(23), 'base64'); if (buf.length > 100 && buf.length < 1100 * 1024 && buf[0] === 0xff && buf[1] === 0xd8) { fs.mkdirSync(BUG_DIR, { recursive: true }); fs.writeFileSync(path.join(BUG_DIR, id + '.jpg'), buf); img = true; } }
       const ctx = { page: String(b.page || '').slice(0, 40), ua: String(req.headers['user-agent'] || '').slice(0, 200), screen: String(b.screen || '').slice(0, 30), errors: (Array.isArray(b.errors) ? b.errors : []).slice(0, 10).map(x => String(x).slice(0, 300)) };
-      S.bugs.unshift({ id, t: Date.now(), by: me.id, byName: me.name, nation: nationName(me.id), text, img, ...ctx, done: false }); S.bugs = S.bugs.slice(0, 300); persist();
-      for (const [aid2, u] of Object.entries(S.users)) if (u.admin) addNote(aid2, 'admin', `Bug report from ${me.name}: ${text.slice(0, 100)}`);
+      S.bugs.unshift({ id, t: Date.now(), by: me.id, byName: me.name, nation: nationName(me.id), text, img, ...ctx, ...(idea ? { kind: 'idea' } : {}), done: false });
+      { const keep = k => S.bugs.filter(x => (x.kind === 'idea') === k).slice(0, 300); S.bugs = [...keep(false), ...keep(true)].sort((x, y) => y.t - x.t); } persist(); /* bugs and ideas each keep their latest 300 */
+      for (const [aid2, u] of Object.entries(S.users)) if (u.admin) addNote(aid2, 'admin', `${idea ? '💡 Idea' : 'Bug report'} from ${me.name}: ${text.slice(0, 100)}`);
       return send(res, 200, { ok: true });
     }
     if (p.startsWith('/api/account/') && req.method === 'POST') {
