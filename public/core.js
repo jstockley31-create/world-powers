@@ -260,6 +260,36 @@ const num = v => Math.round(v).toLocaleString('en-US');
 const money = v => (v < 0 ? '−$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US');
 const moneyS = v => { const a = Math.abs(v), s = v < 0 ? '−$' : '$'; return a >= 1e12 ? s + (a / 1e12).toFixed(2) + 'T' : a >= 1e9 ? s + (a / 1e9).toFixed(2) + 'B' : a >= 1e6 ? s + (a / 1e6).toFixed(2) + 'M' : a >= 1e4 ? s + (a / 1e3).toFixed(0) + 'K' : s + Math.round(a); };
 
+// ---------- decisions with real stakes ----------
+// timed boosts (fields read like laws and wonders): gdp, tax and research are multipliers; ap, st and health are added to where they settle
+const BOOST_KEYS = ['gdp', 'tax', 'research', 'def', 'ap', 'st', 'health'];
+const BOOST_TXT = { gdp: v => `${v > 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}% GDP`, tax: v => `${v > 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}% tax revenue`, research: v => `${v < 1 ? '−' : '+'}${Math.round(Math.abs(1 - v) * 100)}% research costs`, def: v => `${v > 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}% defense`, ap: v => `${v > 0 ? '+' : '−'}${Math.abs(v)} approval`, st: v => `${v > 0 ? '+' : '−'}${Math.abs(v)} stability`, health: v => `${v > 0 ? '+' : '−'}${Math.abs(v)} health` };
+const boostTxt = b => BOOST_KEYS.filter(k => b[k] != null).map(k => BOOST_TXT[k](b[k])).join(', ') + (b.h ? ` for ${b.h}h` : '');
+// what a costly investment pays off in, from what the option is about
+function payoffFor(e) {
+  if ((e.tech || 0) > 0 || (e.edu || 0) > 0) return { research: .9, h: 24 };
+  if ((e.troops || 0) > 0 || (e.fort || 0) > 0 || (e.train || 0) > 0 || (e.ships || 0) > 0 || (e.air || 0) > 0) return { def: 1.1, h: 24 };
+  if ((e.gdp || 0) > 0 || (e.unemp || 0) < 0 || (e.infra || 0) > 0 || (e.goods || 0) > 0 || (e.steel || 0) > 0 || (e.oil || 0) > 0) return { gdp: 1.05, h: 24 };
+  if ((e.health || 0) > 0 || (e.pop || 0) > 0 || (e.food || 0) > 0) return { health: 8, h: 24 };
+  if ((e.st || 0) > (e.ap || 0) && (e.st || 0) > 0) return { st: 4, h: 24 };
+  if ((e.ap || 0) > 0) return { ap: 4, h: 24 };
+  return { tax: 1.05, h: 24 };
+}
+const DOUBLE = ['tr', 'debt', 'ap', 'st', 'pop', 'gdp', 'troops', 'ships', 'air', 'spies', 'aggr', 'unemp', 'infl', 'health', 'edu', 'morale', 'food', 'oil', 'steel', 'goods'];
+const scaleEff = (e, k) => { const o = {}; for (const [x, v] of Object.entries(e)) o[x] = DOUBLE.includes(x) && typeof v === 'number' ? Math.round(v * k * 10) / 10 : v; return o; };
+function enhanceEff(e) {
+  if (!e || typeof e !== 'object') return e;
+  // gambles: everything at stake is doubled, and the outcome also shapes the next 12 to 24 hours
+  if (e.risk != null) { const ok = scaleEff(e.ok || {}, 2), bad = scaleEff(e.bad || {}, 2); ok.boost = payoffFor(e.ok || {}); bad.boost = { gdp: .95, h: 12 }; return { risk: e.risk, ok, bad }; }
+  // costly investments (at least 1.5 tax collections, or a loan): they cost twice as much, and pay off for a whole day
+  if ((e.tr || 0) <= -1.5 || (e.debt || 0) > 0) { const o = { ...e }; if (o.tr) o.tr = Math.round(o.tr * 2 * 10) / 10; o.boost = payoffFor(e); return o; }
+  return e;
+}
+function enhanceDecks(cards, chains) {
+  const card = c => c && c.o ? { ...c, o: c.o.map(o => [o[0], enhanceEff(o[1]), ...o.slice(2)]) } : c;
+  const ch = {}; for (const k of Object.keys(chains)) ch[k] = card(chains[k]);
+  return { cards: (cards || []).map(card), chains: ch };
+}
 function Core(PD, CARDS) {
   const P = PD.p, CN = PD.countries;
   CARDS = CARDS || [];
@@ -267,7 +297,9 @@ function Core(PD, CARDS) {
   const sea = h => (P[h] && P[h].s) || [];
   const nbrs = h => land(h).concat(sea(h));
   const pname = h => { const p = P[h]; if (!p) return 'Unknown'; return p.n === CN[p.ci] ? p.n : `${p.n}, ${CN[p.ci]}`; };
-  const getCard = i => (typeof i === 'string' && i.startsWith('ev:')) ? (EVENTS[i.slice(3)] || {}).card : (typeof i === 'string' && i.startsWith('ch:')) ? CHAINS[i.slice(3)] : CARDS[i];
+  // decisions with real stakes: costly investments pay off for a day, and gambles win and lose big (built from the card files, which stay as they are)
+  const DEC = enhanceDecks(CARDS, CHAINS);
+  const getCard = i => (typeof i === 'string' && i.startsWith('ev:')) ? (EVENTS[i.slice(3)] || {}).card : (typeof i === 'string' && i.startsWith('ch:')) ? DEC.chains[i.slice(3)] : DEC.cards[i];
 
   function computeOwn(A) {
     const best = {};
@@ -337,7 +369,7 @@ function Core(PD, CARDS) {
   function rating(W, n) { if ((n.defaulted || 0) > W.now - 48 * HOUR) return 'D'; const r = debtRatio(n); return r < .3 ? 'AAA' : r < .6 ? 'AA' : r < .9 ? 'A' : r < 1.2 ? 'BBB' : r < 1.5 ? 'BB' : r < 2 ? 'B' : 'CCC'; }
   function interestRate(W, n) { return 3 + Math.max(0, debtRatio(n) - .4) * 12 + ((n.defaulted || 0) > W.now - 48 * HOUR ? 10 : 0) + W.m.rate; }
   // combined effect of a nation's laws and wonders: multipliers (gdp, tax, research, xp, def, spend, oil) and additions (ap, st, unemp, health, edu, spread, tcap)
-  const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); return o; };
+  const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); return o; };
   const fxMul = (n, k) => { let v = 1; for (const f of fxOf(n)) if (f[k] != null) v *= f[k]; return v; };
   const fxAdd = (n, k) => { let v = 0; for (const f of fxOf(n)) if (f[k] != null) v += f[k]; return v; };
   const tcap = n => 5 + fxAdd(n, 'tcap');
@@ -624,6 +656,9 @@ function Core(PD, CARDS) {
       else if (k === 'infl') n.infl = clamp(n.infl + v, -2, 80);
       else if (k === 'health' || k === 'edu' || k === 'morale') n[k] = clamp(n[k] + v, 0, 100);
       else if (has(RES, k)) n.res[k] = Math.max(0, n.res[k] + v);
+      else if (k === 'boost' && v && v.h > 0) { const b = { t: W.now, until: W.now + v.h * HOUR, src: W._src || '' }; for (const x of BOOST_KEYS) if (v[x] != null) b[x] = v[x];
+        // one boost per kind at a time: a new one replaces the old
+        n.boosts = (n.boosts || []).filter(o => o.until > W.now && !BOOST_KEYS.some(x => o[x] != null && b[x] != null)); n.boosts.push(b); n.boosts = n.boosts.slice(-8); }
     }
     return true;
   }
@@ -641,10 +676,12 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.');
     const c = n.cards.find(x => x.id === id); if (!c) fail('That decision is no longer pending.');
     const card = getCard(c.i), oi = Number(o); if (!card || !Number.isInteger(oi) || oi < 0 || oi >= card.o.length) fail('Invalid choice.'); const opt = card.o[oi];
-    const ok = applyEff(W, u, opt[1], rng); n.cards = n.cards.filter(x => x.id !== id); n.cnt.decide = (n.cnt.decide || 0) + 1; gainXP(W, u, 10);
+    W._src = card.t; const ok = applyEff(W, u, opt[1], rng); W._src = ''; n.cards = n.cards.filter(x => x.id !== id); n.cnt.decide = (n.cnt.decide || 0) + 1; gainXP(W, u, 20);
+    let clear = '';
+    if (!n.cards.length) { const bonus = Math.round(taxIncome(W, u)); n.cash += bonus; n.approval = clamp(n.approval + 1, 0, 100); gainXP(W, u, 15); clear = ` Desk cleared: +${money(bonus)}, +1 approval and 15 bonus XP.`; }
     if (opt[2] && CHAINS[opt[2]]) n.chain = { k: opt[2], at: W.now + (30 + Math.floor(rng() * 30)) * MIN }; // the story continues later
     const msg = `${card.t}: ${opt[0]}${opt[1].risk != null ? (ok ? ' — it succeeded.' : ' — it backfired.') : '.'}`; log(n, msg, W); touch(W, u);
-    return { msg };
+    return { msg: msg + clear, ok, clear: !!clear };
   }
 
   function attack(W, u, h, X, AIR, rng) {
@@ -1450,7 +1487,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
