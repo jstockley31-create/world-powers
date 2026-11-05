@@ -84,6 +84,28 @@ td.r,th.r{text-align:right}
 .op .blk{font-size:11.5px;color:#e3b341;margin-top:2px}.tm b:empty{display:none}
 .opall{display:block;width:100%;padding:14px;font-size:16px;font-weight:700;margin:0 0 12px;position:sticky;top:8px;z-index:5;box-shadow:0 6px 18px #0008}
 .tm .tp{font-style:normal;display:inline-flex;align-items:center;gap:6px}
+/* run-all button: a solid strip behind it so cards scroll cleanly underneath */
+.opallw{position:sticky;top:-20px;z-index:5;background:var(--bg);padding:12px 0 12px;margin:-12px 0 0;box-shadow:0 10px 12px -10px #000}@media(max-width:820px){.opallw{top:-14px}}.opallw .opall{position:static;margin:0;box-shadow:none}
+#timers:empty{display:none}
+@media(max-width:820px){
+ /* all the stats at once: a 4-column grid instead of a strip cut off at the edge */
+ #kpis{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible;row-gap:6px}
+ .kpi{padding:2px 6px!important;min-width:0;border-left:1px solid var(--bd)}.kpi:nth-child(4n+1){border-left:0;padding-left:0!important}
+ .kpi span{display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9.5px;letter-spacing:.02em}.kpi span .ic{flex:none;width:11px;height:11px}.kpi b{font-size:13.5px;white-space:nowrap;display:block;overflow:hidden;text-overflow:ellipsis}
+ /* the chip row scrolls sideways: fade the edge so it is clearly more, not cut off */
+ #timers{-webkit-mask-image:linear-gradient(90deg,#000 86%,transparent);mask-image:linear-gradient(90deg,#000 86%,transparent);padding-right:28px}
+ .ftabs{flex-wrap:wrap;overflow:visible}
+ /* easier to hit with a thumb */
+ input[type=range]{height:30px}
+ .qchips button{font-size:12.5px;padding:6px 10px;min-height:32px}
+ .rkseg button{padding:8px 12px;min-height:34px}
+ .panel>header a{display:inline-block;padding:6px 0}
+ a.mtn,.panel .bd a[data-act]{padding:3px 0;display:inline-block}
+ .nav span{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .tag{font-size:11px}
+ input[type=file]{min-height:36px}
+}
+@media(max-width:380px){.kpi span{font-size:8.8px;letter-spacing:0;gap:2px}.kpi span .ic{width:10px;height:10px}.kpi{padding:2px 4px!important}}
 .tm.runall{font-weight:700}.tm.runall.rdy{background:var(--ac);color:#17120a;border-color:var(--ac)}.tm.runall.rdy b{color:#17120a}
 .ops{display:grid;grid-template-columns:repeat(auto-fill,minmax(355px,1fr));gap:6px}
 .op{background:var(--s2);border:1px solid var(--bd);border-radius:var(--r);padding:8px 10px 10px;display:grid;grid-template-columns:30px minmax(0,1fr) 86px;align-items:center;gap:9px;position:relative;overflow:hidden}
@@ -698,7 +720,7 @@ const left=k=>Math.max(0,((me&&me.cd&&me.cd[k])||0)-Date.now()),ready=k=>!left(k
 const myActs=()=>ACTS.filter(a=>!a.dem||(me&&me.gov==='dem')),opsActs=()=>myActs().filter(a=>a.k!=='expand'); // expanding lives on the World page, so Run all never spends money on land
 const nm=u=>A[u]?A[u].name:'Unknown';
 const AIP={merchant:'Merchant',expansionist:'Expansionist',warlord:'Warlord',isolationist:'Isolationist'};
-const aiTag=u=>A[u]&&A[u].ai?' <span class="tag" title="Computer-controlled nation" style="font-size:10px;padding:0 6px;vertical-align:1px">AI</span>'+(A[u].ai.boss?' <span class="tag r" title="The Rising Power: an AI superpower that keeps pace with the strongest players, builds nuclear weapons and attacks players. Team up to stop it." style="font-size:10px;padding:0 6px;vertical-align:1px">⚠ Rising Power</span>':''):'';
+const aiTag=u=>A[u]&&A[u].ai?' <span class="tag" title="Computer-controlled nation" style="font-size:11px;padding:0 6px;vertical-align:1px">AI</span>'+(A[u].ai.boss?' <span class="tag r" title="The Rising Power: an AI superpower that keeps pace with the strongest players, builds nuclear weapons and attacks players. Team up to stop it." style="font-size:11px;padding:0 6px;vertical-align:1px">⚠ Rising Power</span>':''):'';
 const isRogue=u=>C.rogue(W,A[u]);const rogueTag=u=>isRogue(u)?' <span class="tag" title="Rogue state: under full international sanctions. Attacking it adds no aggression and gets +15% strength." style="font-size:10px;padding:0 6px;vertical-align:1px;background:#3a1416;color:#ff9a94;border-color:#6b2a2d">☠ Rogue</span>':'';
 const nmHtml=u=>{const n=A[u];if(!n)return'<i class="mu">Unknown</i>';return`${n.flag?flagOf(n,16,11)+' ':''}<a data-act="prof" data-a="${esc(u)}" style="color:${esc(n.color)};font-weight:600">${esc(n.name)}</a>${aiTag(u)}${rogueTag(u)}`};
 const ruler=u=>A[u]&&A[u].ai?`Computer · ${AIP[A[u].ai.p]||'AI'}`:(names[u]||'—');
@@ -1243,7 +1265,7 @@ const EDITING=['mail','council','economy','intel'];
 function render(){renderTop();renderSide();const m=$('main');const act=document.activeElement;if(act&&m.contains(act)&&/INPUT|SELECT|TEXTAREA/.test(act.tagName)&&act.type!=='range'){updTimers();return}
  if(page==='chat'&&innerWidth>820)page='overview';const html=`<div class="wrap${page!==lastPage?' enter':''}">${CFG.motd?`<div class="motd">${I('mega')}<span>${esc(CFG.motd)}</span></div>`:''}${boostBar()}${guestBar()}${evBar()}${renderPage()}</div>`;
  if(page!==lastPage||!m.firstChild){m.innerHTML=html;lastPage=page}else if(html.replace(' enter','')!==lastHtml.replace(' enter',''))morph(m,html.replace(' enter',''));lastHtml=html;
- const slot=$('gslot');if(slot&&(GL.st.el!==slot||!slot.firstChild))GL.attach(slot,slot.dataset.mode);else if(slot)GL.redraw();updTimers();if(page==='mail')mailAfter();if(page==='economy')budgetAfter()}
+ const slot=$('gslot');if(slot&&(GL.st.el!==slot||!slot.firstChild))GL.attach(slot,slot.dataset.mode);else if(slot)GL.redraw();updTimers();if(page==='mail'&&me)mailAfter();if(page==='economy'&&me)budgetAfter()}
 function boostBar(){const b=CFG.boost;if(!b||b.end<Date.now())return'';return`<div class="evbar" style="border-color:#245a35;background:#12301c;color:#9be3b0">${I('trophy')}<div><b>${esc(b.label)} is on!</b> <span class="mu" style="color:#9be3b0">Ends in ${fmtT(b.end-Date.now())}.</span></div></div>`}
 function guestBar(){if(!isGuest()||!me)return'';return`<div class="motd">${I('user')}<span>You're playing as a <b>guest</b>. <a data-act="page" data-a="account">Save your account</a> to keep your nation on any device and unlock mail.</span></div>`}
 function evBar(){const e=X().event;if(!e||!EVENTS[e.key]||e.end<Date.now())return'';const E=EVENTS[e.key];return`<div class="evbar">${I('globe')}<div><b>World event: ${esc(E.n)}</b> — ${esc(E.d)} <span class="mu">Ends in ${fmtT(e.end-Date.now())}.</span></div></div>`}
@@ -1284,7 +1306,7 @@ function pendingPanel(){const P_=pendingReqs();if(!P_.length)return'';const ic={
 function sideBadge(k){if(!me)return'';if(k==='projects'){const m=me.mis&&me.mis.day===new Date().toISOString().slice(0,10)?me.mis.list.filter(x=>x.done&&!x.claimed).length:0;return m?`<span class="bdg g">${m}</span>`:''}if(k==='chat'){const u=unread();return u&&page!=='chat'?`<span class="bdg">${u>9?'9+':u}</span>`:''}if(k==='overview'&&me.cards.length)return`<span class="bdg">${me.cards.length}</span>`;if(k==='ops'){const r=readyOps().length;if(r)return`<span class="bdg g">${r}</span>`}if(k==='diplo'){const p=pendingReqs().length;if(p)return`<span class="bdg rq">${p}</span>`}if(k==='mail'&&X().mailUnread)return`<span class="bdg">${X().mailUnread}</span>`;if(k==='council'){const o=((X().council||{}).props||[]).filter(p=>p.status==='open'&&!p.votes[uid]).length;if(o)return`<span class="bdg">${o}</span>`}return''}
 function renderSide(){const b=sideBadge;
  if(isMob()){const extra=NAV.filter(n=>!MAINMOB.includes(n[0])).reduce((a,n)=>a+(+(sideBadge(n[0]).replace(/\D/g,''))||0),0);const inMore=!MAINMOB.includes(page);
-  $('side').innerHTML=NAV.filter(n=>MAINMOB.includes(n[0])).map(n=>navB(n,b)).join('')+`<button class="nav more ${inMore?'on':''}" data-act="more">${I('menu')}<span>${inMore?(NAV.find(n=>n[0]===page)||[0,0,'More'])[2]:'More'}</span>${extra?`<span class="bdg">${extra>9?'9+':extra}</span>`:''}</button>`;document.body.classList.toggle('chatopen',page==='chat');if($('more').classList.contains('on'))moreSheet();return}
+  $('side').innerHTML=NAV.filter(n=>MAINMOB.includes(n[0])).map(n=>navB(n,b)).join('')+`<button class="nav more ${inMore?'on':''}" data-act="more">${I('menu')}<span>${inMore?({council:'Council',intel:'Intel',gov:'Gov’t',times:'Times',rank:'Rankings'}[page]||(NAV.find(n=>n[0]===page)||[0,0,'More'])[2]):'More'}</span>${extra?`<span class="bdg">${extra>9?'9+':extra}</span>`:''}</button>`;document.body.classList.toggle('chatopen',page==='chat');if($('more').classList.contains('on'))moreSheet();return}
  $('side').innerHTML=`<a class="nav votebtn" href="http://gametoor.com/in/3305" target="_blank" rel="noopener" title="Vote for World Powers on Gametoor — it helps new players find the game">${I('trophy')}<span>Vote for us</span><small class="${(X().voteAt||0)+24*HOUR>Date.now()?'':'vready'}">${voteSub()}</small></a><div class="sec">Command</div>`+NAV.slice(0,4).map(n=>navB(n,b)).join('')+`<div class="sec">Affairs of state</div>`+NAV.slice(4,9).map(n=>navB(n,b)).join('')+`<div class="sec">The world</div>`+NAV.slice(9).map(n=>navB(n,b)).join('')+`<a class="nav" href="/faq" target="_blank" rel="noopener" title="Frequently asked questions (opens in a new tab)">${I('help')}<span>FAQ</span></a><a class="nav" href="/fair" target="_blank" rel="noopener" title="Fair play record: proof the game hasn't been tampered with (opens in a new tab)">${I('check')}<span>Fair play</span></a>`;document.body.classList.toggle('chatopen',page==='chat')}
 const navB=([k,i,t],b)=>`<button class="nav ${page===k?'on':''} ${k==='chat'?'mob':''}" data-act="page" data-a="${k}">${I(i)}<span>${t}</span>${b(k)}</button>`;
 const panel=(title,body,right='',icon='')=>`<section class="panel"><header><h2>${icon?I(icon):''}${title}</h2><div>${right}</div></header><div class="bd">${body}</div></section>`;
@@ -1329,7 +1351,7 @@ function pOverview(){const n=me,p=production(),c=consumption(n),w=wars(uid);
  ${panel('The World Times',(()=>{const nw=worldNews()[0];return nw?`<p style="font-family:Georgia,serif;font-size:16px;margin:0 0 6px">${esc(nw.x)}</p><a data-act="page" data-a="times">Read today's paper →</a>`:'<a data-act="page" data-a="times">Read today\'s paper →</a>'})(),'','book')}
  ${panel('Recent events',`<div class="log">${(n.log||[]).slice(0,14).map(l=>`<div><time>${ago(l.t)}</time><span>${esc(l.x)}</span></div>`).join('')||'<p class="mu">Nothing yet.</p>'}</div>`)}</div></div>`}
 function pOps(){const nr=readyOps().length;return`<h1 class="pg">Operations</h1><p class="pgsub">Each operation earns experience toward promotion. Green is what you get; grey is what it costs.</p>
- <button class="btn pri opall" data-act="runall" ${nr&&!runningAll?'':'disabled'}>⚡ ${runningAll?'Running…':nr?`Run all ${nr} ready operation${nr>1?'s':''}`:'Nothing to run right now'}</button>
+ <div class="opallw"><button class="btn pri opall" data-act="runall" ${nr&&!runningAll?'':'disabled'}>⚡ ${runningAll?'Running…':nr?`Run all ${nr} ready operation${nr>1?'s':''}`:'Nothing to run right now'}</button></div>
  <div class="ops">${opsActs().map(a=>{const g=(ACTG[a.k]||(()=>[ACTD[a.k](me),'']))(me);return`<div class="op" data-cd="${a.k}"><div class="ico">${I(a.i)}</div><div class="tx"><div class="nm"><b>${a.n}</b><small>${a.cd>=60?a.cd/60+' h':a.cd+' min'} · +${a.xp} XP</small></div><div class="ef"><span class="gn">${esc(g[0])}</span>${g[1]?` <span class="cs">· ${esc(g[1])}</span>`:''}</div><div class="blk" style="display:none"></div></div><button class="btn ok" data-act="do" data-a="${a.k}">Execute</button><div class="prog"><i></i></div></div>`}).join('')}</div>
  <div style="height:16px"></div>${panel('Ranks',`<table><thead><tr><th>Rank</th><th class="r">Experience</th><th class="r">Output bonus</th><th class="hm">Notes</th></tr></thead><tbody>${RANKS.map((r,j)=>`<tr style="${j===rankOf(me.xp)?'background:#1f1a10':''}"><td>${j===rankOf(me.xp)?'<b class="ac">'+r[1]+'</b>':r[1]}</td><td class="r num">${num(r[0])}</td><td class="r num">+${j*10}%</td><td class="mu hm">${j===2?'May wage war and propose Council resolutions':''}${j===rankOf(me.xp)?' Current rank':''}</td></tr>`).join('')}</tbody></table>`,'','trophy')}`}
 // Expand Borders: on the World page (not in Operations), so land is only ever bought on purpose
@@ -1823,7 +1845,7 @@ function pHelp(){const step=(t,d)=>`<div class="chk"><span class="cb" style="bor
  return`<h1 class="pg">Guide</h1><p class="pgsub">Everything you need to know to lead a nation.</p><a class="motd" href="/faq" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">${I('book')}<span><b>Have a question?</b> Read the full FAQ — war, the endgame, the economy, elections, spies, phones and more. <span class="ac">Open FAQ →</span></span></a><div style="margin:-6px 0 14px"><button class="btn sm" data-act="bug">${I('flag')} Report a bug</button> <button class="btn sm" data-act="idea">${I('star')} Share an idea</button></div><div class="cols"><div>${panel('The basics',[
  ['Run operations','Operations are on cooldown timers — taxes every 3 minutes, production every 5, and so on. The strip at the top turns green when they are ready.'],
  ['Manage the economy','Your GDP drives tax revenue. Set a budget for the military, health, education and infrastructure. Watch unemployment and inflation, and don’t borrow more than you can repay — nations can go bankrupt.'],
- ['Earn promotions','Every operation and decision earns experience. Each rank raises your province limit by 4, adds 10% output, and strengthens your defenses.'],
+ ['Earn promotions','Every operation and decision earns experience. Each rank adds 10% output and strengthens your defenses.'],
  ['Grow your territory','Settle unclaimed land next to you. With warships you can settle across the sea.'],
  ['Respond to the world',`Roughly every 40 minutes an issue needs your judgment — ${CARDS.length} possible scenarios. Global events like recessions, pandemics and oil crises hit every nation at once.`],
  ['Elections','Democracies vote every few days. Keep approval up, unemployment and inflation down, and campaign before polling day.'],
