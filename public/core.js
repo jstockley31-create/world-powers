@@ -1105,7 +1105,7 @@ function Core(PD, CARDS) {
   function bonds(W, u, amt, repay) {
     const n = W.A[u]; if (!n) fail('Found a nation first.');
     amt = Math.floor(Number(amt)); if (!(amt > 0) || amt > 1e13) fail('Enter an amount.');
-    if (repay) { if (amt > n.debt) amt = Math.floor(n.debt); if (amt > n.cash) fail('You do not have that much cash.'); n.cash -= amt; n.debt -= amt; log(n, `Repaid ${money(amt)} of national debt.`, W); touch(W, u); return { msg: `Repaid ${money(amt)}. Debt is now ${moneyS(n.debt)}.` }; }
+    if (repay) { if (!(n.debt > 0)) fail('You have no debt to repay.'); if (amt > n.debt) amt = n.debt; if (amt > n.cash) fail('You do not have that much cash.'); n.cash -= amt; n.debt -= amt; if (n.debt < 1) n.debt = 0; /* no leftover cents that can never be repaid */ log(n, `Repaid ${money(amt)} of national debt.`, W); touch(W, u); return { msg: `Repaid ${money(amt)}. Debt is now ${moneyS(n.debt)}.` }; }
     if ((n.defaulted || 0) > W.now - 48 * HOUR) fail('No one will lend to you for 48 hours after a default.');
     if (amt > maxBorrow(n)) fail(`Lenders will only lend up to ${money(maxBorrow(n))} more (120% of GDP in total).`);
     n.cash += amt; n.debt += amt; n.infl = clamp(n.infl + amt / Math.max(1, n.gdp) * 4, -2, 80);

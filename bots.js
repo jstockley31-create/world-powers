@@ -144,9 +144,11 @@ module.exports = function makeBots(core, WP, rng) {
     if (BC.def > 1) n.ai.defX = BC.def; else delete n.ai.defX; if (BC.atk > 1) n.ai.atkX = BC.atk; else delete n.ai.atkX;
     if (BC.dome === 'yes' && !n.dome) n.dome = { t: now, ready: now };
     // the world united: 3 or more nations at war with it and its foreign backers pull out completely
-    const coalition = core.wars(W, u).filter(v => !isBot(v)).length + core.wars(W, u).filter(v => isBot(v)).length * .5;
+    // the coalition: nations that declared war on it, or are actively fighting it (hit it in the last day). Wars it started against nations that just sit there don't count
+    const against = core.wars(W, u).filter(v => { const mine = core.R(W, u, v).war || 0, theirs = core.R(W, v, u).war || 0; return (theirs > 0 && theirs >= mine) || now - ((n.hitBy || {})[v] || 0) < 24 * HOUR; });
+    const coalition = against.filter(v => !isBot(v)).length + against.filter(v => isBot(v)).length * .5;
     const isolated = BC.coal > 0 && coalition >= BC.coal; // admins can raise how many nations it takes, or switch this off
-    if (isolated && !n.ai.isolated) { n.ai.isolated = now; core.news(W, u, `🌍 ${core.wars(W, u).length} nations have united against ${n.name}. Its foreign backers are pulling out: no more money or weapons will reach it.`); }
+    if (isolated && !n.ai.isolated) { n.ai.isolated = now; core.news(W, u, `🌍 ${against.length} nations have united against ${n.name}. Its foreign backers are pulling out: no more money or weapons will reach it.`); }
     if (!isolated && n.ai.isolated && (BC.coal === 0 || coalition < BC.coal - 1)) n.ai.isolated = 0;
     // damage sticks: no rebuilding for 2 hours after it is attacked or struck
     const lastHit = Math.max(0, ...Object.values(n.hitBy || {}));
@@ -156,7 +158,7 @@ module.exports = function makeBots(core, WP, rng) {
     if (!isolated) for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 6000) n.res[r] = (n.res[r] || 0) + 14;
     if (!isolated && !hurt && behind) { // rebuild toward 95% of the strongest player, a few percent an hour
       if (rng() < .5) n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .0006 * S_));
-      if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(6, Math.ceil(n.troops * .00036 * S_)));
+      if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(6, Math.ceil(n.troops * .00036 * S_), Math.ceil(top('troops') * .0003 * S_))); // far behind: rebuilds toward the top player's army, not just its own
     }
     // reach: a superpower that can't get at its enemies is no threat. Its backers keep it a navy able to carry its army overseas
     // and an air force that keeps pace with the players (for strikes and airborne drops), whether or not it is behind on power
@@ -202,7 +204,7 @@ module.exports = function makeBots(core, WP, rng) {
     if (pri.length && rng() < Math.min(.95, .55 * AG)) { const r = farStrike(W, u, pri); if (r) return r; }
     else if (AG < .3 && hitBack.length && rng() < .3) { const r = farStrike(W, u, hitBack); if (r) return r; }
     // missile salvos at the military or infrastructure of its enemies
-    if (pri.length && core.maxMissiles(n) && rng() < Math.min(.8, .3 * AG)) { const v = pri[Math.floor(rng() * pri.length)]; if (!core.canStrike(W, u, v)) { const M = core.MISSILE, k = Math.min(core.maxMissiles(n), Math.floor(n.cash / M.cash), Math.floor((n.res.steel || 0) / M.steel), Math.floor((n.res.oil || 0) / M.oil)); if (k >= 1) { const r = tryExec(W, u, { c: 'strike', v, kind: 'missile', target: rng() < .6 ? 'mil' : 'infra', n: k }); if (r) return r; } } } /* as many missiles as it can pay for */
+    if (pri.length && core.maxMissiles(n) && rng() < Math.min(.8, .3 * AG)) { const v = pri[Math.floor(rng() * pri.length)]; if (!core.canStrike(W, u, v)) { const M = core.MISSILE, save = BC.nukes !== 'no' && !n.nuke ? core.NUKE.cash * 1.1 : BC.nukes === 'yes' && n.nuke && !n.warhead ? core.WARHEAD.cash * 1.1 : 0, k = Math.min(core.maxMissiles(n), Math.floor((n.cash - save) / M.cash), Math.floor((n.res.steel || 0) / M.steel), Math.floor((n.res.oil || 0) / M.oil)); if (k >= 1) { const r = tryExec(W, u, { c: 'strike', v, kind: 'missile', target: rng() < .6 ? 'mil' : 'infra', n: k }); if (r) return r; } } } /* as many missiles as it can pay for */
     if (pri.length && (n.air || 0) >= 10 && rng() < Math.min(.9, .3 * AG)) { const v = pri[Math.floor(rng() * pri.length)]; if (!core.canStrike(W, u, v) && (n.air || 0) * .65 >= (W.A[v].air || 0) * 1.2) { /* only when its planes outnumber their fighters */ const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: rng() < .6 ? 'mil' : 'infra', n: Math.floor(n.air * .65) }); if (r) return r; } }
     return null;
   }
@@ -223,7 +225,7 @@ module.exports = function makeBots(core, WP, rng) {
     if (n.cards.length && rng() < .5) { const c = n.cards[0]; const card = core.getCard(c.i); if (card) return tryExec(W, u, { c: 'decide', id: c.id, o: chooseOption(W, u, card) }); }
     // finances: borrow when broke, repay when flush, campaign before elections
     if (n.cash < 1e5 && core.maxBorrow(n) > 3e5 && !core.left(W, n, 'bonds')) { n.cd.bonds = W.now + 2 * HOUR; return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(core.maxBorrow(n), n.gdp * .1)) }); }
-    if (n.debt > 0 && n.cash > 4e6) return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(n.debt, n.cash * .4)), repay: true });
+    if (n.debt >= 1 && n.cash > 4e6) return tryExec(W, u, { c: 'bonds', amt: Math.min(n.debt, Math.round(n.cash * .4)), repay: true });
     if (n.gov === 'dem' && n.nextElection && n.nextElection - W.now < 24 * HOUR && !core.left(W, n, 'campaign') && (n.campaign || 0) < 12 && n.cash > 4e5) return tryExec(W, u, { c: 'act', k: 'campaign' });
     // walk away from partners the World Council condemned or sanctioned (warlords care least)
     { const bad = v => { const t = W.A[v]; return !!t && (core.rogue(W, t) || core.sanctioned(t) || (t.condemned || 0) > W.now); };
