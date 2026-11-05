@@ -122,8 +122,8 @@ module.exports = function makeBots(core, WP, rng) {
   // ---------- the Rising Power: one AI superpower that keeps pace with the strongest player, goes nuclear and must be stopped together ----------
   const humans = W => Object.keys(W.A).filter(v => !isBot(v));
   // admin controls for the Rising Power (Admin page → Rising Power). str scales how fast it grows and how big it may get, aggr how often it fights.
-  const BOSS_DEF = { mode: 'auto', str: 1, aggr: 1, nukes: 'yes', target: '' };
-  const bossCfg = cfg => { const b = { ...BOSS_DEF, ...((cfg && cfg.boss) || {}) }; b.str = Math.min(3, Math.max(.25, +b.str || 1)); b.aggr = Math.min(3, Math.max(0, +b.aggr || 0)); return b; };
+  const BOSS_DEF = { mode: 'auto', str: 1, aggr: 1, nukes: 'yes', target: '', def: 1, atk: 1, coal: 3, heal: 1.75, dome: 'no' };
+  const bossCfg = cfg => { const b = { ...BOSS_DEF, ...((cfg && cfg.boss) || {}) }; b.str = Math.min(5, Math.max(.25, +b.str || 1)); b.aggr = Math.min(3, Math.max(0, +b.aggr || 0)); b.def = Math.min(4, Math.max(1, +b.def || 1)); b.atk = Math.min(4, Math.max(1, +b.atk || 1)); b.coal = Math.max(0, Math.min(20, Math.round(b.coal == null ? 3 : +b.coal))); b.heal = Math.max(0, Math.min(6, b.heal == null ? 1.75 : +b.heal)); return b; };
   function pickBoss(W, cfg, want) {
     const bots = Object.keys(W.A).filter(isBot); if (!cfg.aiBoss || !bots.length || !humans(W).length || (cfg.bossPause && !bots.some(b => W.A[b].ai.boss))) { if (cfg.bossPause) return null; for (const b of bots) if (W.A[b].ai.boss) { W.A[b].ai.boss = false; core.touch(W, b); } return null; }
     const cur = bots.find(b => W.A[b].ai.boss); if (cur) return cur;
@@ -138,15 +138,18 @@ module.exports = function makeBots(core, WP, rng) {
     // runs every world tick (30 s): every rate below is per tick, sized for about an hour of real time (120 ticks)
     const n = W.A[u], H = humans(W).map(v => W.A[v]).filter(Boolean); if (!H.length) return;
     const top = k => Math.max(...H.map(h => h[k] || 0)), topPow = Math.max(...humans(W).map(v => core.power(W, v))), now = W.now;
-    const pow = core.power(W, u), behind = pow < topPow * Math.min(1.6, .95 * S_);
+    const pow = core.power(W, u), behind = pow < topPow * Math.min(3, .95 * S_);
+    // admin difficulty: combat bonuses the game engine reads from the nation, and an optional free Golden Dome
+    if (BC.def > 1) n.ai.defX = BC.def; else delete n.ai.defX; if (BC.atk > 1) n.ai.atkX = BC.atk; else delete n.ai.atkX;
+    if (BC.dome === 'yes' && !n.dome) n.dome = { t: now, ready: now };
     // the world united: 3 or more nations at war with it and its foreign backers pull out completely
     const coalition = core.wars(W, u).filter(v => !isBot(v)).length + core.wars(W, u).filter(v => isBot(v)).length * .5;
-    const isolated = coalition >= 3;
+    const isolated = BC.coal > 0 && coalition >= BC.coal; // admins can raise how many nations it takes, or switch this off
     if (isolated && !n.ai.isolated) { n.ai.isolated = now; core.news(W, u, `🌍 ${core.wars(W, u).length} nations have united against ${n.name}. Its foreign backers are pulling out: no more money or weapons will reach it.`); }
-    if (!isolated && n.ai.isolated && coalition < 2) n.ai.isolated = 0;
+    if (!isolated && n.ai.isolated && (BC.coal === 0 || coalition < BC.coal - 1)) n.ai.isolated = 0;
     // damage sticks: no rebuilding for 2 hours after it is attacked or struck
     const lastHit = Math.max(0, ...Object.values(n.hitBy || {}));
-    const hurt = now - lastHit < 1.75 * 3600e3;
+    const hurt = now - lastHit < BC.heal * 3600e3;
     const saving = (!n.nuke && n.cash < core.NUKE.cash * 1.2) || (n.nuke && !n.warhead && n.cash < core.WARHEAD.cash * 1.2);
     if (!isolated && (behind || saving)) n.cash += Math.max(7e4, top('gdp') * .00012) * S_; // about $8M+ an hour while it is behind or saving for its nuclear program
     if (!isolated) for (const r of ['food', 'oil', 'steel', 'goods']) if ((n.res[r] || 0) < 6000) n.res[r] = (n.res[r] || 0) + 14;
@@ -194,7 +197,7 @@ module.exports = function makeBots(core, WP, rng) {
   function turn(W, u, cfg) {
     const n = W.A[u]; if (!n || !n.ai) return;
     const per = PERS[n.ai.p] || PERS.merchant; W.now = Date.now();
-    const boss = pickBoss(W, cfg) === u; if (boss) bossAssist(W, u, cfg);
+    const boss = pickBoss(W, cfg) === u; if (boss) bossAssist(W, u, cfg); else if (n.ai.defX || n.ai.atkX) { delete n.ai.defX; delete n.ai.atkX; core.touch(W, u); }
     const passive = boss && bossCfg(cfg).aggr === 0; // the admins set it to never start a fight
     if (boss && bossCfg(cfg).mode === 'manual') return; // manual mode: it grows, but only acts when an admin tells it to
     // AI nations act at the pace of a dedicated human player, not every instant, and take a long break each day
