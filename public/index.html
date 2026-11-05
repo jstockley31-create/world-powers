@@ -575,10 +575,11 @@ const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
 function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],voteAt:d.voteAt||0,council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 // the live stream can stall without any error (a phone waking up, a network switch, a proxy hiccup): watch for silence and reconnect, which reloads the whole world
-let curES=null,lastMsg=0,lastDoc=0,expT=0,connT=0;
+let curES=null,lastMsg=0,lastDoc=0,lastOwn=0,expT=0,connT=0;
 function reconnect(why){if(Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
 WP.resync=reconnect;
-WP.expect=()=>{const at=Date.now();clearTimeout(expT);expT=setTimeout(()=>{if(lastDoc<at&&curES)reconnect('no update after an action')},4000)};
+// after an action, our own nation must update (not just anyone's): if it hasn't within 4 s, reconnect, which reloads everything
+WP.expect=()=>{const at=Date.now();clearTimeout(expT);expT=setTimeout(()=>{if(curES&&(st.me&&st.cols.nations&&st.cols.nations[st.me.id]?lastOwn<at:lastDoc<at))reconnect('no update to our own nation after an action')},4000)};
 setInterval(()=>{if(curES&&document.visibilityState==='visible'&&Date.now()-lastMsg>50000)reconnect('silent stream')},10000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&curES&&Date.now()-lastMsg>30000)reconnect('back in the foreground')});
 window.addEventListener('online',()=>{if(curES)reconnect('network back')});
@@ -595,7 +596,7 @@ on('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fal
 on('fallenlist',e=>{WP.extra.fallenList=JSON.parse(e.data);emit('wp-extra',WP.extra)});
 on('council',e=>{WP.extra.council=JSON.parse(e.data);emit('wp-council',WP.extra.council)});
 on('event',e=>{WP.extra.event=JSON.parse(e.data);emit('wp-event',WP.extra.event)});
-on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
+on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(st.me&&d.id===st.me.id)lastOwn=lastDoc;if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
 on('user',e=>{const d=JSON.parse(e.data);if(d.name==null)delete st.users[d.id];else st.users[d.id]=d.name});
 on('config',e=>setCfg(JSON.parse(e.data)));
 on('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
@@ -1231,7 +1232,11 @@ function morphKids(a,b){const ak=a.childNodes,bk=[...b.childNodes];let i=0;
  while(ak.length>bk.length)a.removeChild(a.lastChild)}
 function morph(el,html){const t=document.createElement('template');t.innerHTML=html;morphKids(el,t.content)}
 let lastHtml='',lastPage='',renderQ=0,hiddenDirty=false;
-function refresh(){if(document.hidden){hiddenDirty=true;return}refreshW();render();renderChat();renderOnline();renderBell()}
+// each step guarded: one broken panel can never stop the rest of the game (or your own nation) from updating; the error is reported and the page resyncs
+const autoRep=new Set();function softFail(where,e){const m=`${where}: ${(e&&e.message)||e}`;console.error(m,e);if(autoRep.has(m))return;autoRep.add(m);
+ try{WP.api('POST','/api/bug',{text:`[automatic error report] ${m}\n${String(e&&e.stack||'').split('\n').slice(0,4).join('\n')}`,page,screen:innerWidth+'x'+innerHeight,errors:ERRS}).catch(()=>{})}catch(x){}
+ if(autoRep.size<4&&WP.resync)setTimeout(()=>WP.resync(),1500)}
+function refresh(){if(document.hidden){hiddenDirty=true;return}for(const[k,f]of[['data',refreshW],['page',render],['chat',renderChat],['online',renderOnline],['bell',renderBell]]){try{f()}catch(e){softFail('refresh '+k,e)}}}
 // many updates can arrive together (every nation ticks at once); draw at most once per animation frame
 function refreshSoon(){if(renderQ)return;renderQ=requestAnimationFrame(()=>{renderQ=0;refresh()})}
 const EDITING=['mail','council','economy','intel'];
