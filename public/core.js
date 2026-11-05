@@ -192,8 +192,10 @@ const NUKE = { tech: 18, rank: 6, cash: 150e6, steel: 4000, oil: 4000, goods: 25
 const INSPECT = { base: 10e6, pct: .01, cap: 80e6, warhead: 1.5, everyH: 24 };
 // a dirty bomb: a conventional missile carrying radioactive material. Far cheaper than a nuclear program; leaves a radioactive cloud over one province for 24 hours
 const DIRTY = { tech: 10, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300, cdH: 12, h: 24, aggr: 25, km: 380 };
-// imperial overstretch: every province beyond 20 costs upkeep (rising steeply), lowers stability and risks far-off provinces breaking away
-const OVER = { at: 20, cost: 7e-6, st: .6, reb: .0006 };
+// imperial overstretch: only the very biggest empires (28 provinces or more) pay upkeep for every province past 27 (rising steeply), lose stability and risk far-off provinces breaking away
+// paying off the World Council to lift sanctions or rogue status at once: 25% of the treasury (at least $50M), double for a rogue state, and doubling again for every payoff in the last 7 days
+const BRIBE = { pct: .25, min: 50e6, rogueX: 2, windowD: 7 };
+const OVER = { at: 27, cost: 7e-6, st: .6, reb: .0006 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 const WARHEAD = { tech: 22, rank: 7, cash: 300e6, steel: 6000, oil: 6000, goods: 4000, buildH: 12, holdH: 24, cdD: 7, km: 1600, nukedH: 48, falloutH: 24, winterH: 24 };
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
@@ -357,7 +359,11 @@ function Core(PD, CARDS) {
   }
   function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(tcap(n), traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
-  const overstretch = n => { const x = Math.max(0, hexN(n) - OVER.at); return { extra: x, cost: x ? (n.gdp || 0) * OVER.cost * Math.pow(x, 1.5) : 0, st: x * OVER.st }; };
+  const overAt = n => OVER.at;
+  const bribeRecent = (n, now) => (n.bribes || []).filter(t => now - t < BRIBE.windowD * 864e5);
+  const bribeNeeded = (W, n) => !!n && (rogue(W, n) || sanctioned(n) || ['embargo', 'armsEmb', 'condemned'].some(k => (n[k] || 0) > W.now) || !!(n.frozen && n.frozen.until > W.now));
+  const bribePrice = (W, n) => Math.round(Math.max(BRIBE.min, (n.cash || 0) * BRIBE.pct) * (rogue(W, n) ? BRIBE.rogueX : 1) * Math.pow(2, bribeRecent(n, W.now).length) / 1e5) * 1e5;
+  const overstretch = n => { const at = overAt(n), x = Math.max(0, hexN(n) - at); return { at, extra: x, cost: x ? (n.gdp || 0) * OVER.cost * Math.pow(x, 1.5) : 0, st: x * OVER.st }; };
   const inspectFee = n => Math.round(Math.min(INSPECT.cap, INSPECT.base + (n.gdp || 0) * INSPECT.pct) * (n.warhead ? INSPECT.warhead : 1));
   const radOn = (W, n) => !!(n && n.rad && n.rad.until > W.now);
   const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + (n.dome && n.dome.ready <= W.now ? DOME.upkeep : 0)) * W.m.upkeep;
@@ -1444,7 +1450,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, DIRTY, canDirty, INSPECT, inspectFee, OVER, overstretch, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

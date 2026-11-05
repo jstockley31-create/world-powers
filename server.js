@@ -353,6 +353,21 @@ function resBlocked(W, type, v) {
   if (type === 'lift') { if (!(M('embargo') || M('armsEmb') || M('frozen') || M('condemned') || core.rogue(W, n) || core.sanctioned(n))) return `${n.name} is not under any sanctions.`; if (nukedRecently(v, now)) return `${n.name} launched a nuclear strike less than 72 hours ago. Its sanctions cannot be lifted yet.`; }
   return null;
 }
+// paying off the Council: lifts sanctions, rogue status and Council measures at once, announced to the whole world. The money is simply gone.
+function councilBribe(uid) {
+  const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
+  if (!core.bribeNeeded(W, n)) throw Object.assign(new Error('Your nation is not under sanctions, rogue status or Council measures.'), { status: 400 });
+  if (nukedRecently(uid, now)) throw Object.assign(new Error('No amount of money will buy the Council within 72 hours of a nuclear strike.'), { status: 400 });
+  const price = core.bribePrice(W, n); if ((n.cash || 0) < price) throw Object.assign(new Error(`The Council's price is ${WP.money(price)}. Your treasury doesn't cover it.`), { status: 400 });
+  const wasRogue = core.rogue(W, n);
+  n.cash -= price; n.bribes = [...core.bribeRecent(n, now), now];
+  const back = n.frozen ? n.frozen.amt || 0 : 0; n.cash += back; n.frozen = null; n.embargo = 0; n.armsEmb = 0; n.condemned = 0;
+  if (wasRogue) { n.rogue = 0; delete n.rogueT; } n.aggr = Math.min(n.aggr || 0, 30); W.changed.add(uid);
+  core.news(W, uid, `💰 ${n.name} bribed the World Council to lift its ${wasRogue ? 'rogue-state status' : 'sanctions'} (${WP.moneyS(price)}).`);
+  commit(W); persist();
+  systemMessage(`💰 ${n.name} paid the World Council ${WP.moneyS(price)} to make its ${wasRogue ? 'rogue-state status' : 'sanctions'} disappear.`);
+  return { msg: `Paid ${WP.money(price)}. ${wasRogue ? 'Your rogue status' : 'Your sanctions'} and all Council measures are lifted${back ? `, and ${WP.money(back)} in frozen assets is back in your treasury` : ''}. Your aggression is now ${Math.round(n.aggr)}.` };
+}
 function councilPropose(uid, b) {
   const W = mkWorld(), n = W.A[uid]; if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
@@ -1222,6 +1237,7 @@ async function handle(req, res) {
       const amt = voteBonus(n); n.cash = (n.cash || 0) + amt; m.voteT = now; (n.log = n.log || []).unshift({ t: now, x: `Thank you for voting for World Powers: +${WP.moneyS(amt)} daily bonus.` }); n.log = n.log.slice(0, 60);
       setDoc('nations', me.id, n); stat('votes'); return send(res, 200, { ok: true, amt, next: now + 24 * HOUR, msg: `Thanks for voting! +${WP.moneyS(amt)} has been added to your treasury.` });
     }
+    if (p === '/api/council/bribe' && req.method === 'POST') { await readBody(req, 256); touch(me.id, req); const r = councilBribe(me.id); return send(res, 200, { ok: true, ...r }); }
     if (p === '/api/council/vote' && req.method === 'POST') { const b = await readBody(req, 1024); touch(me.id, req); councilVote(me.id, b); return send(res, 200, { ok: true }); }
 
     const m = p.match(/^\/api\/doc\/(chat|online)\/([A-Za-z0-9_-]{1,64})$/);
