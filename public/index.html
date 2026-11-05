@@ -823,10 +823,9 @@ const GL=(()=>{
  function flagImg(u,n){if(!n.flag)return null;const k=JSON.stringify(n.flag);let o=FIMG.get(u);if(o&&o.k===k)return o.ok?o.img:null;
   const img=new Image();o={k,img,ok:false};FIMG.set(u,o);img.onload=()=>{o.ok=true;clearTimeout(fimgT);fimgT=setTimeout(()=>{st.baseOk=false;redraw()},120)};
   img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(WPCore.flagSVG(n.flag,60,40,true));return null}
- function overlay(ctr,w,h,r){drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);
+ function overlay(ctr,w,h,r){drawZones();drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);
   const fs=Math.round(clamp(10+st.scale*1.5,10,16));ctx.font=`600 ${fs}px Inter,system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   // names: biggest nations first, skip any label that would overlap one already drawn or run off the edge; round joins avoid spiky outlines
-  drawZones();
   ctx.lineJoin='round';ctx.miterLimit=2;const boxes=[];
   // capital dots on screen, so names never sit on top of one
   const capPts=[];for(const n of Object.values(A))if(n&&P[n.cap]&&d3.geoDistance(ctr,P[n.cap].c)<1.45)capPts.push(proj(P[n.cap].c));
@@ -862,14 +861,14 @@ const GL=(()=>{
  // intercontinental ballistic flight: boost, a long arc above the atmosphere, then a steep re-entry; the camera follows until the player takes over
  const coarse=matchMedia('(pointer: coarse)').matches; // phones: hold the camera still (cheap frames), desktops: follow the missile
  const IC=.82,BLAST=12500;
- function missile(from,to,dur,done,toH,icept){st.fx={from,to,toH,dur,t0:performance.now(),done,ip:d3.geoInterpolate(from,to),dist:d3.geoDistance(from,to),track:!coarse,s0:st.scale,icept:!!icept};
+ function missile(from,to,dur,done,toH,icept){st.fx={from,to,toH,dur,t0:performance.now(),done,ip:d3.geoInterpolate(from,to),dist:d3.geoDistance(from,to),track:!coarse,s0:st.scale,icept:!!icept};if(icept){const f=st.fx;f.ic=IC;f.dU=W&&W.OWN&&(W.OWN[toH]||{}).u}
   const loop=()=>{if(!st.fx)return;const f=st.fx,el=performance.now()-f.t0,prog=Math.min(1,el/f.dur);
    if(f.track&&!st.anim&&prog<1){const g=f.ip(Math.min(1,prog+.04)),r1=[-g[0],-g[1]+6*Math.sin(Math.PI*prog)];const dl=((r1[0]-st.rot[0]+540)%360)-180;st.rot=[st.rot[0]+dl*.04,clamp(st.rot[1]+(r1[1]-st.rot[1])*.04,-85,85),0];
     const want=prog<.15?f.s0:prog<.74?Math.max(.85,f.s0*.72):Math.max(f.s0,2.3);st.scale+=(want-st.scale)*.025}
    if(!f.track&&!f.zoomed&&prog>.78&&!st.anim){f.zoomed=true;if(!f.touched)flyTo(f.to,Math.max(st.scale,2))}
-   const flying=f.icept?prog<IC:prog<1;
+   const flying=f.icept?prog<f.ic:prog<1;
    if(f.track&&flying){const t_=performance.now();if(f.lastT){const g=t_-f.lastT;f.slow=(f.slow||0)*.9+(g>40?1:0)}f.lastT=t_;if(f.slow>3){moving()}else st.baseOk=false;draw()}else if(st.baseOk&&!st.anim)fastFrame();else draw();
-   if(el<(f.icept?f.dur*IC+3400:f.dur+BLAST))requestAnimationFrame(loop);else{st.fx=null;redraw();done&&done()}};requestAnimationFrame(loop)}
+   if(el<(f.icept?f.dur*f.ic+3400:f.dur+BLAST))requestAnimationFrame(loop);else{st.fx=null;redraw();done&&done()}};requestAnimationFrame(loop)}
  const nukePhase=()=>{const f=st.fx;if(!f)return null;const el=performance.now()-f.t0,p=el/f.dur;return{p,left:Math.max(0,f.dur-el),ph:p<.13?'BOOST PHASE':p<.76?'MIDCOURSE · IN SPACE':p<1?'RE-ENTRY':'IMPACT'}};
  function stopMissile(){if(st.fx){const d=st.fx.done;st.fx=null;redraw();return d}return null}
  // ---- air and missile strikes, seen by everyone: planes in formation (or missile streaks) from the attacker's capital, then flashes and lingering smoke ----
@@ -878,8 +877,8 @@ const GL=(()=>{
  function strike(fx,quiet){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const from=P[fx.from]?P[fx.from].c:null,to=P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
   const dur=!from?0:air_?clamp(3800+dist*1300,3800,6500):clamp(6500+dist*2400,6500,11000),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
   const R=seedOf(fx.id),n=air_?clamp(Math.round((fx.n||5)/8),3,7):clamp(fx.n||1,1,10),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.max(0,n-(fx.hits==null?n:fx.hits));
-  const D=reduce?0:dur,cycle=D+1800+1600,loops=!D?0:Math.max(4,Math.ceil(75000/cycle)); // replays for about 75 seconds so everyone has time to find it
-  SK.push({fx,from,to,dist,dur:D,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:12},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
+  const ml=air_?((n-1)/2)*.034:(n-1)*Math.min(.085,.5/n),D=reduce?0:dur,cycle=D*(1+ml)+1800+1600,loops=!D?0:Math.max(4,Math.ceil(75000/cycle)); // replays for about 75 seconds so everyone has time to find it
+  SK.push({fx,from,to,dist,dur:D,ml,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:12},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
   while(SK.length>80)SK.shift();{const b=BURN.get(fx.h),hit=(fx.t||Date.now())+D;burn(fx.h,hit,quiet?(b?b.n:1):(b&&hit-b.t<SMOKE_MS?b.n:0)+1)}kick();smokeLoop()}
  // a province on fire: last hit time and number of hits (from the server at login, then live)
  // nuclear test in the ocean: flash, fireball, condensation dome, shock rings on the water, a column of water with a mushroom cap, base surge, then steam that lingers ten minutes
@@ -896,13 +895,38 @@ const GL=(()=>{
     ringPath(c,430);ctx.fillStyle=`rgba(160,255,60,${.14*life})`;ctx.fill();ctx.strokeStyle=`rgba(200,255,100,${.85*life*pulse})`;ctx.lineWidth=2;ctx.stroke();
     ringPath(c,220);ctx.fillStyle=`rgba(200,255,80,${.12*life})`;ctx.fill();
     if(dot(unit(c),cvv)>Math.cos(1.5)){const g=proj(c),fs=Math.round(clamp(12+st.scale*4,13,30));ctx.font=`bold ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.strokeText('☢',g[0],g[1]);ctx.fillStyle=`rgba(220,255,120,${.95*life})`;ctx.fillText('☢',g[0],g[1])}}
-   // Golden Dome: a shimmering golden shield over the nation
-   if(n.dome&&P[n.cap]){const c=P[n.cap].c;if(dot(unit(c),cvv)<-.1)continue;let km=0;for(const h of Object.keys(n.hexes||{}))if(P[h])km=Math.max(km,d3.geoDistance(c,P[h].c)*6371);km=clamp(km+260,420,1500);
-    const on=n.dome.ready<=now&&!n.dome.off&&(n.cash||0)>=0,a=on?1:.55;
-    ringPath(c,km);if(on){ctx.fillStyle='rgba(255,206,84,.075)';ctx.fill()}
-    ctx.save();ctx.shadowColor='rgba(255,200,70,.9)';ctx.shadowBlur=on?14:0;ctx.strokeStyle=`rgba(255,214,102,${.9*a})`;ctx.lineWidth=on?2.4:1.6;if(!on)ctx.setLineDash([7,6]);ctx.stroke();ctx.restore();ctx.setLineDash([]);
-    if(on){for(const f of[.68,.38]){ringPath(c,km*f);ctx.strokeStyle='rgba(255,220,130,.28)';ctx.lineWidth=.9;ctx.stroke()}
-     const g=proj(c),R=km/6371*st.scale*Math.min(st.w,st.h)*.46,sh=.5+.5*Math.sin(now/1300+(n.cap||0));if(dot(unit(c),cvv)>.3){const hl=ctx.createRadialGradient(g[0]-R*.35,g[1]-R*.4,0,g[0]-R*.35,g[1]-R*.4,R*.75);hl.addColorStop(0,`rgba(255,240,190,${.16+.06*sh})`);hl.addColorStop(1,'rgba(255,240,190,0)');ringPath(c,km);ctx.save();ctx.clip();ctx.fillStyle=hl;ctx.fillRect(g[0]-R*1.2,g[1]-R*1.2,R*2.4,R*2.4);ctx.restore()}}}}}
+   // Golden Dome: a translucent golden dome raised over the heart of the nation
+   const G=domeGeo(n);if(G&&dot(unit(G.c),cvv)>-.05)drawDome(u,G,cvv)}}
+ // the dome: a half-ellipsoid over the capital, raised up the screen like a dome standing on the map, with ribs, a highlight and a flash where missiles hit it
+ const DGEO=new Map(),DHIT=new Map(),DLAT=[0,15,30,45,60,75,90];
+ function domeGeo(n){if(!n||!n.dome||!P[n.cap])return null;const hx=Object.keys(n.hexes||{}),key=n.cap+':'+hx.length;let g=DGEO.get(n);const on=n.dome.ready<=Date.now()&&!n.dome.off&&(n.cash||0)>=0;if(g&&g.key===key){g.on=on;return g}
+  const c=P[n.cap].c;let km=0;for(const h of hx)if(P[h])km=Math.max(km,d3.geoDistance(c,P[h].c)*6371);km=clamp(km*.7+170,280,820);const d=km/6371;
+  g={key,c,km,d,hd:d*.9,on,rings:DLAT.map(t=>t===90?null:ringPts(c,km*Math.cos(t*RAD)))};DGEO.set(n,g);return g}
+ // is a point on screen inside the dome as drawn this frame? (base ellipse below, the dome's curve above)
+ const inDome=(G,x,y)=>{const q=G.scr;if(!q||performance.now()-q.t>500)return false;const dx=(x-q.bx)/q.ax,dy=y-q.by;return dx*dx+Math.pow(dy/(dy<0?q.ay+q.hp:q.ay),2)<=1};
+ // the first point of a flight (0..1) that touches the dome, found on screen
+ function domeTouch(G,pos,s0){if(!G||!G.scr)return null;let lo=null;for(let s=s0;s<=1.0001;s+=.01){const a=pos(s);if(a&&a.vis&&inDome(G,a.xy[0],a.xy[1])){lo=s;break}}if(lo==null)return null;let A_=Math.max(s0,lo-.01),B_=lo;for(let i=0;i<7;i++){const m=(A_+B_)/2,a=pos(m);if(a&&a.vis&&inDome(G,a.xy[0],a.xy[1]))B_=m;else A_=m}return B_}
+ function domeHit(k,lift){k.hitS=null;if(k.fx.kind==='air'||!k.fx.icept||!k.ip)return;const own=W&&W.OWN&&(W.OWN[k.fx.h]||{}).u,G=own&&domeGeo(A[own]);if(!G)return;k.dG=own;k.hitS=.9}
+ function drawDome(u,G,cvv){const now=Date.now(),on=G.on,hit=Math.max(0,1-(performance.now()-(DHIT.get(u)||-1e9))/900),sh=.5+.5*Math.sin(now/1400+(G.c[0]|0)),Rg=radius();
+  const P2=(p,f)=>{if(dot(unit(p),cvv)<-.02)return null;const g=proj(p);return[g[0],g[1]-f*Rg]};
+  const R=DLAT.map((t,i)=>G.rings[i]?G.rings[i].map(p=>P2(p,G.hd*Math.sin(t*RAD))):[P2(G.c,G.hd)]),top=R[6][0];
+  const poly=pts=>{ctx.beginPath();let pen=false;for(const q of pts){if(!q){pen=false;continue}pen?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);pen=true}};
+  {let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,n=0;for(const q of R[0])if(q){n++;x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])}
+   G.scr=n>20&&on?{bx:(x0+x1)/2,by:(y0+y1)/2,ax:Math.max(4,(x1-x0)/2),ay:Math.max(3,(y1-y0)/2),hp:G.hd*Rg,t:performance.now()}:null}
+  if(!on){poly(R[0]);ctx.setLineDash([7,6]);ctx.strokeStyle='rgba(255,214,102,.55)';ctx.lineWidth=1.4;ctx.stroke();ctx.setLineDash([]);for(let m=0;m<72;m+=12){poly(R.slice(0,4).map(r=>r[m]));ctx.strokeStyle='rgba(255,214,102,.25)';ctx.lineWidth=.8;ctx.stroke()}return}
+  // shadow and glow on the ground
+  poly(R[0]);ctx.fillStyle=`rgba(255,206,84,${.08+.14*hit})`;ctx.fill();
+  // the shell: each ring a little brighter, so the dome glows from inside and brightest near the top
+  for(let i=0;i<6;i++){poly(R[i]);ctx.fillStyle=`rgba(255,${206+i*7},${84+i*20},${.05+.035*hit})`;ctx.fill()}
+  // ribs and rings, like the frame of a geodesic dome; the far side is fainter
+  const cy=G.scr?G.scr.by:0;for(let m=0;m<72;m+=6){const pts=R.slice(0,6).map(r=>r[m]);pts.push(top);const back=pts[0]&&pts[0][1]<cy;poly(pts);ctx.strokeStyle=`rgba(255,228,150,${(back?.16:.38)+.5*hit})`;ctx.lineWidth=back?.7:1;ctx.stroke()}
+  for(let i=1;i<6;i++){poly(R[i]);ctx.strokeStyle=`rgba(255,228,150,${.22+.45*hit})`;ctx.lineWidth=.8;ctx.stroke()}
+  if(hit>0&&G.scr){const q=G.scr,t=1-hit;ctx.save();ctx.strokeStyle=`rgba(255,250,220,${.9*hit})`;ctx.lineWidth=2.5*hit+.5;ctx.shadowColor='rgba(255,220,120,.9)';ctx.shadowBlur=10;ctx.beginPath();ctx.ellipse(q.bx,q.by-q.hp*t*.85,q.ax*Math.sqrt(Math.max(0,1-t*t*.7)),q.ay*Math.sqrt(Math.max(0,1-t*t*.7)),0,0,Math.PI*2);ctx.stroke();ctx.restore()}
+  // glowing rim where the dome meets the ground
+  poly(R[0]);ctx.save();ctx.shadowColor='rgba(255,200,70,.9)';ctx.shadowBlur=12+14*hit;ctx.strokeStyle=`rgba(255,${214+40*hit},${102+120*hit},.95)`;ctx.lineWidth=2+1.5*hit;ctx.stroke();ctx.restore();
+  // a soft highlight on the upper left of the shell
+  if(top&&G.scr){const q=G.scr,hx=q.bx-q.ax*.35,hy=q.by-q.hp*.6,rr=Math.max(q.ax,q.hp)*.75,g=ctx.createRadialGradient(hx,hy,0,hx,hy,rr);g.addColorStop(0,`rgba(255,248,215,${.26+.1*sh+.35*hit})`);g.addColorStop(1,'rgba(255,248,215,0)');ctx.save();ctx.beginPath();ctx.ellipse(q.bx,q.by,q.ax,q.ay+q.hp,0,Math.PI,0);ctx.ellipse(q.bx,q.by,q.ax,q.ay,0,0,Math.PI);ctx.clip();ctx.fillStyle=g;ctx.fillRect(hx-rr,hy-rr,rr*2,rr*2);ctx.restore()}}
+
  const TX=[];
  function ntest(at){if(!at)return;TX.push({at,v:unit(at),t0:performance.now(),wall:Date.now()});kickTX();smokeLoop()}
  let txLoop=0;function kickTX(){if(txLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now();if(!TX.some(x=>now-x.t0<TXDUR+300)||!st.el||!st.el.isConnected){txLoop=0;redraw();return}st.baseOk&&!st.anim&&!st.raf?fastFrame():(!st.raf&&draw());txLoop=requestAnimationFrame(step)};txLoop=requestAnimationFrame(step)}
@@ -989,7 +1013,7 @@ const GL=(()=>{
   drawPlumes(cv,V155);drawTests(cv,V155);
   // at most six flights are animated at once (the newest), and none while a nuclear missile is in the air
   const nukeOn=!!st.fx&&now-st.fx.t0<st.fx.dur+1400;let animLeft=nukeOn?0:6;
-  for(let ki=SK.length-1;ki>=0;ki--){const k=SK[ki],el=now-k.t0,li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle;k.anim=active&&elc<k.dur&&animLeft-->0}
+  for(let ki=SK.length-1;ki>=0;ki--){const k=SK[ki],el=now-k.t0,li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle;k.anim=active&&elc<k.dur*(1+(k.ml||0))&&animLeft-->0}
   for(const k of SK){const el=now-k.t0,tv=k.tv||(k.tv=unit(k.to)),tgVis=dot(tv,cv)>V155,tg=proj(k.to),lift=(.05+Math.min(.1,k.dist*.06))*(k.fx.kind==='air'?1:1.8),li=k.cycle?Math.floor(el/k.cycle):0,elc=k.loops&&li<k.loops?el-li*k.cycle:el,active=k.loops&&el<k.loops*k.cycle,sm=samples(k);
    const at=s=>{const x=Math.max(0,Math.min(1,s))*SAMP,i0=Math.min(SAMP-1,Math.floor(x)),t=x-i0,a=sm[i0],b=sm[i0+1];let dl=b.p[0]-a.p[0];if(dl>180)dl-=360;else if(dl<-180)dl+=360;
     const xy=proj([a.p[0]+dl*t,a.p[1]+(b.p[1]-a.p[1])*t]),q=1+lift*Math.sin(Math.PI*s);return{xy:[c0[0]+(xy[0]-c0[0])*q,c0[1]+(xy[1]-c0[1])*q],g:xy,vis:dot(a.v,cv)>V16||Math.sin(Math.PI*s)>.3}};
@@ -1003,15 +1027,14 @@ const GL=(()=>{
     if(tgVis){ctx.strokeStyle=`rgba(255,80,60,${.45+.45*pl})`;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(tg[0],tg[1],9+pl*5,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(tg[0]-15,tg[1]);ctx.lineTo(tg[0]-6,tg[1]);ctx.moveTo(tg[0]+6,tg[1]);ctx.lineTo(tg[0]+15,tg[1]);ctx.moveTo(tg[0],tg[1]-15);ctx.lineTo(tg[0],tg[1]-6);ctx.moveTo(tg[0],tg[1]+6);ctx.lineTo(tg[0],tg[1]+15);ctx.lineWidth=1;ctx.stroke()}
     else{const ang=Math.atan2(tg[1]-c0[1],tg[0]-c0[0]),R0=r-16,x=c0[0]+Math.cos(ang)*R0,y=c0[1]+Math.sin(ang)*R0;ctx.save();ctx.translate(x,y);ctx.rotate(ang);ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(-6,-8);ctx.lineTo(-2,0);ctx.lineTo(-6,8);ctx.closePath();ctx.fillStyle=`rgba(255,90,60,${.6+.4*pl})`;ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.stroke();ctx.restore()}}
    if(!k.anim||!sm)continue;const prog=elc/k.dur,air_=k.fx.kind==='air';
-   for(let j=0;j<k.n;j++){const lag=air_?Math.abs(j-(k.n-1)/2)*.034:j*Math.min(.085,.5/k.n),lost=j>=k.n-k.lostN,stop=lost?k.stops[j]:1,s=Math.min(prog-lag,stop);if(s<=0)continue;
+   if(k.hitS===undefined)domeHit(k,lift);if(k.dG){const G=domeGeo(A[k.dG]),t=G&&domeTouch(G,at,.3);if(t!=null)k.hitS=t}
+   for(let j=0;j<k.n;j++){const lost=j>=k.n-k.lostN,ord=lost?j-(k.n-k.lostN):j+k.lostN,lag=air_?Math.abs(j-(k.n-1)/2)*.034:ord*Math.min(.085,.5/k.n),ic=!air_&&lost&&(j-(k.n-k.lostN))<(k.fx.icept||0),stop=lost?(k.hitS!=null&&!air_?(ic?k.hitS-j*.004:Math.min(k.stops[j],k.hitS)):k.stops[j]):1,s=Math.min(prog-lag,stop);if(s<=0||(!lost&&prog-lag>=1))continue;
     const dead=lost&&prog-lag>stop,deadT=dead?(prog-stop)*k.dur/(air_?1600:700):0;if(dead&&deadT>1)continue;
     const a=at(s),b=at(Math.max(0,s-.012));if(!a.vis)continue;let dx=a.xy[0]-b.xy[0],dy=a.xy[1]-b.xy[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;
     const sz=air_?Math.max(.8,Math.min(1.6,.5+st.scale*.38)):Math.max(.9,Math.min(1.7,.55+st.scale*.45)),off=air_?(j-(k.n-1)/2)*13*sz:(j%2?-1:1)*Math.ceil(j/2)*3.5,px=a.xy[0]-dy*off,py=a.xy[1]+dx*off,th=Math.atan2(dy,dx),gx=a.g[0]-dy*off,gy=a.g[1]+dx*off;
     // contrail: two strokes (whole tail faint, the newest half brighter) instead of one per segment
     const tail=air_?.26:.22;ctx.lineCap='round';for(const[part,al,lw]of(air_?[[1,.13,1.2],[.45,.36,1.4]]:[[1,.2,4.6],[.55,.32,2.8],[.14,.75,1.5]])){if(dead&&part<1)continue;ctx.strokeStyle=air_?`rgba(235,242,255,${al*(dead?1-deadT:1)})`:`rgba(222,224,230,${al*(dead?1-deadT:1)})`;ctx.lineWidth=lw;ctx.beginPath();let pen=false;for(let q=0;q<=6;q++){const ss=Math.max(0,s-tail*part*(1-q/6)),pp=at(ss);if(!pp.vis){pen=false;continue}const xx=pp.xy[0]-dy*off,yy=pp.xy[1]+dx*off;pen?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);pen=true}ctx.stroke()}
-    const ic=!air_&&lost&&(j-(k.n-k.lostN))<(k.fx.icept||0);
-    if(ic&&!dead&&prog-lag>stop-.1){const q=Math.min(1,(prog-lag-(stop-.1))/.1),tx=tg[0]+(px-tg[0])*q,ty=tg[1]+(py-tg[1])*q;ctx.strokeStyle='rgba(255,214,102,.95)';ctx.lineWidth=2.4;ctx.beginPath();ctx.moveTo(tg[0],tg[1]);ctx.lineTo(tx,ty);ctx.stroke();blit('gold',G_GOLD,tx,ty,7*sz,1)}
-    if(dead){if(!air_){if(ic){blit('gold',G_GOLD,px,py,22*sz,1-deadT);blit('flash',G_FLASH,px,py,10*sz,1-deadT);ctx.strokeStyle=`rgba(255,214,102,${.9*(1-deadT)})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(px,py,(6+18*deadT)*sz,0,7);ctx.stroke()}else blit('burst',G_BURST,px,py,9,1-deadT);continue}
+    if(dead){if(!air_){if(ic){if(k.dG&&deadT<.2&&(DHIT.get(k.dG)||0)<now-300)DHIT.set(k.dG,now);const e=1-deadT;blit('flash',G_FLASH,px,py,(7+5*e)*sz,e);blit('gold',G_GOLD,px,py,(9+6*deadT)*sz,e);for(let q=0;q<8;q++){const an=q/8*Math.PI*2+j,dd=(3+16*deadT)*sz;ctx.fillStyle=`rgba(255,${225+(q%2)*30},150,${.95*e})`;ctx.fillRect(px+Math.cos(an)*dd-1,py+Math.sin(an)*dd-1,2,2)}ctx.strokeStyle=`rgba(255,240,180,${.95*e})`;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(px,py,(3+12*deadT)*sz,0,7);ctx.stroke()}else blit('burst',G_BURST,px,py,9,1-deadT);continue}
      const f=Math.min(1,deadT),pos=t=>[px+(gx-px)*t*t,py+(gy-py)*t*t];if(f<.82){for(let q=4;q>=1;q--){const tq=Math.max(0,f-q*.06),pp=pos(tq);blit('smokeD',G_SMOKED,pp[0],pp[1],(1.6+q*1.1)*sz,.5-q*.08)}
       const pp=pos(f);blit('fire',G_FIRE,pp[0],pp[1],2.4*sz,.9);drawJet(pp[0],pp[1],th+f*7,sz*(1-f*.25),'#565b62','rgba(5,9,14,.9)')}
      if(f>.72)blit('burst',G_BURST,gx,gy,(6+f*6)*sz,(1-f)/.28);continue}
@@ -1033,15 +1056,14 @@ const GL=(()=>{
   const tg=proj(f.to),lp=proj(f.from),pulse=.5+.5*Math.sin(el/140);
   if(d3.geoDistance(ctr,f.from)<1.55){ctx.beginPath();ctx.arc(lp[0],lp[1],5,0,7);ctx.fillStyle='rgba(255,170,60,.9)';ctx.fill()}
   if(prog<1&&d3.geoDistance(ctr,f.to)<1.55){ctx.strokeStyle=`rgba(255,60,50,${.5+.5*pulse})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(tg[0],tg[1],9+pulse*5,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(tg[0]-16,tg[1]);ctx.lineTo(tg[0]+16,tg[1]);ctx.moveTo(tg[0],tg[1]-16);ctx.lineTo(tg[0],tg[1]+16);ctx.lineWidth=1;ctx.stroke()}
-  if(f.icept&&prog>=IC){const p=air(IC),q=(el-f.dur*IC)/3400;if(p.vis){const x=p.xy[0],y=p.xy[1],R=r*.11*Math.pow(Math.min(1,q*2.2),.5);
+  if(f.icept&&!f.hitT&&f.dU){const G=domeGeo(A[f.dU]),t=G&&domeTouch(G,air,.45);if(t!=null&&t>prog-.002)f.ic=t}
+  if(f.icept&&prog>=f.ic){const p=air(f.ic),q=(el-f.dur*f.ic)/3400;if(f.dU&&!f.hitT){f.hitT=1;DHIT.set(f.dU,performance.now())}if(p.vis){const x=p.xy[0],y=p.xy[1],R=r*.11*Math.pow(Math.min(1,q*2.2),.5);
     if(q<.12){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=`rgba(255,240,190,${.7*(1-q/.12)})`;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore()}
     blit('gold',G_GOLD,x,y,R*1.5,1-q);blit('flash',G_FLASH,x,y,R,Math.max(0,1-q*1.6));
     for(let k=0;k<3;k++){const t=q*1.4-k*.15;if(t<=0||t>=1)continue;ctx.strokeStyle=`rgba(255,214,102,${.85*(1-t)})`;ctx.lineWidth=2.5*(1-t)+.5;ctx.beginPath();ctx.arc(x,y,R*(.3+1.6*t),0,7);ctx.stroke()}
     for(let k=0;k<18;k++){const a=k/18*Math.PI*2,d=R*(.2+1.4*q)*(.6+((k*7)%5)/10);ctx.fillStyle=`rgba(255,${200+(k%3)*20},120,${.9*(1-q)})`;ctx.beginPath();ctx.arc(x+Math.cos(a)*d,y+Math.sin(a)*d+q*q*r*.05,1.6,0,7);ctx.fill()}}
    return}
   if(prog<1){const N=140,pts=[];for(let i=0;i<=N*prog;i++)pts.push([i/N,air(i/N)]);pts.push([prog,air(prog)]);const BO=.13,RE=.76;
-   // a Golden Dome interceptor rises from the target to meet the missile
-   if(f.icept&&prog>IC-.09){const p=air(IC),q=Math.min(1,(prog-(IC-.09))/.09),x=tg[0]+(p.xy[0]-tg[0])*q,y=tg[1]+(p.xy[1]-tg[1])*q;ctx.strokeStyle='rgba(255,214,102,.95)';ctx.lineWidth=2.2;ctx.beginPath();ctx.moveTo(tg[0],tg[1]);ctx.lineTo(x,y);ctx.stroke();blit('gold',G_GOLD,x,y,9,1)}
    // the trail: a hot exhaust plume during boost, a faint vapour line in space, glowing plasma on re-entry
    ctx.lineCap='round';for(let i=1;i<pts.length;i++){const[s1,b]=pts[i],a=pts[i-1][1];if(!a.vis||!b.vis)continue;const age=prog-s1,fade=Math.max(0,1-age*1.6);if(fade<=0)continue;
     if(s1<BO){ctx.strokeStyle=`rgba(255,${170+(s1/BO)*60|0},90,${.85*fade})`;ctx.lineWidth=2.6*fade+.6}
@@ -1342,7 +1364,7 @@ function domePanel(n){const D=C.DOME,now=Date.now();
  if(n.dome){const on=n.dome.ready<=now,funded=(n.cash||0)>=0;return panel('Golden Dome',`<div class="dome-card ${on&&funded?'on':''}"><div class="dome-ic">🛡</div><div>${on?(funded?`<b>Shield active.</b> Your nation is protected: about <b>${Math.round(D.mis*100)}%</b> of incoming missiles are shot down, and a nuclear missile has a <b>${Math.round(D.nuke*100)}%</b> chance of being intercepted before it detonates. Air strikes are not affected.`:'<b class="rd">Shield offline.</b> Your treasury is negative, so the Golden Dome cannot run. Get back above $0 to switch it on again.'):`<b>Under construction.</b> Your Golden Dome will be operational in <b data-until="${n.dome.ready}">${fmtT(n.dome.ready-now)}</b>.`}<div class="mu" style="font-size:12.5px;margin-top:6px">Upkeep: ${money(D.upkeep)} every 10 minutes from the military budget.</div></div></div>`,'','shield')}
  if((n.tech||0)<D.tech-3&&rankOf(n.xp)<D.rank-1)return'';
  const reqs=[[`Tech level ${D.tech}`,(n.tech||0)>=D.tech],[`Rank of ${RANKS[D.rank][1]}`,rankOf(n.xp)>=D.rank],[money(D.cash),n.cash>=D.cash],[`${num(D.steel)} steel, ${num(D.goods)} goods, ${num(D.oil)} oil`,(n.res.steel||0)>=D.steel&&(n.res.goods||0)>=D.goods&&(n.res.oil||0)>=D.oil]],all=reqs.every(r=>r[1]);
- return panel('Golden Dome',`<div class="dome-card"><div class="dome-ic">🛡</div><div><b>The ultimate missile shield.</b> A golden dome of interceptors over your whole nation, visible to everyone on the globe. It shoots down about <b>${Math.round(D.mis*100)}%</b> of incoming missiles and has a <b>${Math.round(D.nuke*100)}%</b> chance to intercept a nuclear missile before it detonates. Takes ${D.buildH} hours to build and costs ${money(D.upkeep)} upkeep every 10 minutes.</div></div>${reqs.map(([t,ok])=>`<div class="chk ${ok?'done':''}"><span class="cb">${ok?I('check'):''}</span><span>${t}</span></div>`).join('')}<button class="btn dome-btn" data-act="dome" style="margin-top:10px" ${all?'':'disabled'}>🛡 Build the Golden Dome</button>`,'','shield')}
+ return panel('Golden Dome',`<div class="dome-card"><div class="dome-ic">🛡</div><div><b>The ultimate missile shield.</b> A golden dome over the heart of your nation, visible to everyone on the globe. Missiles it stops blow up on the dome and never reach your airspace. It shoots down about <b>${Math.round(D.mis*100)}%</b> of incoming missiles and has a <b>${Math.round(D.nuke*100)}%</b> chance to intercept a nuclear missile before it detonates. Takes ${D.buildH} hours to build and costs ${money(D.upkeep)} upkeep every 10 minutes.</div></div>${reqs.map(([t,ok])=>`<div class="chk ${ok?'done':''}"><span class="cb">${ok?I('check'):''}</span><span>${t}</span></div>`).join('')}<button class="btn dome-btn" data-act="dome" style="margin-top:10px" ${all?'':'disabled'}>🛡 Build the Golden Dome</button>`,'','shield')}
 function nukePanel(n){const N=C.NUKE;if(n.nuke)return panel('Nuclear arsenal','<p style="margin:0">☢ <b>Deterrent operational.</b> Your capital cannot be besieged, so your nation cannot fall — unless it becomes a rogue state. Upkeep: '+money(N.upkeep)+' every 10 minutes from the military budget.</p>'+testBox(n)+warheadBox(n),'','alert');
  if(!CFG.nukeTest&&(n.tech||0)<8&&rankOf(n.xp)<3)return'';const reqs=[[`Tech level ${N.tech}`,(n.tech||0)>=N.tech],...(CFG.nukeTest?[]:[[`Rank of ${RANKS[N.rank][1]}`,rankOf(n.xp)>=N.rank]]),[`${money(N.cash)}`,n.cash>=N.cash],[`${N.steel} steel, ${N.oil} oil, ${N.goods} goods`,n.res.steel>=N.steel&&n.res.oil>=N.oil&&n.res.goods>=N.goods]];const all=reqs.every(r=>r[1]);
  return panel('Nuclear program',`<p class="mu" style="margin-top:0;font-size:13px">A nuclear deterrent is never used — but while you have one, your capital cannot be besieged (a rogue state loses this protection). The whole world is alerted, your aggression jumps by 40 (likely sanctions), and it costs ${money(N.upkeep)} upkeep every 10 minutes.</p>${reqs.map(([t,ok])=>`<div class="chk ${ok?'done':''}"><span class="cb">${ok?I('check'):''}</span><span>${t}</span></div>`).join('')}<button class="btn dng" data-act="nuke" style="margin-top:10px" ${all?'':'disabled'}>☢ Build a nuclear deterrent</button>`,'','alert')}
