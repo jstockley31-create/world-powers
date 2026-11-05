@@ -154,6 +154,14 @@ tr.hl td{background:#1a1508}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--
 .gctl{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
 .gctl button{width:34px;height:34px;padding:0;border-radius:6px;background:#0f151ccc;border:1px solid var(--bd2);display:grid;place-items:center;cursor:pointer;color:var(--tx)}
 .gctl button:hover{border-color:var(--ac)}
+.gwrap.gfull{position:fixed;inset:0;height:auto!important;z-index:28;border-radius:0;border:0}
+body.gfullon{overflow:hidden}
+.gwrap.gfull .gctl{top:calc(12px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right))}
+.gwrap.gfull .glegend{bottom:calc(12px + env(safe-area-inset-bottom))}
+.gfinfo{position:absolute;left:12px;top:calc(12px + env(safe-area-inset-top));width:340px;max-width:calc(100% - 70px);max-height:calc(100% - 90px);overflow-y:auto;background:#0f151cf0;border:1px solid var(--bd2);border-radius:10px;padding:12px 14px;backdrop-filter:blur(6px);box-shadow:0 10px 30px #0009}
+.gfinfo .gfx{position:sticky;top:0;float:right;margin:-4px -6px 0 6px;z-index:1}
+@media(max-width:700px){.gfinfo{left:8px;right:8px;width:auto;max-width:none;top:auto;bottom:calc(8px + env(safe-area-inset-bottom));max-height:46%}.gwrap.gfull .glegend{display:none}}
+.chfs{display:inline-flex;align-items:center;gap:2px;margin-left:auto;text-transform:none;letter-spacing:0}.chfs .btn{padding:2px 7px;min-width:0;font-weight:700}.chfs #chatFsLbl{font:11px var(--mono);color:var(--mu2);min-width:16px;text-align:center}
 .glegend{position:absolute;left:12px;bottom:12px;background:#0f151ccc;border:1px solid var(--bd);border-radius:6px;padding:7px 10px;font-size:11.5px;color:var(--mu);display:flex;gap:12px;flex-wrap:wrap;backdrop-filter:blur(4px)}
 .glegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
 #tip{position:fixed;pointer-events:none;background:#0b1118f2;border:1px solid var(--bd2);border-radius:6px;padding:7px 10px;font-size:12.5px;z-index:40;display:none;max-width:260px;box-shadow:0 8px 24px #0008}
@@ -174,10 +182,10 @@ tr.hl td{background:#1a1508}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--
 #onlstrip .legend{color:var(--mu2);font-size:11px;margin-top:2px}
 #dock.min .dockb{display:none}
 .chatcol{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--bd)}
-#chat{flex:1;min-height:0;overflow-y:auto;padding:8px 16px;font-size:13px}
-#chat .m{padding:2px 0;line-height:1.5;word-wrap:break-word}#chat .m time{color:var(--mu2);font:11px var(--mono);margin-right:8px}
+#chat{flex:1;min-height:0;overflow-y:auto;padding:8px 16px;font-size:var(--chatfs,13px)}
+#chat .m{padding:2px 0;line-height:1.5;word-wrap:break-word}#chat .m time{color:var(--mu2);font:.85em var(--mono);margin-right:8px}
 #chat .m .who{font-weight:600;cursor:pointer;margin-right:6px}
-#chat .m.n{color:#d8c79d}#chat .m.n .lbl{color:var(--ac);font-weight:600;margin-right:6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+#chat .m.n{color:#d8c79d}#chat .m.n .lbl{color:var(--ac);font-weight:600;margin-right:6px;font-size:.85em;text-transform:uppercase;letter-spacing:.06em}
 #chat .m.n.hot{color:#f3c4bd;background:rgba(220,60,50,.08);border-left:2px solid #e5534b;padding-left:6px}#chat .m.n.hot .lbl{color:#ff7b72}
 #chat .m.sys{color:#f0d9a4;background:#241c0d;border-left:2px solid var(--ac);padding:4px 8px;margin:3px 0;border-radius:3px}
 #chatin{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--bd)}#chatin input{flex:1}
@@ -497,6 +505,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 <symbol id="i-gift" viewBox="0 0 24 24"><path d="M3 9h18v4H3zM5 13v8h14v-8M12 9v12M12 9C10 5 6 5 6 7.5S10 9 12 9zm0 0c2-4 6-4 6-1.5S14 9 12 9z"/></symbol>
 <symbol id="i-recruit" viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 21c1-4 3.6-6 7-6s6 2 7 6M19 8v6M16 11h6"/></symbol>
 <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
+<symbol id="i-full" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol><symbol id="i-unfull" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
 <symbol id="i-expand" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14"/></symbol>
 <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
 <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11"/></symbol>
@@ -533,7 +542,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 <div id="timers"></div>
 <div id="app"><nav id="side"></nav><main id="main"><div class="wrap"><p class="mu">Connecting to the world…</p></div></main></div>
 <section id="dock">
- <div class="dockh"><span class="live"></span><span>World Chat</span><span id="onlCount" style="text-transform:none;letter-spacing:0;font-weight:500"></span><span id="chatNew" style="display:none;margin-left:8px;text-transform:none;letter-spacing:0;background:var(--ac);color:#17120a;border-radius:10px;font-size:11px;font-weight:700;padding:1px 8px"></span><button class="btn sm ghost sp" data-act="dock" id="dockBtn">Hide</button></div>
+ <div class="dockh"><span class="live"></span><span>World Chat</span><span id="onlCount" style="text-transform:none;letter-spacing:0;font-weight:500"></span><span id="chatNew" style="display:none;margin-left:8px;text-transform:none;letter-spacing:0;background:var(--ac);color:#17120a;border-radius:10px;font-size:11px;font-weight:700;padding:1px 8px"></span><span class="chfs sp" title="Chat text size"><button class="btn sm ghost" data-act="chatfs" data-a="-1" aria-label="Smaller chat text">A−</button><span id="chatFsLbl"></span><button class="btn sm ghost" data-act="chatfs" data-a="1" aria-label="Larger chat text">A+</button></span><button class="btn sm ghost" data-act="dock" id="dockBtn">Hide</button></div>
  <div id="onlstrip"></div>
  <div class="dockb"><div class="chatcol"><div id="chat"></div><form id="chatin" autocomplete="off"><input id="cin" maxlength="200" placeholder="Message the world…"><button class="btn sm pri">Send</button></form></div><div id="onl"></div></div>
 </section>
@@ -778,6 +787,15 @@ const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||
 const isIOS=()=>/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 let installEvt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;if($('more').classList.contains('on'))moreSheet()});
 window.addEventListener('appinstalled',()=>{installEvt=null;toast('World Powers is installed. Open it from your home screen.')});
+let gFull=false;
+function setFull(on){gFull=!!on;document.body.classList.toggle('gfullon',gFull);const de=document.documentElement;
+ try{if(gFull&&de.requestFullscreen&&!document.fullscreenElement)de.requestFullscreen().catch(()=>{});else if(!gFull&&document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(e){}
+ if(gFull&&page!=='world'){page='world'}render();requestAnimationFrame(()=>GL.fit());setTimeout(()=>GL.fit(),350)}
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&gFull)setFull(false);else GL.fit()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&gFull&&$('mod').style.display!=='flex')setFull(false)});
+let chatFs=13;try{chatFs=+localStorage.getItem('wp_chatfs')||13}catch(e){}
+function setChatFs(v){const c=document.getElementById('chat'),atEnd=!c||c.scrollHeight-c.scrollTop-c.clientHeight<40;chatFs=Math.max(11,Math.min(22,v));document.documentElement.style.setProperty('--chatfs',chatFs+'px');try{localStorage.setItem('wp_chatfs',chatFs)}catch(e){}const l=document.getElementById('chatFsLbl');if(l)l.textContent=chatFs;if(c&&atEnd)c.scrollTop=c.scrollHeight}
+setChatFs(chatFs);
 let bigText=false;try{bigText=localStorage.getItem('wp_bigtext')==='1'}catch(e){}document.body.classList.toggle('bigtext',bigText);
 async function installApp(){if(installEvt){installEvt.prompt();try{await installEvt.userChoice}catch(e){}installEvt=null;moreSheet();return}
  if(isIOS())modal(`<header><h2>Install on iPhone</h2><button class="btn sm ghost" data-act="close">Close</button></header><div class="bd"><ol style="margin:0;padding-left:20px;line-height:2">
@@ -1176,12 +1194,12 @@ const GL=(()=>{
     for(let k=0;k<11;k++){const a=k/11*Math.PI*2+t/7000;blit('smokeM',G_SMOKEM,cx+Math.cos(a)*R*.6,cy+Math.sin(a)*R*.25-R*.14,R*.55,.8*fade)}
     blit('smoke',G_SMOKE,cx-R*.2,cy-R*.32,R*.6,.55*fade);
     if(heat>0){blit('fire',G_FIRE,cx,cy+R*.05,R*.8,heat*.9);blit('flash',G_FLASH,cx,cy,R*.45,heat*.6)}}}}
- return{attach,redraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
+ return{fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
-function globeSlot(mode,h){return`<div class="gwrap" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl"><button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
+function globeSlot(mode,h,extra){const full=gFull&&mode==='world';return`<div class="gwrap${full?' gfull':''}" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl">${mode==='world'?`<button data-act="gfull" title="${full?'Exit full screen (Esc)':'Full screen'}">${I(full?'unfull':'full')}</button>`:''}<button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${full&&extra?extra:''}${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
 function pickProv(h){if(!me){if(W.OWN[h])return toast('That province is already claimed.');if(!startOk(h))return toast('Too close to another nation. Choose land at least two provinces away.');const el=$('fn_name');if(el)found_.name=el.value;found_.hex=h;GL.redraw();const fb=$('foundbar');if(fb)fb.outerHTML=foundBar();const fi=$('fhex');if(fi){fi.innerHTML=foundHexTxt();if(isMob()){fi.classList.remove('flash');void fi.offsetWidth;fi.classList.add('flash')}}return}
- selHex=h;GL.redraw();const pi=$('pinfo');if(pi)pi.innerHTML=provInfo();else if(page!=='world'){page='world';render()}}
+ selHex=h;GL.redraw();const pi=$('pinfo');if(pi){pi.innerHTML=provInfo();const gf=document.querySelector('.gfinfo');if(gf)gf.style.display=''}else if(page!=='world'){page='world';render()}}
 // ================= render =================
 // Update the page in place: only text/attributes that actually changed are touched, so nothing flickers,
 // hover and typed values survive, and the globe canvas is never torn down.
@@ -1282,7 +1300,7 @@ function pOverview(){const n=me,p=production(),c=consumption(n),w=wars(uid);
 function pOps(){return`<h1 class="pg">Operations</h1><p class="pgsub">Each operation earns experience toward promotion. Green is what you get; grey is what it costs.</p>
  <div class="ops">${myActs().map(a=>{const g=(ACTG[a.k]||(()=>[ACTD[a.k](me),'']))(me);return`<div class="op" data-cd="${a.k}"><div class="ico">${I(a.i)}</div><div class="tx"><div class="nm"><b>${a.n}</b><small>${a.cd>=60?a.cd/60+' h':a.cd+' min'} · +${a.xp} XP</small></div><div class="ef"><span class="gn">${esc(g[0])}</span>${g[1]?` <span class="cs">· ${esc(g[1])}</span>`:''}</div></div><button class="btn ok" data-act="do" data-a="${a.k}">Execute</button><div class="prog"><i></i></div></div>`}).join('')}</div>
  <div style="height:16px"></div>${panel('Ranks',`<table><thead><tr><th>Rank</th><th class="r">Experience</th><th class="r">Province limit</th><th class="r">Output bonus</th><th class="hm">Notes</th></tr></thead><tbody>${RANKS.map((r,j)=>`<tr style="${j===rankOf(me.xp)?'background:#1f1a10':''}"><td>${j===rankOf(me.xp)?'<b class="ac">'+r[1]+'</b>':r[1]}</td><td class="r num">${num(r[0])}</td><td class="r num">${3+j*4}</td><td class="r num">+${j*10}%</td><td class="mu hm">${j===2?'May wage war and propose Council resolutions':''}${j===rankOf(me.xp)?' Current rank':''}</td></tr>`).join('')}</tbody></table>`,'','trophy')}`}
-function pWorld(){return`<h1 class="pg">World</h1><p class="pgsub">Drag to rotate, scroll or pinch to zoom, tap a province for details. Dashed outlines mark land you can settle.</p><div class="cols" style="grid-template-columns:minmax(0,1fr) 340px"><div>${globeSlot('world','min(72vh,720px)')}</div><div>${panel('Province',`<div id="pinfo" class="pinfo">${provInfo()}</div>`,'','pin')}${panel('Nations',Object.keys(A).sort((a,b)=>score(b)-score(a)).map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer" data-act="fly" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span><span>${esc(A[u].name)}${aiTag(u)}</span><span class="mu" style="margin-left:auto;font-size:12px">${hexesOf(u).length} prov.</span></div>`).join('')||'<p class="mu">None yet.</p>')}</div></div>`}
+function pWorld(){const pi=`<div id="pinfo" class="pinfo">${provInfo()}</div>`;return`<h1 class="pg">World</h1><p class="pgsub">Drag to rotate, scroll or pinch to zoom, tap a province for details. Dashed outlines mark land you can settle.</p><div class="cols" style="grid-template-columns:minmax(0,1fr) 340px"><div>${globeSlot('world','min(72vh,720px)',`<div class="gfinfo"${selHex==null?' style="display:none"':''}><button class="btn sm ghost gfx" data-act="gfclose" title="Close">✕</button>${pi}</div>`)}</div><div>${gFull?'':panel('Province',pi,'','pin')}${panel('Nations',Object.keys(A).sort((a,b)=>score(b)-score(a)).map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer" data-act="fly" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span><span>${esc(A[u].name)}${aiTag(u)}</span><span class="mu" style="margin-left:auto;font-size:12px">${hexesOf(u).length} prov.</span></div>`).join('')||'<p class="mu">None yet.</p>')}</div></div>`}
 function provInfo(){const h=selHex;if(h==null)return'<p class="mu" style="margin:0">Select a province on the globe.</p>';const p=P[h],t=TYPE[p.t],u=owner(h);
  let s=`<h3>${esc(p.n)}</h3><div class="mu">${esc(CN[p.ci])}</div><div class="terr" style="margin-top:8px">${terrTags(h)}</div><div class="kv"><span>Terrain</span><b>${t.n}</b><span>Output</span><b>${Object.entries(t.p).map(([r,v])=>`${resI(r)} ${v}`).join(' &nbsp; ')}${p.r?' &nbsp;+5 food':''}${p.m?' &nbsp;+4 steel':''}${p.co?' &nbsp;+3 goods':''}</b><span>Area</span><b>${num(p.a)} km²</b><span>Control</span><b>${u?nmHtml(u)+(W.OWN[h].cap?' <span class="tag">Capital</span>':''):'<span class="mu">Unclaimed</span>'}</b>${u&&u!==uid?`<span>Defense</span><b>${num(defense(h))}${W.OWN[h].cap?' (capital ×1.5)':''}</b>`:''}${u?`<span>Held for</span><b>${hexAge(h).toFixed(1)} days</b>`:''}</div>`;
  if(!u){const tg=expandTargets();if(tg.includes(h))s+=`<button class="btn ok" style="width:100%" data-act="do" data-a="expand" data-b="${h}" ${ready('expand')?'':'disabled'}>${I('expand')} Settle (${money(expandCost())})</button>${ready('expand')?'':`<p class="mu" style="font-size:12px">Expand Borders available in ${fmtT(left('expand'))}.</p>`}`;else s+=`<p class="mu" style="font-size:12.5px;margin:0">${nbrs(h).some(k=>owner(k)===uid)?'This land is across the sea — build warships to settle it.':'Only provinces bordering your territory can be settled.'}</p>`;return s}
@@ -1869,6 +1887,9 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'selhex':selHex=+a;page='world';render();GL.flyTo(P[+a].c,3);break;
  case'prof':profile(a);break;
  case'fly':{closeModal();if(page!=='world'){page='world';render()}if(A[a]&&P[A[a].cap])GL.flyTo(P[A[a].cap].c,2.6);break}
+ case'gfull':setFull(!gFull);break;
+ case'gfclose':{const gf=document.querySelector('.gfinfo');if(gf)gf.style.display='none';selHex=null;GL.redraw();break}
+ case'chatfs':setChatFs(chatFs+(+a));break;
  case'gz':if(a==='in')GL.zoom(1.35);else if(a==='out')GL.zoom(1/1.35);else if(me)GL.flyTo(P[me.cap].c,2.4);break;
  case'fcol':found_.color=a;keepName();render();break;
  case'fgov':found_.gov=a;keepName();render();break;
