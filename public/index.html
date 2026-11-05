@@ -543,30 +543,40 @@ window.WP={me:()=>st.me,api,extra:{}};
 const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
 function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],voteAt:d.voteAt||0,council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
-function connect(){const es=new EventSource('/api/stream');
- es.addEventListener('init',e=>{const d=JSON.parse(e.data);
+// the live stream can stall without any error (a phone waking up, a network switch, a proxy hiccup): watch for silence and reconnect, which reloads the whole world
+let curES=null,lastMsg=0,lastDoc=0,expT=0,connT=0;
+function reconnect(why){if(Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
+WP.resync=reconnect;
+WP.expect=()=>{const at=Date.now();clearTimeout(expT);expT=setTimeout(()=>{if(lastDoc<at&&curES)reconnect('no update after an action')},4000)};
+setInterval(()=>{if(curES&&document.visibilityState==='visible'&&Date.now()-lastMsg>50000)reconnect('silent stream')},10000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&curES&&Date.now()-lastMsg>30000)reconnect('back in the foreground')});
+window.addEventListener('online',()=>{if(curES)reconnect('network back')});
+function connect(){const es=new EventSource('/api/stream');curES=es;lastMsg=Date.now();connT=Date.now();
+ const on=(n,f)=>es.addEventListener(n,e=>{if(curES!==es)return;lastMsg=Date.now();f(e)});
+ on('hb',()=>{});
+on('init',e=>{const d=JSON.parse(e.data);
   // a new version was deployed while this page stayed open (phones keep apps alive for days): reload into it
   if(d.ver){if(!WP.ver)WP.ver=d.ver;else if(d.ver!==WP.ver&&!WP.updating){WP.updating=true;window.dispatchEvent(new CustomEvent('wp-update'))}}
   applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}))});
- es.addEventListener('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
- es.addEventListener('mail',e=>{WP.extra.mailUnread=JSON.parse(e.data).unread;emit('wp-mail',WP.extra.mailUnread)});
- es.addEventListener('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fallen)});
- es.addEventListener('fallenlist',e=>{WP.extra.fallenList=JSON.parse(e.data);emit('wp-extra',WP.extra)});
- es.addEventListener('council',e=>{WP.extra.council=JSON.parse(e.data);emit('wp-council',WP.extra.council)});
- es.addEventListener('event',e=>{WP.extra.event=JSON.parse(e.data);emit('wp-event',WP.extra.event)});
- es.addEventListener('doc',e=>{const d=JSON.parse(e.data);if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
- es.addEventListener('user',e=>{const d=JSON.parse(e.data);if(d.name==null)delete st.users[d.id];else st.users[d.id]=d.name});
- es.addEventListener('config',e=>setCfg(JSON.parse(e.data)));
- es.addEventListener('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
- es.addEventListener('nuke',e=>window.dispatchEvent(new CustomEvent('wp-nuke',{detail:JSON.parse(e.data)})));
- es.addEventListener('strike',e=>window.dispatchEvent(new CustomEvent('wp-strike',{detail:JSON.parse(e.data)})));
- es.addEventListener('ntestwarn',e=>window.dispatchEvent(new CustomEvent('wp-ntestwarn',{detail:JSON.parse(e.data)})));
- es.addEventListener('ntest',e=>window.dispatchEvent(new CustomEvent('wp-ntest',{detail:JSON.parse(e.data)})));
- es.addEventListener('firesout',()=>window.dispatchEvent(new CustomEvent('wp-firesout')));
- es.addEventListener('announce',e=>window.dispatchEvent(new CustomEvent('wp-announce',{detail:JSON.parse(e.data)})));
+on('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
+on('mail',e=>{WP.extra.mailUnread=JSON.parse(e.data).unread;emit('wp-mail',WP.extra.mailUnread)});
+on('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fallen)});
+on('fallenlist',e=>{WP.extra.fallenList=JSON.parse(e.data);emit('wp-extra',WP.extra)});
+on('council',e=>{WP.extra.council=JSON.parse(e.data);emit('wp-council',WP.extra.council)});
+on('event',e=>{WP.extra.event=JSON.parse(e.data);emit('wp-event',WP.extra.event)});
+on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
+on('user',e=>{const d=JSON.parse(e.data);if(d.name==null)delete st.users[d.id];else st.users[d.id]=d.name});
+on('config',e=>setCfg(JSON.parse(e.data)));
+on('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
+on('nuke',e=>window.dispatchEvent(new CustomEvent('wp-nuke',{detail:JSON.parse(e.data)})));
+on('strike',e=>window.dispatchEvent(new CustomEvent('wp-strike',{detail:JSON.parse(e.data)})));
+on('ntestwarn',e=>window.dispatchEvent(new CustomEvent('wp-ntestwarn',{detail:JSON.parse(e.data)})));
+on('ntest',e=>window.dispatchEvent(new CustomEvent('wp-ntest',{detail:JSON.parse(e.data)})));
+on('firesout',()=>window.dispatchEvent(new CustomEvent('wp-firesout')));
+on('announce',e=>window.dispatchEvent(new CustomEvent('wp-announce',{detail:JSON.parse(e.data)})));
  let downT=null,wasDown=false;const nb=(t,ok)=>{const b=document.getElementById('netbar');if(!b)return;b.querySelector('span').textContent=t;b.classList.toggle('ok',!!ok);b.classList.add('on')};
- es.onopen=()=>{clearTimeout(downT);downT=null;if(wasDown){wasDown=false;nb('Back online',true);setTimeout(()=>{const b=document.getElementById('netbar');if(b)b.classList.remove('on')},1800)}};
- es.onerror=async()=>{if(!downT&&!wasDown)downT=setTimeout(()=>{wasDown=true;nb('Reconnecting… the game is updating or your connection dropped')},2500);try{await api('GET','/api/me')}catch(x){if(x.status===401||x.status===403){es.close();location.href='/play'}}}}
+ es.onopen=()=>{lastMsg=Date.now();clearTimeout(downT);downT=null;if(wasDown){wasDown=false;nb('Back online',true);setTimeout(()=>{const b=document.getElementById('netbar');if(b)b.classList.remove('on')},1800)}};
+ es.onerror=async()=>{if(curES!==es)return;if(!downT&&!wasDown)downT=setTimeout(()=>{wasDown=true;nb('Reconnecting… the game is updating or your connection dropped')},2500);try{await api('GET','/api/me')}catch(x){if(x.status===401||x.status===403){es.close();location.href='/play'}}}}
 // ---------- sign-in screen ----------
 const CSS=`#auth{position:fixed;inset:0;z-index:60;background:#05080c;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);font-family:Inter,system-ui,sans-serif;color:#e6edf3}
 #auth .left{position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#0d1d2d 0%,#05080c 70%)}
@@ -765,7 +775,7 @@ MQ.addEventListener('change',()=>{renderSide();if(loaded)render()});
 // ================= server commands =================
 let lastBtn=null;
 async function cmd(body,okMsg,url='/api/cmd'){if(busy)return null;busy=true;const btn=lastBtn;if(btn&&btn.classList.contains('btn'))btn.classList.add('loading');document.body.style.cursor='progress';
- try{const r=await WP.api('POST',url,body);if(r.msg&&okMsg!==false)toast(r.msg);SND.play(body.c==='act'&&body.k==='tax'?'coin':'ok');if(r.promoted)setTimeout(()=>promo(r.promoted),700);if(r.selHex!=null)selHex=r.selHex;return r}
+ try{const r=await WP.api('POST',url,body);if(WP.expect)WP.expect();if(r.msg&&okMsg!==false)toast(r.msg);SND.play(body.c==='act'&&body.k==='tax'?'coin':'ok');if(r.promoted)setTimeout(()=>promo(r.promoted),700);if(r.selHex!=null)selHex=r.selHex;return r}
  catch(e){toast(e.message||'Something went wrong.');SND.play('err');return null}
  finally{busy=false;document.body.style.cursor='';if(btn)btn.classList.remove('loading')}}
 const doAct=(k,arg)=>cmd({c:'act',k,arg:arg!=null?+arg:undefined});
