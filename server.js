@@ -355,7 +355,7 @@ function councilPropose(uid, b) {
   const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
   const plea = type === 'lift' && b.target === uid; // a nation under sanctions petitioning for its own sanctions to be lifted
   if (!plea && core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
-  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 12 * HOUR) { const h = Math.ceil((12 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 12 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
+  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 6 * HOUR) { const h = Math.ceil((6 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 6 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   const R = WP.RESOLUTIONS[type]; let target = null;
   if (isTargeted(type)) {
     target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || (target === uid && !plea)) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
@@ -499,7 +499,7 @@ function councilWatch(W) {
   if (open().filter(p => p.auto).length >= 3) return;
   for (const [u, n] of Object.entries(W.A)) {
     if (open().some(p => p.target === u)) continue;
-    const battles = (n.out || []).filter(e => e.type === 'battle' && e.to && e.to !== u && W.A[e.to] && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === u && x.t < e.t && e.t - x.t < 24 * HOUR)) && !core.defending(W, u, e.to));
+    const battles = (n.out || []).filter(e => e.type === 'battle' && e.to && e.to !== u && W.A[e.to] && !BOTS.isBot(e.to) /* only attacks on real players count: fighting AI nations is part of the game */ && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === u && x.t < e.t && e.t - x.t < 24 * HOUR)) && !core.defending(W, u, e.to));
     const atk = { n: battles.filter(e => now - e.t < 6 * HOUR).length, victims: new Set(battles.filter(e => now - e.t < 12 * HOUR).map(e => e.to)).size };
     for (const [type, test] of AUTO_RULES) {
       const why = test(n, atk, W, u); if (!why || resBlocked(W, type, u)) continue; const key = type + ':' + u;
