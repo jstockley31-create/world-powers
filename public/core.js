@@ -1310,22 +1310,39 @@ function Core(PD, CARDS) {
 
   // ================= direct trade offers between nations =================
   const OFFER_KEYS = ['cash', 'food', 'oil', 'steel', 'goods'];
-  const cleanBundle = b => { const o = {}; for (const k of OFFER_KEYS) { const v = Math.floor(Number((b || {})[k]) || 0); if (v < 0) fail('Amounts cannot be negative.'); if (v > 1e12) fail('That amount is too large.'); if (v) o[k] = v; } return o; };
-  const bundleTxt = b => Object.keys(b).length ? Object.entries(b).map(([k, v]) => k === 'cash' ? money(v) : `${num(v)} ${k}`).join(' + ') : 'nothing';
-  const hasBundle = (n, b) => Object.entries(b).every(([k, v]) => (k === 'cash' ? n.cash : n.res[k] || 0) >= v);
-  const moveBundle = (from, to, b) => { for (const [k, v] of Object.entries(b)) { if (k === 'cash') { if (from) from.cash -= v; if (to) to.cash += v; } else { if (from) from.res[k] -= v; if (to) to.res[k] += v; } } };
+  // provinces can be part of a deal too (up to 3 a side). They are not held in escrow: ownership is checked again when the deal is accepted.
+  const PROV_MAX = 3, PROV_LOCK = 24 * HOUR;
+  const cleanBundle = b => { const o = {}; for (const k of OFFER_KEYS) { const v = Math.floor(Number((b || {})[k]) || 0); if (v < 0) fail('Amounts cannot be negative.'); if (v > 1e12) fail('That amount is too large.'); if (v) o[k] = v; }
+    const pv = (b || {}).prov; if (pv != null) { if (!Array.isArray(pv)) fail('Choose provinces from the list.'); const l = [...new Set(pv.map(x => Math.floor(Number(x))))]; if (l.some(h => !(h >= 0) || !P[h])) fail('Unknown province.'); if (l.length > PROV_MAX) fail(`At most ${PROV_MAX} provinces per side.`); if (l.length) o.prov = l; } return o; };
+  const bundleTxt = b => Object.keys(b).length ? Object.entries(b).map(([k, v]) => k === 'prov' ? v.map(h => pname(h)).join(' + ') : k === 'cash' ? money(v) : `${num(v)} ${k}`).join(' + ') : 'nothing';
+  const hasBundle = (n, b) => Object.entries(b).every(([k, v]) => k === 'prov' || (k === 'cash' ? n.cash : n.res[k] || 0) >= v);
+  // can nation u hand these provinces to nation v right now?
+  function provCheck(W, u, v, list, out) {
+    if (!list || !list.length) return null; const a = W.A[u], b = W.A[v];
+    for (const h of list) { if (owner(W, h) !== u) return `${a.name} no longer owns ${pname(h)}.`; if (h == a.cap) return 'A capital can never be traded.'; if (a.ptrade && W.now - (a.ptrade[h] || 0) < PROV_LOCK) return `${pname(h)} changed hands less than 24 hours ago and can't be traded again yet.`; }
+    if (hexesOf(W, u).length - list.length < 1) return `${a.name} can't give away all of its land.`;
+    const room = maxHex(b) - (hexesOf(W, v).length + list.length - (out || 0)); if (room < 0) return `${b.name} has no room for ${list.length > 1 ? 'these provinces' : 'this province'}: its rank allows ${maxHex(b)}.`;
+    return null;
+  }
+  function moveProv(W, u, v, list) { const a = W.A[u], b = W.A[v]; for (const h of list || []) { delete a.hexes[h]; if (a.conq) delete a.conq[h]; b.hexes[h] = W.now; b.ptrade = b.ptrade || {}; b.ptrade[h] = W.now; }
+    for (const x of [a, b]) if (x.ptrade) for (const k of Object.keys(x.ptrade)) if (W.now - x.ptrade[k] > PROV_LOCK) delete x.ptrade[k];
+    if (list && list.length) { a.approval = clamp(a.approval - 3, 0, 100); W.OWN = computeOwn(W.A); } }
+  const moveBundle = (from, to, b) => { for (const [k, v] of Object.entries(b)) { if (k === 'prov') continue; if (k === 'cash') { if (from) from.cash -= v; if (to) to.cash += v; } else { if (from) from.res[k] -= v; if (to) to.res[k] += v; } } };
   function canDeal(W, u, v) { const a = W.A[u], b = W.A[v]; if (atWar(W, u, v)) return 'You are at war.'; if (rogue(W, a) || rogue(W, b)) return 'Rogue states cannot trade.'; if (embargoed(W, a) || embargoed(W, b)) return 'A World Council embargo is in force.'; return null; }
   function offer(W, u, v, give, want) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them || v === u) fail('Choose another nation.');
     const why = canDeal(W, u, v); if (why) fail(why);
     give = cleanBundle(give); want = cleanBundle(want); if (!Object.keys(give).length || !Object.keys(want).length) fail('Offer something and ask for something in return. (To give for free, use aid.)');
+    if ((give.prov || want.prov) && them.ai) fail('AI nations do not trade land. Provinces can only be traded with other players.');
+    { const w1 = provCheck(W, u, v, give.prov, (want.prov || []).length) || provCheck(W, v, u, want.prov, (give.prov || []).length); if (w1) fail(w1); }
     me.offOut = me.offOut || []; them.offIn = them.offIn || []; if (me.offOut.length >= 5) fail('You can have at most 5 offers waiting.'); if (them.offIn.length >= 10) fail(`${them.name} has too many offers waiting.`);
     if (!hasBundle(me, give)) fail(`You do not have ${bundleTxt(give)}.`);
     moveBundle(me, null, give); // held in escrow until accepted, declined, cancelled or expired
     const id = rid(), o = { id, give, want, t: W.now, exp: W.now + 24 * HOUR };
     me.offOut.push({ ...o, to: v }); them.offIn.push({ ...o, from: u });
     note(W, v, 'diplo', `${me.name} offers ${bundleTxt(give)} for ${bundleTxt(want)}. Answer on the Diplomacy page.`); log(me, `Offered ${bundleTxt(give)} to ${them.name} for ${bundleTxt(want)}.`, W); touch(W, u, v);
-    return { msg: `Offer sent to ${them.name}. Your ${bundleTxt(give)} is held until they answer (24 hours).` };
+    const held = { ...give }; delete held.prov;
+    return { msg: `Offer sent to ${them.name}.${Object.keys(held).length ? ` Your ${bundleTxt(held)} is held until they answer (24 hours).` : ' They have 24 hours to answer.'}${give.prov ? ' Your provinces stay yours until they accept.' : ''}` };
   }
   const dropOffer = (W, id, fromU, toU, refund) => { const a = W.A[fromU], b = W.A[toU]; const o = a && (a.offOut || []).find(x => x.id === id); if (a) a.offOut = (a.offOut || []).filter(x => x.id !== id); if (b) b.offIn = (b.offIn || []).filter(x => x.id !== id); if (o && refund && a) moveBundle(null, a, o.give); return o; };
   function answerOffer(W, u, id, accept) {
@@ -1333,11 +1350,23 @@ function Core(PD, CARDS) {
     const from = W.A[o.from]; if (!from) { me.offIn = me.offIn.filter(x => x.id !== id); touch(W, u); fail('That nation no longer exists.'); }
     if (!accept) { dropOffer(W, id, o.from, u, true); note(W, o.from, 'diplo', `${me.name} declined your offer of ${bundleTxt(o.give)} for ${bundleTxt(o.want)}.`); touch(W, u, o.from); return { msg: 'Offer declined.' }; }
     const why = canDeal(W, u, o.from); if (why) fail(why); if (!hasBundle(me, o.want)) fail(`You need ${bundleTxt(o.want)} to accept.`);
-    dropOffer(W, id, o.from, u, false); moveBundle(me, from, o.want); moveBundle(null, me, o.give);
+    { const w1 = provCheck(W, o.from, u, o.give.prov, (o.want.prov || []).length) || provCheck(W, u, o.from, o.want.prov, (o.give.prov || []).length); if (w1) fail(w1); }
+    dropOffer(W, id, o.from, u, false); moveBundle(me, from, o.want); moveBundle(null, me, o.give); moveProv(W, o.from, u, o.give.prov); moveProv(W, u, o.from, o.want.prov);
     for (const x of [me, from]) { x.tally = x.tally || {}; x.tally.deals = (x.tally.deals || 0) + 1; }
     log(me, `Trade with ${from.name}: received ${bundleTxt(o.give)}, paid ${bundleTxt(o.want)}.`, W); log(from, `${me.name} accepted your offer: received ${bundleTxt(o.want)} for ${bundleTxt(o.give)}.`, W);
-    note(W, o.from, 'diplo', `${me.name} accepted your trade: you received ${bundleTxt(o.want)}.`); news(W, u, `${me.name} and ${from.name} struck a trade deal.`);
+    note(W, o.from, 'diplo', `${me.name} accepted your trade: you received ${bundleTxt(o.want)}.`); news(W, u, o.give.prov || o.want.prov ? `🗺 Land changed hands: ${from.name} traded ${bundleTxt(o.give)} to ${me.name} for ${bundleTxt(o.want)}.` : `${me.name} and ${from.name} struck a trade deal.`);
     achCheck(W, u); achCheck(W, o.from); touch(W, u, o.from); return { msg: `Deal done: you received ${bundleTxt(o.give)}.` };
+  }
+  const RELEASE = { st: 6, ap: 5, cdMin: 60 };
+  function releaseProv(W, u, h) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); h = Math.floor(Number(h)); if (!P[h] || owner(W, h) !== u) fail('That province is not yours.');
+    if (h == n.cap) fail('You cannot release your capital.'); if (hexesOf(W, u).length <= 1) fail('You cannot release your last province.');
+    if (left(W, n, 'release')) fail(`Your government needs time before giving up more land: ${fmtT(left(W, n, 'release'))}.`);
+    delete n.hexes[h]; if (n.conq) delete n.conq[h]; W.OWN = computeOwn(W.A); n.cd.release = W.now + RELEASE.cdMin * MIN;
+    n.stability = clamp(n.stability - RELEASE.st, 0, 100); n.approval = clamp(n.approval - RELEASE.ap, 0, 100);
+    log(n, `You released ${pname(h)}. It is now free land anyone can settle. Your people are unhappy about giving up territory (−${RELEASE.st} stability, −${RELEASE.ap} approval).`, W);
+    news(W, u, `🗺 ${n.name} gave up ${pname(h)}. The province is now free land.`); touch(W, u);
+    return { msg: `${pname(h)} released (−${RELEASE.st} stability, −${RELEASE.ap} approval).` };
   }
   function cancelOffer(W, u, id) { const me = W.A[u]; if (!me) fail('Found a nation first.'); const o = (me.offOut || []).find(x => x.id === id); if (!o) fail('That offer is no longer open.'); dropOffer(W, id, u, o.to, true); touch(W, u, o.to); return { msg: 'Offer withdrawn; your goods are back.' }; }
   function offersExpire(W, u) { const n = W.A[u]; let ch = false; for (const o of [...(n.offOut || [])]) if (W.now > o.exp || !W.A[o.to]) { dropOffer(W, o.id, u, o.to, true); note(W, u, 'diplo', `Your offer to ${W.A[o.to] ? W.A[o.to].name : 'a nation'} expired; your goods were returned.`); ch = true; }
@@ -1378,6 +1407,7 @@ function Core(PD, CARDS) {
       case 'exped': return expedition(W, u, String(c.k));
       case 'mission': return claimMission(W, u, c.i);
       case 'offer': return offer(W, u, String(c.v), c.give, c.want);
+      case 'release': return releaseProv(W, u, c.h);
       case 'offerok': return answerOffer(W, u, String(c.id), true);
       case 'offerno': return answerOffer(W, u, String(c.id), false);
       case 'offercancel': return cancelOffer(W, u, String(c.id));
@@ -1414,7 +1444,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, DIRTY, canDirty, INSPECT, inspectFee, OVER, overstretch, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, DIRTY, canDirty, INSPECT, inspectFee, OVER, overstretch, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
