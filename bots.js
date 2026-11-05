@@ -72,6 +72,7 @@ module.exports = function makeBots(core, WP, rng) {
   }
 
   // ---------- peace: AI nations judge each offer on how the war is going, answer within minutes, and say why ----------
+  const PEACE_ASK_GAP = 8 * HOUR; // an AI nation that asks for peace and is turned down waits this long before asking again
   const PEACE_BASE = { warlord: -.35, expansionist: -.15, merchant: .15, isolationist: .25 };
   function warState(W, u, v) {
     const n = W.A[u], t = W.A[v], day = W.now - 24 * HOUR;
@@ -96,7 +97,9 @@ module.exports = function makeBots(core, WP, rng) {
         if (st.will > .25) { tryExec(W, u, { c: 'dip', kind: 'peace', v }); delete n.ai.pa[v]; return true; }
         if (!prev || prev.offer !== theirs) core.note(W, v, 'diplo', `${n.name} rejected your peace offer — ${st.reason}. They may reconsider if the war turns against them.`);
         n.ai.pa[v] = { offer: theirs, t: W.now }; W.changed.add(u);
-      } else if (mine <= since && st.hours > 1 && st.will > .5 && rng() < .2) { tryExec(W, u, { c: 'dip', kind: 'peace', v }); return true; } // losing: ask for peace themselves
+      } else if (mine <= since && st.hours > 1 && st.will > .5 && W.now - ((n.ai.pask || {})[v] || 0) > PEACE_ASK_GAP && rng() < .2) { // losing: ask for peace themselves, at most once every 8 hours per enemy (declined or not)
+        n.ai.pask = n.ai.pask || {}; for (const k of Object.keys(n.ai.pask)) if (W.now - n.ai.pask[k] > 2 * PEACE_ASK_GAP) delete n.ai.pask[k];
+        n.ai.pask[v] = W.now; W.changed.add(u); tryExec(W, u, { c: 'dip', kind: 'peace', v }); return true; }
     }
     return false;
   }
