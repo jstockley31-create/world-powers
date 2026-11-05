@@ -883,16 +883,21 @@ const GL=(()=>{
  // only provinces near the edge of the globe go through d3's clipping
  const provPath=(p,ctr)=>{if(p._r==null){let m=0;for(const poly of p.geo.coordinates)for(const ring of poly)for(const c of ring)m=Math.max(m,d3.geoDistance(p.c,c));p._r=m}
   if(d3.geoDistance(ctr,p.c)+p._r>1.5)return path(p.geo);
-  for(const poly of p.geo.coordinates)for(const ring of poly){for(let i=0;i<ring.length;i++){const xy=proj(ring[i]);i?ctx.lineTo(xy[0],xy[1]):ctx.moveTo(xy[0],xy[1])}ctx.closePath()}};
+  // the same orthographic projection d3 does, but from unit vectors computed once per corner: plain multiply-adds per frame, no trigonometry
+  if(!p._u){p._u=[];for(const poly of p.geo.coordinates)for(const ring of poly){const u=new Float64Array(ring.length*3);for(let i=0;i<ring.length;i++){const L=ring[i][0]*D2R,F=ring[i][1]*D2R,cf=Math.cos(F);u[i*3]=cf*Math.cos(L);u[i*3+1]=cf*Math.sin(L);u[i*3+2]=Math.sin(F)}p._u.push(u)}}
+  const K=FP;for(const u of p._u){for(let i=0,n=u.length;i<n;i+=3){const a=u[i],b=u[i+1],z=u[i+2],x=a*K.cl-b*K.sl,y=b*K.cl+a*K.sl,X=K.tx+K.r*y,Y=K.ty-K.r*(x*K.sp+z*K.cp);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)}ctx.closePath()}};
+ const D2R=Math.PI/180,FP={cl:1,sl:0,cp:1,sp:0,r:1,tx:0,ty:0};
+ const setFP=(rot,r,tx,ty)=>{FP.cl=Math.cos(rot[0]*D2R);FP.sl=Math.sin(rot[0]*D2R);FP.cp=Math.cos(rot[1]*D2R);FP.sp=Math.sin(rot[1]*D2R);FP.r=r;FP.tx=tx;FP.ty=ty};
  function draw(){st.raf=0;if(!st.el||!st.el.isConnected)return;const w=st.w,h=st.h,r=radius(),OWN=W?W.OWN:{};ctx.setTransform(st.dpr,0,0,st.dpr,0,0);ctx.clearRect(0,0,w,h);ctx.lineJoin='round';
-  proj.rotate(st.rot).scale(r).translate([w/2,h/2]);
+  proj.rotate(st.rot).scale(r).translate([w/2,h/2]);setFP(st.rot,r,w/2,h/2);
   for(const s_ of STARS){ctx.fillStyle=`rgba(220,230,255,${s_[3]})`;ctx.fillRect(s_[0]*w,s_[1]*h,s_[2],s_[2])}
   const g=ctx.createRadialGradient(w/2,h/2,r*.96,w/2,h/2,r*1.16);g.addColorStop(0,'rgba(110,175,255,.38)');g.addColorStop(.35,'rgba(76,154,255,.14)');g.addColorStop(1,'rgba(76,154,255,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(w/2,h/2,r*1.16,0,7);ctx.fill();
   const oc=ctx.createRadialGradient(w/2-r*.4,h/2-r*.45,r*.05,w/2,h/2,r);oc.addColorStop(0,'#1f5378');oc.addColorStop(.55,'#0e2c48');oc.addColorStop(1,'#061524');ctx.fillStyle=oc;ctx.beginPath();path({type:'Sphere'});ctx.fill();
   ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=.6;ctx.beginPath();path(grat);ctx.stroke();
   const ctr=[-st.rot[0],-st.rot[1]];if(candW!==W){candW=W;candS=me?new Set(expandTargets()):null;mineS=me?myHexes():[]}const cand=st.mode==='world'?candS:null;const pick=st.mode==='found'?found_.hex:selHex;const lw=Math.max(.35,Math.min(1,st.scale*.4));
-  for(const p of P){if(d3.geoDistance(ctr,p.c)>1.85)continue;const o=OWN[p.id];let fill=TYPE[p.t].col;if(o&&A[o.u])fill=A[o.u].color;
-   ctx.beginPath();provPath(p,ctr);ctx.fillStyle=fill;ctx.globalAlpha=o?.88:1;ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle=o?'rgba(0,0,0,.45)':'rgba(8,14,20,.75)';ctx.lineWidth=lw;ctx.stroke()}
+  // provinces are drawn in batches, one path per colour (a nation, or a terrain type): a few dozen fills instead of hundreds, which keeps phones smooth
+  {const grp=new Map();for(const p of P){if(d3.geoDistance(ctr,p.c)>1.85)continue;const o=OWN[p.id];const fill=o&&A[o.u]?A[o.u].color:TYPE[p.t].col,k=(o?'o':'u')+fill;let g=grp.get(k);if(!g)grp.set(k,g=[]);g.push(p)}
+   ctx.lineWidth=lw;for(const[k,list]of grp){const own=k[0]==='o';ctx.beginPath();for(const p of list)provPath(p,ctr);ctx.fillStyle=k.slice(1);ctx.globalAlpha=own?.88:1;ctx.fill();ctx.globalAlpha=1;ctx.strokeStyle=own?'rgba(0,0,0,.45)':'rgba(8,14,20,.75)';ctx.stroke()}}
   ctx.strokeStyle='rgba(220,230,240,.22)';ctx.lineWidth=Math.max(.6,lw*1.2);ctx.beginPath();for(const g of cgPolys())provPath(g,ctr);ctx.stroke();
   // sunlight from the upper left, darker toward the edge, and a thin bright rim: one pass, so it costs almost nothing
   {const L=ctx.createRadialGradient(w/2-r*.5,h/2-r*.55,0,w/2-r*.15,h/2-r*.15,r*1.25);L.addColorStop(0,'rgba(255,248,230,.13)');L.addColorStop(.42,'rgba(255,255,255,0)');L.addColorStop(.78,'rgba(0,4,14,.18)');L.addColorStop(1,'rgba(0,4,14,.5)');ctx.fillStyle=L;ctx.beginPath();ctx.arc(w/2,h/2,r,0,7);ctx.fill();
