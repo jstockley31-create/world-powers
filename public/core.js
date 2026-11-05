@@ -1228,7 +1228,7 @@ function Core(PD, CARDS) {
   function tick(W, u, active, rng) {
     const n = W.A[u]; let changed = false;
     const k = Math.floor((W.now - n.lastTick) / TICK);
-    if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); n.lastTick += k * TICK; changed = true; }
+    if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); else if ((n.aggr || 0) > 0) n.aggr = Math.max(0, n.aggr - k * W.m.aggrDecay); /* aggression keeps cooling while the leader is offline */ n.lastTick += k * TICK; changed = true; }
     if (W.now - n.nextCard > 3 * HOUR) n.nextCard = W.now - 3 * HOUR;
     if (rogueCheck(W, u)) changed = true;
     if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + INSPECT.everyH * HOUR; changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + INSPECT.everyH * HOUR; n.iaeaPaid = fee;

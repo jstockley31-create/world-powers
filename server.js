@@ -254,7 +254,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, cols, users, config: effCfg(), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -282,13 +282,14 @@ function effCfg() {
   const c = { ...S.config }, now = Date.now(); const on = S.schedule.filter(x => BOOSTS[x.type] && x.start <= now && now < x.end);
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
-  c.bossPause = (S.bossFell || 0) + 48 * HOUR > now; // a breather after the Rising Power falls
+  c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
   return c;
 }
+const bossBreatherH = () => { const h = +((S.config.boss || {}).breatherH); return isFinite(h) && h >= 0 ? h : 48; };
 const mkWorld = () => core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council);
 function commit(W) {
   for (const f of W.fallen || []) {
-    { const was = S.docs['nations/' + f.id]; if (was && was.ai && was.ai.boss) { S.bossFell = Date.now(); systemMessage(`🎉 The Rising Power ${f.name} has fallen to ${f.byName}! The world is safe — for now. Another power may rise in 48 hours.`); broadcast('announce', { text: `The Rising Power ${f.name} has fallen!` }); } }
+    { const was = S.docs['nations/' + f.id]; if (was && was.ai && was.ai.boss) { S.bossFell = Date.now(); systemMessage(`🎉 The Rising Power ${f.name} has fallen to ${f.byName}! The world is safe — for now. Another power may rise in ${bossBreatherH()} hours.`); broadcast('announce', { text: `The Rising Power ${f.name} has fallen!` }); } }
     delete S.docs['nations/' + f.id];
     const rec = { t: f.t, id: f.id, name: f.name, color: f.color, by: f.by, byName: f.byName, days: Math.round(f.days * 10) / 10, rank: f.peakRank, leader: BOTS.isBot(f.id) ? null : (S.users[f.id] || {}).name || null, ai: BOTS.isBot(f.id) };
     S.fallen.unshift(rec); S.fallen = S.fallen.slice(0, 100);
@@ -819,6 +820,18 @@ function analytics() {
   return { days, ret, d1: totalC ? Math.round(totalB / totalC * 100) : null };
 }
 function backups() { try { return fs.readdirSync(BACKUP_DIR).filter(f => /\.json$/.test(f)).sort().reverse().map(f => ({ name: f, size: fs.statSync(path.join(BACKUP_DIR, f)).size })); } catch (e) { return []; } }
+function bossPanel(W) {
+  const now = Date.now(), ids = Object.keys(W.A), hum = ids.filter(k => !BOTS.isBot(k)), id = ids.find(k => BOTS.isBot(k) && W.A[k].ai && W.A[k].ai.boss);
+  const topPow = hum.length ? Math.max(...hum.map(h => core.power(W, h))) : 0, br = bossBreatherH();
+  const out = { settings: { ...BOTS.BOSS_DEF, ...(S.config.boss || {}), breatherH: br }, auto: S.config.aiBoss !== false, pause: (S.bossFell || 0) + br * HOUR > now ? S.bossFell + br * HOUR : 0, fell: S.bossFell || 0, topPow: Math.round(topPow), ranks: WP.RANKS.map(r => r[1]),
+    candidates: ids.filter(k => BOTS.isBot(k)).map(k => ({ id: k, name: W.A[k].name, p: (BOTS.PERS[W.A[k].ai.p] || {}).n || '', score: core.score(W, k) })).sort((a, b) => b.score - a.score),
+    targets: ids.filter(k => k !== id).map(k => ({ id: k, name: W.A[k].name, ai: BOTS.isBot(k), score: core.score(W, k), war: id ? core.atWar(W, id, k) : false })).sort((a, b) => b.score - a.score) };
+  if (id) { const n = W.A[id], foes = core.wars(W, id);
+    out.boss = { id, name: n.name, color: n.color, p: (BOTS.PERS[n.ai.p] || {}).n || '', power: Math.round(core.power(W, id)), score: core.score(W, id), provinces: core.hexesOf(W, id).length, cash: Math.round(n.cash), troops: n.troops, air: n.air || 0, ships: n.ships || 0, fort: n.fort || 0, tech: n.tech || 0, rank: core.rankOf(n.xp),
+      aggr: Math.round(n.aggr || 0), rogue: core.rogue(W, n), nuke: !!n.nuke, warhead: n.warhead ? (core.warheadReady(W, n) ? 'ready' : 'building') : '', isolated: !!n.ai.isolated, missiles: core.maxMissiles(n),
+      wars: foes.map(v => ({ id: v, name: (W.A[v] || {}).name, ai: BOTS.isBot(v), since: core.warSince(W, id, v) })), log: (n.log || []).slice(0, 25), cd: Object.fromEntries(Object.entries(n.cd || {}).filter(([, t]) => t > now)), regroup: n.regroup > now ? n.regroup : 0 }; }
+  return out;
+}
 function overview() {
   const now = Date.now();
   const nations = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = d;
@@ -841,7 +854,7 @@ function overview() {
     health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, loopMs: health.loopMs, saveMs: health.saveMs, saveError: health.saveError, dataDir: DATA_DIR,
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackupT || (S.lastBackup ? Date.parse(S.lastBackup + 'T09:00:00Z') : null), pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
-    players, bots, botTarget: botTarget(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
+    players, bots, botTarget: botTarget(W), bossPanel: bossPanel(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
     analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.filter(x => x.kind !== 'idea').slice(0, 100), ideas: S.bugs.filter(x => x.kind === 'idea').slice(0, 150), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView(), war: warRoom(W, nations)
   };
 }
@@ -857,7 +870,7 @@ function warRoom(W, nations) {
   wars.sort((a, b) => b.since - a.since);
   const hot = Object.entries(nations).filter(([, n]) => (n.aggr || 0) >= 20).map(([id, n]) => ({ id, name: n.name, ai: BOTS.isBot(id), boss: !!(n.ai && n.ai.boss), aggr: Math.round(n.aggr), sanctioned: core.sanctioned(n), rogue: core.rogue(W, n), wars: core.wars(W, id).length })).sort((a, b) => b.aggr - a.aggr);
   const boss = Object.entries(nations).find(([, n]) => n.ai && n.ai.boss);
-  return { wars, hot, ntests: S.ntests.slice(0, 20), strikes: S.strikeLog.slice(0, 150), fires: burnList().length, pacts: (S.council.pacts || []).filter(x => x.until > now).map(x => ({ scope: x.scope, until: x.until, members: x.members.map(nm) })), boss: boss ? { id: boss[0], name: boss[1].name, aggr: Math.round(boss[1].aggr || 0), provinces: core.hexesOf(W, boss[0]).length } : null };
+  return { wars, hot, ntests: S.ntests.slice(0, 20), strikes: S.strikeLog.slice(0, 150), fires: burnList().length, pacts: (S.council.pacts || []).filter(x => x.until > now).map(x => ({ scope: x.scope, until: x.until, members: x.members.map(nm) })), bossPause: !boss && (S.bossFell || 0) + bossBreatherH() * HOUR > now ? (S.bossFell + bossBreatherH() * HOUR) : 0, boss: boss ? { id: boss[0], name: boss[1].name, aggr: Math.round(boss[1].aggr || 0), provinces: core.hexesOf(W, boss[0]).length } : null };
 }
 const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl'];
 async function adminRoute(p, req, res, me) {
@@ -869,6 +882,64 @@ async function adminRoute(p, req, res, me) {
   }
   const bi = p.match(/^\/api\/admin\/bug-img\/([a-z0-9]{8,40})$/);
   if (bi && req.method === 'GET') { const f = path.join(BUG_DIR, bi[1] + '.jpg'); if (!fs.existsSync(f)) return send(res, 404, { error: 'Not found.' }); res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' }); return fs.createReadStream(f).pipe(res); }
+  if (p === '/api/admin/boss-now' && req.method === 'POST') { // raise the Rising Power right away (skips the 48-hour breather after one falls)
+    const W0 = mkWorld(), ids = Object.keys(W0.A), cur = ids.find(k => BOTS.isBot(k) && W0.A[k].ai && W0.A[k].ai.boss);
+    if (cur) return send(res, 400, { error: `${W0.A[cur].name} is already the Rising Power.` });
+    if (!ids.some(k => BOTS.isBot(k))) return send(res, 400, { error: 'There are no AI nations to raise. Turn AI nations on first.' });
+    if (!ids.some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
+    S.bossFell = 0; S.config.aiBoss = true;
+    const W = mkWorld(), b = BOTS.raiseBoss(W, W.cfg); if (!b) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
+    commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
+    audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
+  }
+  if (p === '/api/admin/boss' && req.method === 'POST') { // Admin page → Rising Power
+    const b = await readBody(req, 4096), op = String(b.op || '');
+    const W = mkWorld(), id = Object.keys(W.A).find(k => BOTS.isBot(k) && W.A[k].ai && W.A[k].ai.boss);
+    if (op === 'settings') {
+      const c = b.settings || {}, bs = { ...BOTS.BOSS_DEF, ...(S.config.boss || {}) };
+      if (['auto', 'manual'].includes(c.mode)) bs.mode = c.mode;
+      for (const k of ['str', 'aggr']) if (c[k] != null && isFinite(+c[k])) bs[k] = Math.max(k === 'aggr' ? 0 : .25, Math.min(3, +c[k]));
+      if (['yes', 'deter', 'no'].includes(c.nukes)) bs.nukes = c.nukes;
+      if (c.target != null) bs.target = typeof c.target === 'string' && Object.prototype.hasOwnProperty.call(W.A, c.target) ? c.target : '';
+      if (c.breatherH != null && isFinite(+c.breatherH)) bs.breatherH = Math.max(0, Math.min(720, Math.round(+c.breatherH)));
+      const was = JSON.stringify(S.config.boss || {}); S.config.boss = bs; if (b.auto != null) S.config.aiBoss = !!b.auto; persist();
+      audit(me.name, 'Changed Rising Power settings', `${was} → ${JSON.stringify(bs)}${b.auto != null ? ` · auto spawn ${S.config.aiBoss ? 'on' : 'off'}` : ''}`); return send(res, 200, { ok: true });
+    }
+    if (op === 'raise') {
+      if (id) return send(res, 400, { error: `${W.A[id].name} is already the Rising Power. Retire it first.` });
+      const want = typeof b.pick === 'string' && BOTS.isBot(b.pick) && W.A[b.pick] ? b.pick : '';
+      if (!Object.keys(W.A).some(k => BOTS.isBot(k))) return send(res, 400, { error: 'There are no AI nations to raise. Turn AI nations on first.' });
+      if (!Object.keys(W.A).some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
+      S.bossFell = 0; S.config.aiBoss = true;
+      const W2 = mkWorld(), nb = BOTS.raiseBoss(W2, W2.cfg, want); if (!nb) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
+      commit(W2); persist(); systemMessage(`⚠ ${W2.A[nb].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
+      audit(me.name, 'Raised the Rising Power', W2.A[nb].name); return send(res, 200, { ok: true, name: W2.A[nb].name });
+    }
+    if (!id) return send(res, 400, { error: 'There is no Rising Power right now.' });
+    const n = W.A[id];
+    if (op === 'retire') {
+      n.ai.boss = false; n.ai.isolated = 0; core.touch(W, id); S.bossFell = Date.now(); if (b.stopAuto) S.config.aiBoss = false; commit(W); persist();
+      if (b.announce !== false) systemMessage(`🕊 ${n.name}'s foreign backers have pulled out. It is no longer the Rising Power.`);
+      audit(me.name, 'Retired the Rising Power', n.name + (b.stopAuto ? ' (auto spawn off)' : '')); return send(res, 200, { ok: true });
+    }
+    if (op === 'grant') {
+      const g = b.grant || {}, lim = { cash: 5e10, troops: 5e6, air: 5e4, ships: 5e4, tech: 20, fort: 12 }, done = [];
+      for (const [k, mx] of Object.entries(lim)) { const x = Math.round(+g[k] || 0); if (!x) continue; const v = Math.max(-mx, Math.min(mx, x));
+        if (k === 'fort') n.fort = Math.max(0, Math.min(12, (n.fort || 0) + v)); else n[k] = Math.max(0, (n[k] || 0) + v); done.push(`${k} ${v > 0 ? '+' : ''}${v}`); }
+      { const x = Math.max(-1e6, Math.min(1e6, Math.round(+g.res || 0))); if (x) { n.res = n.res || {}; for (const r of ['oil', 'steel', 'food', 'goods']) n.res[r] = Math.max(0, (n.res[r] || 0) + x); done.push(`resources ${x > 0 ? '+' : ''}${x} each`); } }
+      if (Number.isInteger(g.rank) && g.rank >= 0 && g.rank < WP.RANKS.length) { n.xp = WP.RANKS[g.rank][0]; done.push(`rank set to ${WP.RANKS[g.rank][1]}`); }
+      if (g.heal) { n.approval = Math.max(n.approval, 70); n.stability = Math.max(n.stability, 70); n.regroup = 0; done.push('morale restored'); }
+      if (!done.length) return send(res, 400, { error: 'Nothing to change.' });
+      core.touch(W, id); commit(W); audit(me.name, 'Adjusted the Rising Power', `${n.name}: ${done.join(', ')}`); return send(res, 200, { ok: true });
+    }
+    if (op === 'cmd') {
+      let r; try { r = BOTS.bossCommand(W, id, { kind: String(b.kind || ''), v: b.v, force: !!b.force, target: ['mil', 'infra', 'stock'].includes(b.target) ? b.target : 'mil' }, W.cfg); }
+      catch (e) { if (e.user || e.message) return send(res, 400, { error: e.message }); throw e; }
+      commit(W); audit(me.name, 'Ordered the Rising Power', `${b.kind}${b.v && W.A[b.v] ? ' → ' + W.A[b.v].name : ''}`);
+      const tn = (W.A[b.v] || {}).name || 'the target'; return send(res, 200, { ok: true, msg: ({ war: `${n.name} declared war on ${tn}. Its forces must mobilize (about 10 minutes) before they can strike.`, peace: `${n.name} offered peace to ${tn}.` })[b.kind] || (r && r.msg) || 'Order carried out.' });
+    }
+    return send(res, 400, { error: 'Unknown request.' });
+  }
   if (p === '/api/admin/peace' && req.method === 'POST') {
     const b = await readBody(req, 1024), A_ = S.docs['nations/' + b.a], B_ = S.docs['nations/' + b.b];
     if (typeof b.a !== 'string' || typeof b.b !== 'string' || b.a === b.b || !A_ || !B_ || !Object.prototype.hasOwnProperty.call(S.docs, 'nations/' + b.a) || !Object.prototype.hasOwnProperty.call(S.docs, 'nations/' + b.b)) return send(res, 400, { error: 'Pick two nations.' });
