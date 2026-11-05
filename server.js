@@ -325,7 +325,7 @@ function removeBot(W, u, why) { const n = W.A[u]; if (!n) return; delete W.A[u];
 function manageBots(W) {
   const bots = Object.keys(W.A).filter(BOTS.isBot); const target = botTarget(W);
   if (bots.length < target) for (let i = 0; i < target - bots.length; i++) BOTS.spawn(W);
-  else if (bots.length > target) { const weakest = bots.sort((a, b) => core.score(W, a) - core.score(W, b))[0]; removeBot(W, weakest, 'retire'); }
+  else if (bots.length > target) { const weakest = bots.filter(b => !(W.A[b].ai && W.A[b].ai.boss)).sort((a, b) => core.score(W, a) - core.score(W, b))[0]; if (weakest) removeBot(W, weakest, 'retire'); } // the Rising Power is never quietly retired: it has to be beaten
 }
 
 // ---------- world events ----------
@@ -920,7 +920,7 @@ async function adminRoute(p, req, res, me) {
     if (!id) return send(res, 400, { error: 'There is no Rising Power right now.' });
     const n = W.A[id];
     if (op === 'retire') {
-      n.ai.boss = false; n.ai.isolated = 0; delete n.ai.defX; delete n.ai.atkX; core.touch(W, id); S.bossFell = Date.now(); if (b.stopAuto) S.config.aiBoss = false; commit(W); persist();
+      n.ai.boss = false; n.ai.isolated = 0; n.ai.exBoss = Date.now(); delete n.ai.defX; delete n.ai.atkX; core.touch(W, id); S.bossFell = Date.now(); if (b.stopAuto) S.config.aiBoss = false; commit(W); persist();
       if (b.announce !== false) systemMessage(`🕊 ${n.name}'s foreign backers have pulled out. It is no longer the Rising Power.`);
       audit(me.name, 'Retired the Rising Power', n.name + (b.stopAuto ? ' (auto spawn off)' : '')); return send(res, 200, { ok: true });
     }

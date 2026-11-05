@@ -127,7 +127,8 @@ module.exports = function makeBots(core, WP, rng) {
   function pickBoss(W, cfg, want) {
     const bots = Object.keys(W.A).filter(isBot); if (!cfg.aiBoss || !bots.length || !humans(W).length || (cfg.bossPause && !bots.some(b => W.A[b].ai.boss))) { if (cfg.bossPause) return null; for (const b of bots) if (W.A[b].ai.boss) { W.A[b].ai.boss = false; core.touch(W, b); } return null; }
     const cur = bots.find(b => W.A[b].ai.boss); if (cur) return cur;
-    const b = want && bots.includes(want) ? want : bots.sort((a, c) => (['warlord', 'expansionist'].includes(W.A[c].ai.p) - ['warlord', 'expansionist'].includes(W.A[a].ai.p)) || core.score(W, c) - core.score(W, a))[0];
+    const fresh = bots.filter(x => !(W.now - (W.A[x].ai.exBoss || 0) < 24 * HOUR)), pool = fresh.length ? fresh : bots; // a nation that was just retired doesn't rise again straight away
+    const b = want && bots.includes(want) ? want : pool.sort((a, c) => (['warlord', 'expansionist'].includes(W.A[c].ai.p) - ['warlord', 'expansionist'].includes(W.A[a].ai.p)) || core.score(W, c) - core.score(W, a))[0];
     W.A[b].ai.boss = true; core.touch(W, b);
     core.news(W, b, `⚠ ${W.A[b].name} is rising as a superpower. Foreign arms dealers are pouring money and weapons into its military.`);
     for (const h of humans(W)) core.note(W, h, 'war', `⚠ ${W.A[b].name} has become the Rising Power: an AI superpower that will grow with the strongest nations, build nuclear weapons and attack players. Stopping it will take the world working together.`);
@@ -156,6 +157,13 @@ module.exports = function makeBots(core, WP, rng) {
     if (!isolated && !hurt && behind) { // rebuild toward 95% of the strongest player, a few percent an hour
       if (rng() < .5) n.air = (n.air || 0) + Math.max(1, Math.ceil((n.air || 0) * .0006 * S_));
       if (n.troops < core.troopCap(n)) n.troops = Math.min(core.troopCap(n), n.troops + Math.max(6, Math.ceil(n.troops * .00036 * S_)));
+    }
+    // reach: a superpower that can't get at its enemies is no threat. Its backers keep it a navy able to carry its army overseas
+    // and an air force that keeps pace with the players (for strikes and airborne drops), whether or not it is behind on power
+    if (!isolated && !hurt) {
+      const wantShips = Math.min(500, Math.max(10, Math.ceil(n.troops * .4 / 75), top('ships') * .8 * S_)), wantAir = Math.max(60, top('air') * .9 * S_);
+      if (core.hasCoast(W, u) && (n.ships || 0) < wantShips && rng() < .5) n.ships = (n.ships || 0) + Math.max(1, Math.ceil((n.ships || 0) * .002 * S_));
+      if ((n.air || 0) < wantAir && rng() < .5) n.air = (n.air || 0) + Math.max(1, Math.ceil(wantAir * .01 * S_)); // back to strength within an hour or two
     }
     if (n.pop < top('pop') * .6 && !isolated) n.pop *= 1.0005;
     // never a sky full of planes: at most 1.75x the biggest player air force; anything above that drains away within about an hour
@@ -190,8 +198,12 @@ module.exports = function makeBots(core, WP, rng) {
       if (t.length) return tryExec(W, u, { c: 'dip', kind: 'war', v: t[Math.floor(rng() * Math.min(2, t.length))] });
     }
     const pri = tgt && foes.includes(tgt) ? [tgt] : foes; // a focus target set by the admins gets all the attention
+    const hitBack = foes.filter(v => W.now - ((n.hitBy || {})[v] || 0) < 24 * HOUR); // even a passive Rising Power fights back against nations attacking it
     if (pri.length && rng() < Math.min(.95, .55 * AG)) { const r = farStrike(W, u, pri); if (r) return r; }
-    if (pri.length && (n.air || 0) >= 10 && rng() < Math.min(.9, .3 * AG)) { const v = pri[Math.floor(rng() * pri.length)]; if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: rng() < .6 ? 'mil' : 'infra', n: Math.floor(n.air * .65) }); if (r) return r; } }
+    else if (AG < .3 && hitBack.length && rng() < .3) { const r = farStrike(W, u, hitBack); if (r) return r; }
+    // missile salvos at the military or infrastructure of its enemies
+    if (pri.length && core.maxMissiles(n) && rng() < Math.min(.8, .3 * AG)) { const v = pri[Math.floor(rng() * pri.length)]; if (!core.canStrike(W, u, v)) { const M = core.MISSILE, k = Math.min(core.maxMissiles(n), Math.floor(n.cash / M.cash), Math.floor((n.res.steel || 0) / M.steel), Math.floor((n.res.oil || 0) / M.oil)); if (k >= 1) { const r = tryExec(W, u, { c: 'strike', v, kind: 'missile', target: rng() < .6 ? 'mil' : 'infra', n: k }); if (r) return r; } } } /* as many missiles as it can pay for */
+    if (pri.length && (n.air || 0) >= 10 && rng() < Math.min(.9, .3 * AG)) { const v = pri[Math.floor(rng() * pri.length)]; if (!core.canStrike(W, u, v) && (n.air || 0) * .65 >= (W.A[v].air || 0) * 1.2) { /* only when its planes outnumber their fighters */ const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: rng() < .6 ? 'mil' : 'infra', n: Math.floor(n.air * .65) }); if (r) return r; } }
     return null;
   }
   function turn(W, u, cfg) {
@@ -251,7 +263,7 @@ module.exports = function makeBots(core, WP, rng) {
     if (cfg.war && cfg.botWar !== 'no') {
       const front = []; for (const h of core.hexesOf(W, u)) for (const k of core.nbrs(h)) { const v = core.owner(W, k); if (v && v !== u) front.push([k, v]); }
       if (myWars.length) {
-        if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const rt = core.route(W, u, h); let X = Math.floor(n.troops * .7); if (rt === 'sea') X = Math.min(X, n.ships * 100); if (X < 50) continue; const AIR = Math.floor(n.air * .7); if ((X + AIR * 20) * core.atkMult(n) * (rt === 'sea' ? .8 : 1) > core.defense(W, h, u) * (.9 + rng() * .25) && (rt !== 'sea' || n.ships * 25 > core.navalDefense(W, h))) return tryExec(W, u, { c: 'attack', h, x: X, air: AIR }); }
+        if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const rt = core.route(W, u, h); let X = Math.floor(n.troops * .7); const AIR = Math.floor(n.air * .7); if (rt === 'sea') X = Math.min(X, n.ships * 100); if (rt === 'air') X = Math.min(X, AIR * core.AIRBORNE.per); if (X < 50) continue; if ((X + AIR * 20) * core.atkMult(n) * (rt === 'sea' ? .8 : rt === 'air' ? core.AIRBORNE.str : 1) > core.defense(W, h, u) * (.9 + rng() * .25) && (rt !== 'sea' || n.ships * 25 > core.navalDefense(W, h))) return tryExec(W, u, { c: 'attack', h, x: X, air: AIR }); }
         // no border to fight on (or nothing worth hitting there): use the war planner like a player would — by sea, overseas or a long march
         if (rng() < .35) { const r = farStrike(W, u, myWars); if (r) return r; }
         // hit back at whoever attacked us in the last day: missiles if we have the tech, otherwise the air force
