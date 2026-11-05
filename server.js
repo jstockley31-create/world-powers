@@ -54,6 +54,8 @@ setTimeout(() => { for (const fx of S.ntestPending.slice()) { if (Date.now() - f
 const BURN_MS = 24 * HOUR; S.burn = S.burn && typeof S.burn === 'object' && !Array.isArray(S.burn) ? S.burn : {};
 function burnList() { const now = Date.now(), out = []; for (const [h, b] of Object.entries(S.burn)) { if (now - b.t < BURN_MS) out.push([+h, b.t, b.n]); else delete S.burn[h]; } return out; }
 S.council = S.council || { props: [], active: {} };
+// the Council no longer raises inspection votes on its own (nuclear nations pay a daily inspection fee instead): withdraw any that are still open
+for (const p of S.council.props || []) if (p.status === 'open' && p.auto && p.type === 'inspect') { p.status = 'failed'; p.result = 'withdrawn'; p.end = Date.now(); }
 if (S.mapVersion !== MAP_VERSION) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/') || k.startsWith('online/') || (k.startsWith('chat/') && k !== 'chat/_system')) delete S.docs[k];
   S.council = { props: [], active: {} }; S.event = null; S.mapVersion = MAP_VERSION;
@@ -488,7 +490,6 @@ const AUTO_RULES = [
   // [type, test(nation, recent attacks, W, id) -> reason or null]
   ['sanction', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 60 || atk.victims >= 3) ? (atk.victims >= 3 ? `attacked ${atk.victims} different nations in 12 hours` : `pushed its aggression to ${Math.round(n.aggr)}`) : null],
   ['condemn', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 35 || atk.n >= 3) ? `${atk.n >= 3 ? `launched ${atk.n} attacks in 6 hours` : `pushed its aggression to ${Math.round(n.aggr)}`}` : null],
-  ['inspect', (n, atk, W, u) => n.warhead && !core.warheadReady(W, n) && Date.now() - (n.warhead.t || 0) < 6 * HOUR ? 'began assembling a launchable nuclear warhead' : null],
   ['aid', (n, atk, W, u) => n.nuked && Date.now() - n.nuked.t < 6 * HOUR && !core.rogue(W, n) ? 'was struck by a nuclear weapon' : null],
   ['condemn', (n, atk, W, u) => n.nuke && Date.now() - n.nuke < 3 * HOUR ? 'tested a nuclear weapon' : null],
   ['condemn', (n, atk, W, u) => n.dirtyAt && Date.now() - n.dirtyAt < 3 * HOUR ? 'detonated a dirty bomb on another nation' : null]
