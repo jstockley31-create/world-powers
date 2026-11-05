@@ -187,9 +187,15 @@ function flagSVG(f, w, h, ns) {
   return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g><rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/></svg>`;
 }
 const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
-const NUKE = { tech: 12, rank: 4, cash: 25e6, steel: 1500, oil: 1500, goods: 500, upkeep: 1e5 };
+const NUKE = { tech: 18, rank: 6, cash: 150e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
+// mandatory international inspections for every nuclear nation: charged automatically once a day
+const INSPECT = { base: 10e6, pct: .01, cap: 80e6, warhead: 1.5, everyH: 24 };
+// a dirty bomb: a conventional missile carrying radioactive material. Far cheaper than a nuclear program; leaves a radioactive cloud over one province for 24 hours
+const DIRTY = { tech: 10, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300, cdH: 12, h: 24, aggr: 25, km: 380 };
+// imperial overstretch: every province beyond 20 costs upkeep (rising steeply), lowers stability and risks far-off provinces breaking away
+const OVER = { at: 20, cost: 7e-6, st: .6, reb: .0006 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
-const WARHEAD = { tech: 15, rank: 6, cash: 75e6, steel: 3000, oil: 3000, goods: 2000, buildH: 12, holdH: 24, cdD: 7, km: 1600, nukedH: 48, falloutH: 24, winterH: 24 };
+const WARHEAD = { tech: 22, rank: 7, cash: 300e6, steel: 6000, oil: 6000, goods: 4000, buildH: 12, holdH: 24, cdD: 7, km: 1600, nukedH: 48, falloutH: 24, winterH: 24 };
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
 const COVERT = {
@@ -340,7 +346,7 @@ function Core(PD, CARDS) {
     const n = W.A[u], b = budget(n);
     const pc = 187.5 * (1 + soft(n.tech, 10) * .04) * (1 + soft(n.infra, 10) * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
       * (1 + Math.min(tcap(n), traders(W, u).length) * .03) * fxMul(n, 'gdp') * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
-      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * ((n.defaulted || 0) > W.now - 48 * HOUR ? .85 : 1) * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * W.m.gdp;
+      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * ((n.defaulted || 0) > W.now - 48 * HOUR ? .85 : 1) * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * W.m.gdp;
     return n.pop * pc;
   }
   // development aid: nations far behind the world leader earn up to +50% tax revenue, shrinking as they catch up
@@ -351,6 +357,9 @@ function Core(PD, CARDS) {
   }
   function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(tcap(n), traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
+  const overstretch = n => { const x = Math.max(0, hexN(n) - OVER.at); return { extra: x, cost: x ? (n.gdp || 0) * OVER.cost * Math.pow(x, 1.5) : 0, st: x * OVER.st }; };
+  const inspectFee = n => Math.round(Math.min(INSPECT.cap, INSPECT.base + (n.gdp || 0) * INSPECT.pct) * (n.warhead ? INSPECT.warhead : 1));
+  const radOn = (W, n) => !!(n && n.rad && n.rad.until > W.now);
   const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + (n.dome && n.dome.ready <= W.now ? DOME.upkeep : 0)) * W.m.upkeep;
   function production(W, u) {
     const n = W.A[u]; const p = { food: 0, oil: 0, steel: 0, goods: 0 };
@@ -385,8 +394,9 @@ function Core(PD, CARDS) {
   // ---------- costs ----------
   const troopCap = n => Math.floor((n.pop || 0) * ((n.laws || []).includes('conscription') ? .06 : .04));
   const recruitBatch = n => Math.round(Math.max(20, Math.round(40 + soft(n.pop * .0012, 600))) * ((n.laws || []).includes('conscription') ? 1.5 : 1)); // bigger nations recruit more, with diminishing returns
-  const navyBatch = n => 2 + Math.floor(rankOf(n.xp) / 2);
-  const airBatch = n => 3 + Math.floor(rankOf(n.xp) / 2);
+  const hexN = n => Object.keys(n.hexes || {}).length;
+  const navyBatch = n => 2 + Math.floor(rankOf(n.xp) / 2) + Math.floor(hexN(n) / 6);
+  const airBatch = n => 3 + Math.floor(rankOf(n.xp) / 2) + Math.floor(hexN(n) / 5);
   const spyCap = n => 5 + rankOf(n.xp) * 3;
   const expandCost = (W, u) => Math.round(8e4 * Math.pow(Math.max(1, hexesOf(W, u).length), 1.35));
   const topTech = W => { let t = 0; for (const x of Object.values(W.A)) t = Math.max(t, x.tech || 0); return t; };
@@ -707,8 +717,8 @@ function Core(PD, CARDS) {
     return null;
   }
   const MISSILE = { tech: 8, cash: 4e5, steel: 40, oil: 40 };
-  // missiles per strike: 5 at tech 8, +1 for every 2 tech levels above that, +1 each at Senator, President and Emperor, up to 10
-  const maxMissiles = n => { if (!n || (n.tech || 0) < MISSILE.tech) return 0; const r = rankOf(n.xp); return Math.min(10, 5 + Math.floor(((n.tech || 0) - MISSILE.tech) / 2) + (r >= 4 ? 1 : 0) + (r >= 6 ? 1 : 0) + (r >= 8 ? 1 : 0)); };
+  // missiles per strike: 5 at tech 8, +1 for every 2 tech levels above that, +1 each at Senator, President and Emperor (up to 10), then +1 for every 4 provinces (up to 10 more)
+  const maxMissiles = n => { if (!n || (n.tech || 0) < MISSILE.tech) return 0; const r = rankOf(n.xp); return Math.min(10, 5 + Math.floor(((n.tech || 0) - MISSILE.tech) / 2) + (r >= 4 ? 1 : 0) + (r >= 6 ? 1 : 0) + (r >= 8 ? 1 : 0)) + Math.min(10, Math.floor(hexN(n) / 4)); };
   function strike(W, u, v, kind, target, count, rng) {
     const why = canStrike(W, u, v); if (why) fail(why);
     const me = W.A[u], d = W.A[v]; if (!['stock', 'infra', 'mil'].includes(target)) fail('Choose a target.');
@@ -745,6 +755,36 @@ function Core(PD, CARDS) {
     { const hs = hexesOf(W, v), hh = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap; (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: hh, place: pname(hh), kind, n: count, lost, hits, icept, target, t: W.now }); }
     if (icept) { note(W, v, 'attack', `🛡 Your Golden Dome shot down ${icept} of ${count} missile${count > 1 ? 's' : ''} fired by ${me.name}.`); }
     return { msg: `Strike complete — ${sum}.${icept ? ` Their Golden Dome shot down ${icept} of your ${count} missiles.` : ''}`, strike: { kind, target, count, lost, hits, icept, dmg, sum } };
+  }
+  // DIRTY BOMB: a missile with radioactive material. Cheaper and far weaker than a nuke, but it leaves a radioactive cloud over one province for 24 hours.
+  function canDirty(W, u, v) {
+    const why = canStrike(W, u, v); if (why) return why; const me = W.A[u];
+    if ((me.tech || 0) < DIRTY.tech) return `A dirty bomb requires tech level ${DIRTY.tech}.`;
+    if (!W.cfg.nukeTest && rankOf(me.xp) < DIRTY.rank) return `A dirty bomb requires the rank of ${RANKS[DIRTY.rank][1]}.`;
+    if (left(W, me, 'dirty') && !W.cfg.nukeTest) return `Your next dirty bomb will be ready in ${fmtT(left(W, me, 'dirty'))}.`;
+    if (me.cash < DIRTY.cash || (me.res.steel || 0) < DIRTY.steel || (me.res.oil || 0) < DIRTY.oil || (me.res.goods || 0) < DIRTY.goods) return `A dirty bomb costs ${money(DIRTY.cash)}, ${num(DIRTY.steel)} steel, ${num(DIRTY.oil)} oil and ${num(DIRTY.goods)} goods.`;
+    return null;
+  }
+  function dirtyBomb(W, u, v, rng) {
+    const why = canDirty(W, u, v); if (why) fail(why); const me = W.A[u], d = W.A[v];
+    me.cash -= DIRTY.cash; me.res.steel -= DIRTY.steel; me.res.oil -= DIRTY.oil; me.res.goods -= DIRTY.goods;
+    me.cd.dirty = W.now + DIRTY.cdH * HOUR; me.cd.strike = W.now + 30 * MIN;
+    const hs = hexesOf(W, v), h = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap, icept = domeOn(W, d) && rng() < DOME.mis ? 1 : 0, dmg = {};
+    if (!icept) {
+      dmg.troops = Math.floor((d.troops || 0) * .06); d.troops -= dmg.troops; dmg.pop = Math.floor((d.pop || 0) * .02); d.pop -= dmg.pop; dmg.food = Math.floor((d.res.food || 0) * .1); d.res.food -= dmg.food;
+      d.gdp = (d.gdp || 0) * .97; d.approval = clamp(d.approval - 5, 0, 100); d.stability = clamp(d.stability - 6, 0, 100);
+      d.rad = { h, t: W.now, until: W.now + DIRTY.h * HOUR, by: u };
+    }
+    const def = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) || def ? 0 : Math.round(DIRTY.aggr * aggrScale(W, v))); if (!d.ai && !def && !rogue(W, d)) me.dirtyAt = W.now;
+    rogueCheck(W, u); me.approval = clamp(me.approval - 5, 0, 100);
+    const place = pname(h), sum = icept ? `${d.name}'s Golden Dome shot it down` : `${num(dmg.troops)} troops and ${num(dmg.pop)} people lost, ${num(dmg.food)} food contaminated, and a radioactive cloud will hang over ${place} for ${DIRTY.h} hours`;
+    log(me, `Your dirty bomb on ${place}, ${d.name}: ${sum}.`, W); log(d, icept ? `🛡 Your Golden Dome shot down a dirty bomb fired by ${me.name}.` : `☢ ${me.name} detonated a dirty bomb over ${place}: ${sum}.`, W);
+    note(W, v, 'attack', icept ? `🛡 Your Golden Dome shot down a dirty bomb fired by ${me.name}.` : `☢ ${me.name} detonated a dirty bomb over ${place}. A radioactive cloud hangs over the province for ${DIRTY.h} hours.`);
+    news(W, u, icept ? `☢ ${me.name} fired a dirty bomb at ${d.name}, but it was shot down by the Golden Dome.` : `☢ ${me.name} detonated a dirty bomb over ${place}, ${d.name}. A radioactive cloud hangs over the province.`);
+    for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `☢ ${me.name} used a dirty bomb on your ally ${d.name}.`);
+    gainXP(W, u, 10); touch(W, u, v); aggrHit(W, u, v, 'dirty bomb');
+    (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h, place, kind: 'missile', dirty: 1, n: 1, lost: 0, hits: icept ? 0 : 1, icept, target: 'dirty', t: W.now });
+    return { msg: icept ? `Their Golden Dome shot down your dirty bomb.` : `Dirty bomb detonated over ${place}: ${sum}.`, dirty: { h, icept, dmg } };
   }
   // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.
   const DOME = { tech: 14, rank: 5, cash: 150e6, steel: 4000, goods: 3000, oil: 2000, buildH: 12, upkeep: 2e5, mis: .75, nuke: .4 };
@@ -1077,9 +1117,15 @@ function Core(PD, CARDS) {
     const apT = 55 - (n.tax - 20) * 1.2 + g.ap - w * (n.gov === 'dem' ? 10 : n.gov === 'dic' ? 3 : 6) - (foodShort ? 15 : 0) - (goodsShort ? 8 : 0) - (sanctioned(n) ? 6 : 0) + Math.min(5, traders(W, u).length) * 1.5
       - Math.max(0, n.unemp - 6) * .8 - Math.max(0, n.infl - 4) * .5 + (n.health - 50) * .08 + (n.edu - 50) * .03 + W.m.apBonus + fxAdd(n, 'ap');
     n.approval = clamp(n.approval + (apT - n.approval) * .1, 0, 100);
-    const stT = 30 + n.approval * .5 + g.st + n.fort + fxAdd(n, 'st') - w * 5 - (n.aggr || 0) * .1 - Math.max(0, n.unemp - 10) * .5; n.stability = clamp(n.stability + (stT - n.stability) * .08, 0, 100);
+    const ov = overstretch(n); if (ov.cost > 0) { n.cash -= ov.cost; n.overC = Math.round(ov.cost); } else if (n.overC) delete n.overC;
+    const stT = 30 + n.approval * .5 + g.st + n.fort + fxAdd(n, 'st') - w * 5 - (n.aggr || 0) * .1 - Math.max(0, n.unemp - 10) * .5 - ov.st; n.stability = clamp(n.stability + (stT - n.stability) * .08, 0, 100);
     n.aggr = Math.max(0, (n.aggr || 0) - W.m.aggrDecay); if (n.hitBy) for (const k of Object.keys(n.hitBy)) if (W.now - n.hitBy[k] > 48 * HOUR) delete n.hitBy[k];
     if (nuked(W, n)) { n.pop *= .998; n.stability = clamp(n.stability - .2, 0, 100); }
+    if (n.rad) { if (radOn(W, n)) { n.pop *= .9993; n.stability = clamp(n.stability - .05, 0, 100); n.approval = clamp(n.approval - .03, 0, 100); } else delete n.rad; }
+    if (ov.extra > 0) { const held = hs.filter(h => h != n.cap), ratio = (n.troops || 0) / Math.max(1, hs.length * GARRISON), p_ = OVER.reb * ov.extra * (n.stability < 50 ? 2 : 1) * (ratio < 1 ? 2 : 1);
+      if (held.length && rng() < p_) { const far = held.map(h => [h, P[n.cap] ? kmBetween(n.cap, h) : 0]).sort((a, b) => b[1] - a[1]).slice(0, Math.max(1, Math.ceil(held.length / 3))), h = far[Math.floor(rng() * far.length)][0];
+        delete n.hexes[h]; delete W.OWN[h]; if (n.conq) delete n.conq[h]; n.stability = clamp(n.stability - 2, 0, 100);
+        news(W, u, `Unrest in ${n.name}'s overstretched empire: ${pname(h)} broke away and declared independence.`); note(W, u, 'economy', `${pname(h)} broke away. Your empire is overstretched: ${hs.length} provinces is more than your government can hold together. Keep stability high and provinces garrisoned.`); log(n, `${pname(h)} broke away from your overstretched empire.`, W); } }
     if (rogue(W, n)) { n.approval = clamp(n.approval - .1, 0, 100); n.stability = clamp(n.stability - .1, 0, 100); }
     if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; delete n.hexes[h]; delete W.OWN[h]; news(W, u, `Separatists in ${pname(h)} declared independence from ${n.name}.`); note(W, u, 'economy', `Separatists in ${pname(h)} declared independence.`); } }
     if (n.gov !== 'dem' && n.stability < 12 && n.approval < 20 && rng() < .06) { const ks = Object.keys(GOV).filter(k => k !== n.gov); n.gov = ks[Math.floor(rng() * ks.length)]; n.cash *= .7; n.troops = Math.floor(n.troops * .85); n.stability = 45; n.approval = 50; if (n.gov === 'dem') n.nextElection = W.now + W.cfg.electionH * HOUR; news(W, u, `Revolution in ${n.name}. The new regime is a ${GOV[n.gov].n}.`); note(W, u, 'economy', `Revolution! Your nation is now a ${GOV[n.gov].n}.`); }
@@ -1142,6 +1188,8 @@ function Core(PD, CARDS) {
     if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); n.lastTick += k * TICK; changed = true; }
     if (W.now - n.nextCard > 3 * HOUR) n.nextCard = W.now - 3 * HOUR;
     if (rogueCheck(W, u)) changed = true;
+    if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + INSPECT.everyH * HOUR; changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + INSPECT.everyH * HOUR; n.iaeaPaid = fee;
+      log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } }
     if (expedResolve(W, u, rng)) changed = true;
     if (offersExpire(W, u)) changed = true;
     if (n.frozen && n.frozen.until <= W.now) { const a = n.frozen.amt || 0; n.cash += a; n.frozen = null; log(n, `The asset freeze has ended: ${money(a)} returned to your treasury.`, W); note(W, u, 'council', `The World Council asset freeze has ended. ${money(a)} is back in your treasury.`); changed = true; }
@@ -1334,6 +1382,7 @@ function Core(PD, CARDS) {
       case 'offerno': return answerOffer(W, u, String(c.id), false);
       case 'offercancel': return cancelOffer(W, u, String(c.id));
       case 'flag': return setFlag(W, u, c.flag, c.motto);
+      case 'dirty': return dirtyBomb(W, u, c.v, rng);
       case 'color': return setColor(W, u, c.color);
       case 'launch': return launchNuke(W, u, String(c.v), c.h, rng);
       case 'dome': return buildDome(W, u);
@@ -1365,7 +1414,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, DIRTY, canDirty, INSPECT, inspectFee, OVER, overstretch, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
