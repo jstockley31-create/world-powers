@@ -283,7 +283,7 @@ const RESOLUTIONS = {
   truce: { kind: 'global', h: 24, n: 'World truce', d: 'For 24 hours no nation may declare a new war. Wars already declared go on.' },
   // pacts and declarations
   pact: { kind: 'pact', h: 72, n: 'Collective defense pact', d: 'Every nation that votes yes becomes a member for 72 hours. If anyone attacks a member (a battle, a strike or a nuke), every other member automatically declares war on the attacker. Choose whether it covers attacks by AI nations only or by anyone.' },
-  custom: { kind: 'custom', h: 48, n: 'Custom resolution', d: 'Write your own resolution (up to 200 characters). If it passes it is listed as in force with everyone who voted for it, for 24, 48 or 72 hours. It is a public commitment: the game cannot enforce typed text. AI nations do not vote on custom resolutions.' }
+  custom: { kind: 'custom', h: 48, n: 'Custom resolution', d: 'Write your own resolution (up to 500 characters). If it passes it is listed as in force with everyone who voted for it, for 24, 48 or 72 hours. It is a public commitment: the game cannot enforce typed text. AI nations do not vote on custom resolutions.' }
 };
 const EVENTS = {
   recession: { n: 'Global Recession', d: 'Financial markets have crashed worldwide. Economies everywhere are contracting.', h: 8, mod: { gdp: .9, tax: .85, unemp: 3 },
@@ -1627,7 +1627,7 @@ function Core(PD, CARDS) {
         blocLog(mine, `${n.name} built stage ${pr.stage} of ${P_.stages} of the ${P_.n} (${moneyS(cost)}).`, W); return done(`Stage ${pr.stage} of ${P_.stages} built. Next stage in ${BLOC.stageH} hours.`);
       }
       case 'post': {
-        if (!mine) fail('You are not in an alliance.'); const x = cleanName(c.text, 1, 240); if (!x) fail('Write a message first.');
+        if (!mine) fail('You are not in an alliance.'); const x = cleanName(c.text, 1, 1000); if (!x) fail('Write a message first.');
         if ((mine.wall || []).filter(w => w.u === u && W.now - w.t < 60e3).length >= 3) fail('Slow down a little.');
         mine.wall = [{ t: W.now, u, x }, ...(mine.wall || [])].slice(0, BLOC.wall); return done('Posted.');
       }

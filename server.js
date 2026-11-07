@@ -265,13 +265,13 @@ function snapshot(uid) {
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
-function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 300) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
+function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 2000) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
 
 // ---------- notifications (in-game bell + phone/desktop push) ----------
 const prefsOf = uid => ({ ...DEFAULT_PREFS, ...(meta(uid).prefs || {}) });
 function addNote(uid, kind, text, url) {
   if (!S.users[uid]) return; // AI nations have no inbox
-  const n = { id: rid(), t: Date.now(), kind, text: String(text).slice(0, 300), read: false };
+  const n = { id: rid(), t: Date.now(), kind, text: String(text).slice(0, 1000), read: false };
   S.notes[uid] = [n, ...(S.notes[uid] || [])].slice(0, 100); persist();
   sendTo(uid, 'note', n);
   if (prefsOf(uid)[kind] !== false && !isOnline(uid)) pushTo(uid, { title: 'World Powers', body: n.text, url: url || '/play', tag: kind });
@@ -528,7 +528,7 @@ function councilPropose(uid, b) {
   if (type === 'custom') {
     text = typeof b.text === 'string' ? b.text.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, ' ').replace(/\s+/g, ' ').trim() : '';
     if (text.length < 10) throw Object.assign(new Error('Write the resolution (at least 10 characters).'), { status: 400 });
-    if (text.length > 200) throw Object.assign(new Error('Keep it under 200 characters.'), { status: 400 });
+    if (text.length > 500) throw Object.assign(new Error('Keep it under 500 characters.'), { status: 400 });
     if (MOD.isProfane(text)) throw Object.assign(new Error('Please reword your resolution.'), { status: 400 });
     hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
   }
@@ -828,7 +828,7 @@ function nightlyBackup() {
 // ---------- validation ----------
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 const NAME_RE = /^[A-Za-z0-9_ .-]{2,20}$/;
-function cleanChat(d) { const m = Array.isArray(d.m) ? d.m : []; return { m: m.slice(0, 40).filter(x => x && typeof x.x === 'string' && Number.isFinite(x.t)).map(x => ({ t: Math.min(Math.max(0, x.t), Date.now() + 5000), x: MOD.clean(x.x.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200)) })).filter(x => x.x.trim()) }; }
+function cleanChat(d) { const m = Array.isArray(d.m) ? d.m : []; return { m: m.slice(0, 40).filter(x => x && typeof x.x === 'string' && Number.isFinite(x.t)).map(x => ({ t: Math.min(Math.max(0, x.t), Date.now() + 5000), x: MOD.clean(x.x.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, '').replace(/\n{3,}/g, '\n\n').slice(0, 1000)) })).filter(x => x.x.trim()) }; }
 
 // ---------- mail ----------
 function mailSend(me, b) {
@@ -836,7 +836,7 @@ function mailSend(me, b) {
   const to = String(b.to || ''); if (!S.users[to] || to === me.id) throw Object.assign(new Error(BOTS.isBot(to) ? 'This nation is run by the computer and does not read mail.' : 'Choose a leader to write to.'), { status: 400 });
   if (isMuted(me.id)) throw Object.assign(new Error('You are muted by the administrators and cannot send mail right now.'), { status: 403 });
   const subj = MOD.clean(String(b.subj || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80)) || 'No subject';
-  const body = MOD.clean(String(b.body || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 2000)); if (!body) throw Object.assign(new Error('Write a message.'), { status: 400 });
+  const body = MOD.clean(String(b.body || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 5000)); if (!body) throw Object.assign(new Error('Write a message.'), { status: 400 });
   const t = Date.now(), id = rid();
   const msg = { id, from: me.id, to, t, subj, body };
   S.mail[me.id] = [{ ...msg, box: 'out', read: true }, ...(S.mail[me.id] || [])].slice(0, 200);
@@ -1189,7 +1189,7 @@ async function adminRoute(p, req, res, me) {
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
       for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss']) if (c[k] != null) nc[k] = !!c[k];
       if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
-      if (c.motd != null) nc.motd = String(c.motd).slice(0, 300);
+      if (c.motd != null) nc.motd = String(c.motd).slice(0, 1000);
       if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
       if (['yes', 'retaliate', 'no'].includes(c.botWar)) nc.botWar = c.botWar;
       const diff = Object.keys(nc).filter(k => nc[k] !== S.config[k]).map(k => `${k}: ${S.config[k]} → ${nc[k]}`).join('; ');
@@ -1477,7 +1477,7 @@ async function handle(req, res) {
       if (id !== me.id) return send(res, 403, { error: 'You can only change your own data.' });
       if (req.method === 'PUT') {
         if (limited('w:' + me.id, 30, 10e3)) return send(res, 429, { error: 'Slow down.' });
-        let d = await readBody(req, 32 * 1024);
+        let d = await readBody(req, 160 * 1024); // up to 40 messages of 1,000 characters
         if (col === 'online') { d = { t: Date.now() }; touch(me.id, req); }
         else {
           if (isMuted(me.id)) return send(res, 403, { error: 'You are muted by the administrators.' });
