@@ -243,7 +243,15 @@ const DIRTY = { tech: 10, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300,
 const BRIBE = { pct: .25, min: 50e6, rogueX: 2, windowD: 7 };
 const OVER = { at: Infinity, cost: 0 }; // no size penalty of any kind: nations may hold as many provinces as they want
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
-const WARHEAD = { tech: 22, rank: 7, cash: 300e6, steel: 6000, oil: 6000, goods: 4000, buildH: 12, holdH: 24, cdD: 7, km: 1600, nukedH: 48, falloutH: 24, winterH: 24 };
+// nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
+const WARHEAD = { tech: 22, rank: 7, cash: 500e6, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
+// conventional and non-nuclear heavy weapons: real options short of a nuke
+const HEAVY = {
+  ballistic: { n: 'Ballistic missile', ic: '🚀', tech: 12, rank: 3, cash: 3e7, steel: 900, oil: 700, goods: 200, cdH: 6, aggr: 14, domeX: .5, pop: .04, troops: .1, gdp: .05, infra: 1, st: 6 },
+  bombard: { n: 'Naval bombardment', ic: '⚓', tech: 5, rank: 2, ships: 10, oilPer: 5, cdH: 3, aggr: 7 },
+  cyber: { n: 'Cyber attack', ic: '💻', tech: 9, rank: 2, cash: 2e7, goods: 300, cdH: 8, aggr: 5, h: 12, tax: .75, research: 1.5, trace: .35 },
+  emp: { n: 'EMP strike', ic: '⚡', tech: 16, rank: 5, cash: 8e7, steel: 1500, oil: 1500, goods: 1000, cdH: 24, aggr: 25, h: 12, air: .3, gdp: .08, tax: .6 },
+};
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
 const COVERT = {
@@ -844,7 +852,7 @@ function Core(PD, CARDS) {
   }
 
   // air and missile strikes: damage without invading
-  function canStrike(W, u, v) {
+  function canStrike(W, u, v, noRearm) {
     const me = W.A[u], n = W.A[v]; if (!me) return 'Found a nation first.'; if (!n || v === u) return 'Unknown nation.';
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
@@ -853,7 +861,7 @@ function Core(PD, CARDS) {
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     const theyHitMe = hitRecently(W, u, v);
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
-    if (left(W, me, 'strike')) return `Your strike forces are rearming: ${fmtT(left(W, me, 'strike'))}.`;
+    if (!noRearm && left(W, me, 'strike')) return `Your strike forces are rearming: ${fmtT(left(W, me, 'strike'))}.`;
     return null;
   }
   const MISSILE = { tech: 8, cash: 4e5, steel: 40, oil: 40 };
@@ -927,13 +935,61 @@ function Core(PD, CARDS) {
     (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h, place, kind: 'missile', dirty: 1, n: 1, lost: 0, hits: icept ? 0 : 1, icept, target: 'dirty', t: W.now });
     return { msg: icept ? `Their Golden Dome shot down your dirty bomb.` : `Dirty bomb detonated over ${place}: ${sum}.`, dirty: { h, icept, dmg } };
   }
+  // HEAVY WEAPONS: ballistic missiles, naval bombardment, cyber attacks and EMP strikes. Each has its own cooldown, separate from air and missile strikes.
+  const coastOf = (W, u) => hexesOf(W, u).filter(isCoastal);
+  function canHeavy(W, u, v, k) {
+    const H = HEAVY[k]; if (!H) return 'Unknown weapon.'; const why = canStrike(W, u, v, true); if (why) return why; const me = W.A[u], d = W.A[v];
+    if ((me.tech || 0) < H.tech) return `${H.n} requires tech level ${H.tech}.`;
+    if (rankOf(me.xp) < H.rank) return `${H.n} requires the rank of ${RANKS[H.rank][1]}.`;
+    if (left(W, me, 'hv_' + k)) return `Your next ${H.n.toLowerCase()} is ready in ${fmtT(left(W, me, 'hv_' + k))}.`;
+    if (k === 'bombard') { if (!coastOf(W, u).length) return 'You need a coastal province to bombard from.'; if (!coastOf(W, v).length) return `${d.name} has no coast to bombard.`; if ((me.ships || 0) < H.ships) return `A bombardment needs at least ${H.ships} warships (you have ${me.ships || 0}).`; if ((me.res.oil || 0) < H.oilPer * me.ships) return `Needs ${num(H.oilPer * me.ships)} oil (${H.oilPer} per warship).`; return null; }
+    const c = heavyCost(k); if (me.cash < (c.cash || 0) || (me.res.steel || 0) < (c.steel || 0) || (me.res.oil || 0) < (c.oil || 0) || (me.res.goods || 0) < (c.goods || 0)) return `${H.n} costs ${heavyCostTxt(k)}.`;
+    return null;
+  }
+  const heavyCost = k => { const H = HEAVY[k]; return { cash: H.cash || 0, steel: H.steel || 0, oil: H.oil || 0, goods: H.goods || 0 }; };
+  const heavyCostTxt = k => { const c = heavyCost(k); return [c.cash ? money(c.cash) : '', c.steel ? `${num(c.steel)} steel` : '', c.oil ? `${num(c.oil)} oil` : '', c.goods ? `${num(c.goods)} goods` : ''].filter(Boolean).join(', ') || 'oil for the fleet'; };
+  const penalty = (W, n, b, h) => { const o = { t: W.now, until: W.now + h * HOUR, src: 'attack' }; for (const x of BOOST_KEYS) if (b[x] != null) o[x] = b[x]; n.boosts = (n.boosts || []).filter(q => q.until > W.now && !BOOST_KEYS.some(x => q[x] != null && o[x] != null)); n.boosts.push(o); n.boosts = n.boosts.slice(-8); };
+  function heavy(W, u, v, k, rng) {
+    const why = canHeavy(W, u, v, k); if (why) fail(why); const H = HEAVY[k], me = W.A[u], d = W.A[v], R = rng || Math.random;
+    if (k !== 'bombard') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
+    me.cd['hv_' + k] = W.now + H.cdH * HOUR;
+    const hs = k === 'bombard' ? coastOf(W, v) : hexesOf(W, v), h = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, place = pname(h), dmg = {};
+    let sum = '', icept = 0, traced = true, fxKind = 'missile', from = me.cap, lost = 0;
+    if (k === 'ballistic') {
+      icept = domeOn(W, d) && R() < domeMis(d) * H.domeX ? 1 : 0;
+      if (!icept) { dmg.pop = Math.floor((d.pop || 0) * H.pop); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops); d.troops -= dmg.troops; dmg.infra = Math.min(d.infra || 0, H.infra); d.infra -= dmg.infra; d.gdp = (d.gdp || 0) * (1 - H.gdp); d.stability = clamp(d.stability - H.st, 0, 100); d.approval = clamp(d.approval - 4, 0, 100); }
+      sum = icept ? `${d.name}'s Golden Dome shot it down` : `${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? ', infrastructure −1' : ''}, GDP −${Math.round(H.gdp * 100)}%`;
+    } else if (k === 'bombard') {
+      const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .3 + S * .02)); me.ships -= lost;
+      const Pw = (S - lost) * techF(me); dmg.troops = Math.min(Math.floor((d.troops || 0) * .15), Math.round(Pw * 15)); d.troops -= dmg.troops; dmg.ships = Math.min(d.ships || 0, Math.floor(Pw / 12)); d.ships -= dmg.ships;
+      dmg.infra = Pw >= 60 ? Math.min(d.infra || 0, 1) : 0; d.infra -= dmg.infra; dmg.gdp = Math.min(.04, Pw * .0005); d.gdp = (d.gdp || 0) * (1 - dmg.gdp);
+      const mc = coastOf(W, u); from = mc.length ? mc.sort((a, b) => kmBetween(+a, +h) - kmBetween(+b, +h))[0] : me.cap;
+      sum = `${num(dmg.troops)} troops killed${dmg.ships ? `, ${dmg.ships} warships sunk` : ''}${dmg.infra ? ', infrastructure −1' : ''}, GDP −${(dmg.gdp * 100).toFixed(1)}%${lost ? ` (you lost ${lost} warship${lost > 1 ? 's' : ''})` : ''}`;
+    } else if (k === 'cyber') {
+      traced = R() < H.trace; fxKind = null; penalty(W, d, { tax: H.tax, research: H.research }, H.h); d.stability = clamp(d.stability - 3, 0, 100);
+      sum = `tax revenue −${Math.round((1 - H.tax) * 100)}% and research costs +${Math.round((H.research - 1) * 100)}% for ${H.h} hours`;
+    } else if (k === 'emp') {
+      d.empT = W.now + H.h * HOUR; dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
+      sum = `${num(dmg.air)} aircraft knocked out, GDP −${Math.round(H.gdp * 100)}%, tax revenue −${Math.round((1 - H.tax) * 100)}%${d.dome ? ' and the Golden Dome offline' : ''} for ${H.h} hours`;
+    }
+    const def = defending(W, u, v), add = !traced || rogue(W, d) || def ? 0 : Math.round(H.aggr * aggrScale(W, v)); me.aggr = addAggr(W, me, v, add); rogueCheck(W, u);
+    if (traced) me.approval = clamp(me.approval - (k === 'emp' ? 5 : k === 'ballistic' ? 4 : 2), 0, 100);
+    const who = traced ? me.name : 'Unknown hackers';
+    log(me, `Your ${H.n.toLowerCase()} on ${k === 'cyber' ? d.name : `${place}, ${d.name}`}: ${sum}.${k === 'cyber' ? traced ? ' The attack was traced back to you.' : ' It was not traced back to you.' : ''}`, W);
+    log(d, `${H.ic} ${who} ${k === 'cyber' ? 'broke into your government networks' : `hit ${place} with a ${H.n.toLowerCase()}`}: ${sum}.`, W);
+    note(W, v, 'attack', `${H.ic} ${who} ${k === 'cyber' ? 'launched a cyber attack on your nation' : `hit ${place} with a ${H.n.toLowerCase()}`}: ${sum}.`);
+    if (traced) { news(W, u, icept ? `${H.ic} ${me.name} fired a ballistic missile at ${d.name}, but the Golden Dome shot it down.` : `${H.ic} ${me.name} ${k === 'cyber' ? `launched a cyber attack on ${d.name}` : `hit ${place}, ${d.name}, with a ${H.n.toLowerCase()}`}.`); for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${H.ic} ${me.name} used a ${H.n.toLowerCase()} on your ally ${d.name}.`); aggrHit(W, u, v, H.n.toLowerCase()); }
+    gainXP(W, u, 12); touch(W, u, v);
+    if (fxKind) (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from, h, place, kind: fxKind, heavy: k, n: k === 'bombard' ? me.ships + lost : 1, lost, hits: icept ? 0 : 1, icept, target: k, t: W.now });
+    return { msg: `${H.ic} ${H.n}: ${sum}.${k === 'cyber' ? traced ? ' They traced it back to you.' : ' They don\'t know it was you.' : ''}`, heavy: { k, h, icept, traced, dmg } };
+  }
   // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.
   const DOME = { tech: 14, rank: 5, cash: 150e6, steel: 4000, goods: 3000, oil: 2000, buildH: 12, upkeep: 2e5, mis: .75, nuke: .4,
     // upgrade levels: each one shoots down more missiles and has a better chance against a nuclear missile
     lv: { max: 5, mis: [.75, .8, .85, .89, .92], nuke: [.4, .5, .58, .65, .72], cash: [0, 1e8, 1.75e8, 2.75e8, 4e8], steel: [0, 2000, 3000, 4500, 6000], goods: [0, 1500, 2500, 3500, 5000], oil: [0, 1000, 1500, 2500, 3500], tech: [14, 15, 16, 18, 20], h: [0, 6, 8, 10, 12] } };
   const domeLvl = n => n && n.dome ? clamp(n.dome.lvl || 1, 1, DOME.lv.max) : 0;
   const domeMis = n => DOME.lv.mis[domeLvl(n) - 1] || DOME.mis, domeNuke = n => DOME.lv.nuke[domeLvl(n) - 1] || DOME.nuke;
-  const domeOn = (W, n) => !!(n && n.dome && n.dome.ready <= (W ? W.now : Date.now()) && !n.dome.off && (n.cash || 0) >= 0);
+  const domeOn = (W, n) => !!(n && n.dome && n.dome.ready <= (W ? W.now : Date.now()) && !n.dome.off && !((n.empT || 0) > (W ? W.now : Date.now())) && (n.cash || 0) >= 0);
   function canDome(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
     if (n.dome) return n.dome.ready > W.now ? 'Your Golden Dome is under construction.' : 'Your Golden Dome is already protecting your nation.';
@@ -1051,16 +1107,18 @@ function Core(PD, CARDS) {
     { const cf = ceasefireMsg(W, me, d); if (cf) return cf; }
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     if (!d.ai && W.now - d.created < W.cfg.protectH * HOUR) return `${d.name} is under new-nation protection.`;
+    // a last resort: only after a full day of war, unless they have already nuked you
+    if (!W.cfg.nukeTest && !struckBy(W, me, v) && W.now - warSince(W, u, v) < WARHEAD.warH * HOUR) return `A nuclear strike is a last resort: you must be at war with ${d.name} for ${WARHEAD.warH} hours first (${fmtT(WARHEAD.warH * HOUR - (W.now - warSince(W, u, v)))} left).`;
     // several nations may strike the same country, one after another (each strike adds its own damage)
     return null;
   }
   function detonate(W, u, v, h, retaliation) {
     const me = W.A[u], d = W.A[v], pct = x => Math.round(x * 100);
     // ground zero
-    const loss = { pop: Math.round(d.pop * .25), troops: Math.floor((d.troops || 0) * .5), ships: Math.floor((d.ships || 0) * .3), air: Math.floor((d.air || 0) * .4), infra: Math.min(d.infra || 0, 3) };
-    d.pop -= loss.pop; d.troops -= loss.troops; d.ships -= loss.ships; d.air -= loss.air; d.infra -= loss.infra; d.gdp = (d.gdp || 0) * .6;
-    for (const r in RES) d.res[r] = Math.floor((d.res[r] || 0) * .6);
-    d.approval = clamp(d.approval - 30, 0, 100); d.stability = clamp(d.stability - 40, 0, 100); d.health = clamp((d.health || 50) - 25, 0, 100); d.morale = clamp((d.morale || 50) - 30, 0, 100);
+    const loss = { pop: Math.round(d.pop * .45), troops: Math.floor((d.troops || 0) * .7), ships: Math.floor((d.ships || 0) * .5), air: Math.floor((d.air || 0) * .6), infra: Math.min(d.infra || 0, 5) };
+    d.pop -= loss.pop; d.troops -= loss.troops; d.ships -= loss.ships; d.air -= loss.air; d.infra -= loss.infra; d.gdp = (d.gdp || 0) * .4;
+    for (const r in RES) d.res[r] = Math.floor((d.res[r] || 0) * .45);
+    d.approval = clamp(d.approval - 35, 0, 100); d.stability = clamp(d.stability - 50, 0, 100); d.health = clamp((d.health || 50) - 35, 0, 100); d.morale = clamp((d.morale || 50) - 35, 0, 100);
     d.nuked = { t: W.now, until: Math.max(W.now + WARHEAD.nukedH * HOUR, d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name };
     d.nukedBy = Object.fromEntries(Object.entries({ ...(d.nukedBy || {}), [u]: W.now }).filter(([, t]) => W.now - t < 72 * HOUR));
     // fallout zone and worldwide nuclear winter
@@ -1068,18 +1126,25 @@ function Core(PD, CARDS) {
     for (const x of Object.keys(W.A)) {
       const n = W.A[x]; if (x === v) continue; n.winter = Math.max(n.winter || 0, W.now + WARHEAD.winterH * HOUR); n.health = clamp((n.health || 50) - 3, 0, 100); n.stability = clamp(n.stability - 3, 0, 100);
       const near = hexesOf(W, x).some(k => kmBetween(+k, +h) <= WARHEAD.km);
-      if (near) { n.fallout = Math.max(n.fallout || 0, W.now + WARHEAD.falloutH * HOUR); n.pop = Math.round(n.pop * .94); n.health = clamp(n.health - 12, 0, 100); n.approval = clamp(n.approval - 10, 0, 100); hit.push(x); note(W, x, 'war', `☢ Radioactive fallout from the strike on ${d.name} is drifting over your nation: population −6%, health falling, tax revenue halved for ${WARHEAD.falloutH} hours.`); }
+      if (near) { n.fallout = Math.max(n.fallout || 0, W.now + WARHEAD.falloutH * HOUR); n.pop = Math.round(n.pop * .9); n.health = clamp(n.health - 20, 0, 100); n.approval = clamp(n.approval - 15, 0, 100); n.stability = clamp(n.stability - 8, 0, 100); hit.push(x);
+        // the fallout makes them furious: a just cause to fight the launcher for a week (attacking it adds no aggression), and some AI nations go to war over it
+        if (x !== u) { n.cb = n.cb || {}; n.cb[u] = Math.max(n.cb[u] || 0, W.now + WARHEAD.angerD * 864e5); n.nukeGrudge = { ...(n.nukeGrudge || {}), [u]: W.now }; }
+        note(W, x, 'war', `☢ Radioactive fallout from ${me.name}'s strike on ${d.name} is drifting over your nation: population −10%, health −20, approval −15, tax revenue halved for ${WARHEAD.falloutH} hours. You have a just cause against ${me.name} for ${WARHEAD.angerD} days.`); }
       touch(W, x);
     }
     // the attacker becomes a pariah. A second strike (automatic retaliation, or answering a nation that nuked you in the last 72 hours) is defense, not aggression.
     const secondStrike = retaliation || struckBy(W, me, v);
     me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR;
+    // AI nations poisoned by the fallout may declare war on the launcher (unless they are its allies)
+    if (!secondStrike) for (const x of hit) { const n = W.A[x]; if (x === u || !n || !n.ai || n.ai.boss || atWar(W, x, u) || allies(W, u).includes(x) || Math.random() >= WARHEAD.aiWar) continue;
+      setRel(n, u, 'war', W.now); setRel(n, u, 'unally', W.now); setRel(n, u, 'untrade', W.now); n.rel[u].fair = 1; n.rel[u].def = 1;
+      log(n, `${n.name} declared war on ${me.name} after its nuclear fallout poisoned our people.`, W); note(W, u, 'war', `☢ ${n.name} declared war on you: your fallout poisoned its people.`); news(W, x, `${n.name} declared war on ${me.name} after nuclear fallout drifted over its land.`); touch(W, x); }
     if (!secondStrike) {
       me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + 72 * HOUR);
       for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after its nuclear strike.`); touch(W, a); }
     }
     me.approval = clamp(me.approval - (secondStrike ? 5 : me.gov === 'dic' ? 5 : 20), 0, 100);
-    const sum = `${num(loss.pop)} people and ${num(loss.troops)} troops killed${loss.infra ? `, ${loss.infra} infrastructure level${loss.infra > 1 ? 's' : ''} destroyed` : ''}, GDP −40%, tax collection halted for ${WARHEAD.nukedH} hours`;
+    const sum = `${num(loss.pop)} people and ${num(loss.troops)} troops killed${loss.infra ? `, ${loss.infra} infrastructure level${loss.infra > 1 ? 's' : ''} destroyed` : ''}, GDP −60%, tax collection halted for ${WARHEAD.nukedH} hours`;
     log(me, `☢ Your nuclear strike on ${pname(h)} (${d.name}): ${sum}. Your nation is now a rogue state for at least 72 hours.`, W);
     log(d, `☢ ${me.name} detonated a nuclear weapon over ${pname(h)}: ${sum}.`, W);
     note(W, v, 'attack', `☢ ${me.name} launched a nuclear strike on ${pname(h)}. ${sum}.`);
@@ -1904,6 +1969,7 @@ function Core(PD, CARDS) {
       case 'offercancel': return cancelOffer(W, u, String(c.id));
       case 'flag': return setFlag(W, u, c.flag, c.motto);
       case 'dirty': return dirtyBomb(W, u, c.v, rng);
+      case 'heavy': return heavy(W, u, String(c.v), String(c.k), rng);
       case 'color': return setColor(W, u, c.color);
       case 'launch': return launchNuke(W, u, String(c.v), c.h, rng);
       case 'dome': return buildDome(W, u);
@@ -1943,7 +2009,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
