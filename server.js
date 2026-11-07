@@ -54,11 +54,13 @@ setTimeout(() => { for (const fx of S.ntestPending.slice()) { if (Date.now() - f
 const BURN_MS = 24 * HOUR; S.burn = S.burn && typeof S.burn === 'object' && !Array.isArray(S.burn) ? S.burn : {};
 function burnList() { const now = Date.now(), out = []; for (const [h, b] of Object.entries(S.burn)) { if (now - b.t < BURN_MS) out.push([+h, b.t, b.n]); else delete S.burn[h]; } return out; }
 S.council = S.council || { props: [], active: {} };
+S.blocs = Object.assign(Object.create(null), S.blocs && typeof S.blocs === 'object' ? S.blocs : {}); // alliances (teams)
+S.crisis = S.crisis || null; S.crisisHist = S.crisisHist || []; S.games = S.games || null; S.gamesHist = S.gamesHist || []; S.dis = Array.isArray(S.dis) ? S.dis : []; if (!S.nextGames) S.nextGames = Date.now() + 12 * HOUR; if (!S.nextDis) S.nextDis = Date.now() + 3 * HOUR; if (!S.nextCrisis) S.nextCrisis = Date.now() + 36 * HOUR; // world crises
 // the Council no longer raises inspection votes on its own (nuclear nations pay a daily inspection fee instead): withdraw any that are still open
 for (const p of S.council.props || []) if (p.status === 'open' && p.auto && p.type === 'inspect') { p.status = 'failed'; p.result = 'withdrawn'; p.end = Date.now(); }
 if (S.mapVersion !== MAP_VERSION) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/') || k.startsWith('online/') || (k.startsWith('chat/') && k !== 'chat/_system')) delete S.docs[k];
-  S.council = { props: [], active: {} }; S.event = null; S.mapVersion = MAP_VERSION;
+  S.council = { props: [], active: {} }; S.event = null; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.mapVersion = MAP_VERSION;
 }
 // every id-keyed map gets no prototype, so ids like "__proto__" or "constructor" can never match anything
 for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = Object.assign(Object.create(null), S[k]);
@@ -66,7 +68,7 @@ if (!S.adminPath) S.adminPath = '/hq-' + crypto.randomBytes(12).toString('hex');
 if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 // ---------- fair play: a fingerprint of the exact game code running, its release history, and a public log of admin game actions ----------
-const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot']);
+const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
 const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
 const CODE = CODE_FILES.filter(f => fs.existsSync(path.join(__dirname, f))).map(f => ({ name: f, sha: crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, f))).digest('hex') }));
 const FINGERPRINT = crypto.createHash('sha256').update(CODE.map(c => c.name + ':' + c.sha).join('\n')).digest('hex');
@@ -230,7 +232,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 // ---------- what other players may see ----------
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
+    approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, dev: n.dev || {}, prestige: n.prestige || 0, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
 }
@@ -250,11 +252,16 @@ function sendNation(id) {
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
 const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => p), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
+// alliances: everyone sees names, flags, members, projects and treasuries; only members read their own message board
+function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [] }; } return out; }
+const crisisView = () => S.crisis ? { ...S.crisis } : null;
+const disView = () => S.dis.filter(d => Date.now() < d.until + 6 * HOUR);
+function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.uid)); }
 function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilView(), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -286,7 +293,10 @@ function effCfg() {
   return c;
 }
 const bossBreatherH = () => { const h = +((S.config.boss || {}).breatherH); return isFinite(h) && h >= 0 ? h : 48; };
-const mkWorld = () => core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council);
+const extW = () => ({ games: S.games, dis: S.dis });
+const mkWorld = () => core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council, S.blocs, S.crisis, extW());
+// how long a nuclear missile takes to reach its target on everyone's globe (the client uses the same formula), plus the camera's lead-in
+function nukeFlightMs(fx) { const a = core.P[fx.from], b = core.P[fx.h]; if (!a || !b) return 4000; const r = Math.PI / 180, s2 = Math.sin((b.c[1] - a.c[1]) * r / 2) ** 2 + Math.cos(a.c[1] * r) * Math.cos(b.c[1] * r) * Math.sin((b.c[0] - a.c[0]) * r / 2) ** 2, d = 2 * Math.asin(Math.min(1, Math.sqrt(s2))); return Math.round(Math.max(26000, Math.min(48000, 26000 + d * 9000)) + 1500); }
 function commit(W) {
   for (const f of W.fallen || []) {
     { const was = S.docs['nations/' + f.id]; if (was && was.ai && was.ai.boss) { S.bossFell = Date.now(); systemMessage(`🎉 The Rising Power ${f.name} has fallen to ${f.byName}! The world is safe — for now. Another power may rise in ${bossBreatherH()} hours.`); broadcast('announce', { text: `The Rising Power ${f.name} has fallen!` }); } }
@@ -297,7 +307,12 @@ function commit(W) {
     sendNation(f.id);
     broadcast('announce', { text: `${f.name} has fallen to ${f.byName}.` }); broadcast('fallenlist', S.fallen.slice(0, 30));
   }
+  rebelSpawn(W);
   for (const u of W.changed) { if (W.A[u]) S.docs['nations/' + u] = W.A[u]; sendNation(u); }
+  if (W.bch) { W.bch = false; persist(); sendBlocs(); }
+  if (W.crch) { W.crch = false; persist(); broadcast('crisis', crisisView()); }
+  if (W.gch) { W.gch = false; persist(); broadcast('games', S.games); }
+  if (W.disch) { W.disch = false; persist(); broadcast('dis', disView()); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
   // nuclear tests: everyone online watches it happen
@@ -311,23 +326,135 @@ function commit(W) {
   for (const fx of W.nukeFx || []) {
     const t = fx.intercepted ? `🛡 NUCLEAR MISSILE INTERCEPTED: ${fx.toName}'s Golden Dome destroyed the missile ${fx.byName} fired at ${fx.place}.` : `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`;
     // the chat line lands after the missile's flight, which everyone is watching
-    setTimeout(() => systemMessage(t), 20000); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50);
-    if (!fx.intercepted) S.burn[fx.h] = { t: Date.now() + 20000, n: 20 }; // ground zero burns for a day
+    const fl = nukeFlightMs(fx); setTimeout(() => systemMessage(t), fl); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50);
+    if (!fx.intercepted) S.burn[fx.h] = { t: Date.now() + fl, n: 20 }; // ground zero burns for a day
     persist();
   }
   if (W.welcome) { systemMessage(W.welcome); broadcast('announce', { text: W.welcome }); }
 }
 const humans = W => Object.keys(W.A).filter(u => !BOTS.isBot(u));
+// provinces that broke away become small AI nations (a few at most; beyond that the land is simply free to settle)
+function rebelSpawn(W) {
+  const list = W.breakaways || []; W.breakaways = []; if (!list.length) return;
+  for (const b of list) {
+    const rebels = Object.values(W.A).filter(n => n.ai && n.ai.rebel).length; if (rebels >= WP.REBEL.maxNations) { systemMessage(`${core.pname(b.h)} broke away from ${b.fromName} and is now free land.`); continue; }
+    const id = 'ai_' + crypto.randomBytes(5).toString('hex'), from = W.A[b.from]; const name = core.foundRebel(W, id, b.h, { color: BOTS.distinctColor(W), dev: b.dev, from: b.from, fromName: b.fromName, tech: from ? from.tech : 2 });
+    if (name) { W.changed.add(id); systemMessage(`🏴 ${core.pname(b.h)} has declared independence from ${b.fromName} as ${name}. Its land is up for grabs.`); }
+  }
+}
 
 // AI nations: keep the configured number, retiring the weakest as real players join.
 function botTarget(W) { const real = humans(W).length; const want = Math.max(0, Math.min(30, +S.config.bots || 0)); return S.config.botRetire ? Math.max(0, want - Math.floor(real / 3)) : want; }
 function removeBot(W, u, why) { const n = W.A[u]; if (!n) return; delete W.A[u]; W.changed.delete(u); for (const v of Object.keys(W.A)) if (W.A[v].rel && W.A[v].rel[u]) { delete W.A[v].rel[u]; W.changed.add(v); } setDoc('nations', u, null); W.OWN = core.computeOwn(W.A); if (why) systemMessage(`${n.name} (AI) has withdrawn from the world${why === 'retire' ? ' to make room for new leaders' : ''}.`); }
 function manageBots(W) {
-  const bots = Object.keys(W.A).filter(BOTS.isBot); const target = botTarget(W);
+  const bots = Object.keys(W.A).filter(u => BOTS.isBot(u) && !(W.A[u].ai && W.A[u].ai.rebel)); const target = botTarget(W); // breakaway nations don't count: they exist until someone conquers them
   if (bots.length < target) for (let i = 0; i < target - bots.length; i++) BOTS.spawn(W);
   else if (bots.length > target) { const weakest = bots.filter(b => !(W.A[b].ai && W.A[b].ai.boss)).sort((a, b) => core.score(W, a) - core.score(W, b))[0]; if (weakest) removeBot(W, weakest, 'retire'); } // the Rising Power is never quietly retired: it has to be beaten
 }
 
+// ---------- world crises ----------
+const CRISIS_DEF = { auto: true, everyD: 4, hours: 24, diff: 'normal', types: ['pandemic', 'asteroid', 'aliens'] };
+const crisisCfg = () => { const c = { ...CRISIS_DEF, ...(S.config.crisis || {}) }; c.types = (Array.isArray(c.types) ? c.types : CRISIS_DEF.types).filter(k => WP.CRISES[k]); return c; };
+const crisisLive = () => !!(S.crisis && !S.crisis.over && Date.now() < S.crisis.end + 60e3);
+function crisisStart(key, hours, diff, by) {
+  const K = WP.CRISES[key]; if (!K) throw Object.assign(new Error('Unknown crisis.'), { status: 400 });
+  if (crisisLive()) throw Object.assign(new Error('A world crisis is already under way. End it first.'), { status: 400 });
+  hours = Math.max(2, Math.min(96, Math.round(+hours || crisisCfg().hours))); diff = WP.CRISIS.diff[diff] ? diff : 'normal';
+  let W = mkWorld(); const now = Date.now(); let boss = null;
+  if (key === 'boss') {
+    boss = Object.keys(W.A).find(u => W.A[u].ai && W.A[u].ai.boss) || null;
+    if (!boss) { if (!Object.keys(W.A).some(k => BOTS.isBot(k))) throw Object.assign(new Error('There are no AI nations to become the Rising Power.'), { status: 400 });
+      S.bossFell = 0; S.config.aiBoss = true; W = mkWorld(); boss = BOTS.raiseBoss(W, W.cfg, ''); if (!boss) throw Object.assign(new Error('Could not raise a Rising Power right now.'), { status: 400 }); commit(W); W = mkWorld(); }
+    S.config.aiBoss = true;
+  }
+  S.crisis = { id: rid(), key, diff, start: now, end: now + hours * HOUR, goal: core.crisisGoal(W, diff), pool: 0, botPool: 0, contrib: {}, choice: {}, by: by || null };
+  if (boss) { S.crisis.boss = boss; S.crisis.bossName = W.A[boss].name; S.crisis.bossProv0 = core.hexesOf(W, boss).length; }
+  const t = `${K.ic} WORLD CRISIS — ${K.n}: ${K.d} ${key === 'boss' ? `Bring down ${S.crisis.bossName}` : `The world needs ${WP.moneyS(S.crisis.goal)}`} within ${hours} hours. Cooperate or exploit: choose on your Overview page.`;
+  systemMessage(t); broadcast('announce', { text: `World crisis: ${K.n}` }); broadcast('crisis', crisisView());
+  for (const u of Object.keys(S.users)) if (S.docs['nations/' + u]) addNote(u, 'event', t);
+  persist(); return S.crisis;
+}
+function crisisFinish(W, ok, why) {
+  const cr = S.crisis; if (!cr || cr.over) return; W.CR = cr; const K = WP.CRISES[cr.key];
+  let line;
+  if (ok === null) { cr.over = Date.now(); cr.ok = null; line = `${K.ic} The world crisis "${K.n}" was called off${why ? ` (${why})` : ''}.`; }
+  else { line = core.crisisEnd(W, ok, rng); if (W.impact != null) { S.burn[W.impact] = { t: Date.now(), n: 20 }; burnList(); broadcast('firesout'); } }
+  cr.result = line; S.crisisHist.unshift({ id: cr.id, key: cr.key, start: cr.start, over: cr.over, ok: cr.ok, goal: cr.goal, pool: cr.pool, top: cr.top || [], coop: Object.values(cr.choice || {}).filter(x => x === 'coop').length, exploit: Object.values(cr.choice || {}).filter(x => x === 'exploit').length, result: line });
+  S.crisisHist = S.crisisHist.slice(0, 30); const c = crisisCfg(); S.nextCrisis = Date.now() + c.everyD * 864e5 * (.8 + rng() * .4);
+  W.crch = true; systemMessage(line); broadcast('announce', { text: line.slice(0, 140) }); persist();
+}
+// AI nations take part: most cooperate and chip in a little now and then (never more than 45% of the goal in total, so players decide the outcome)
+function crisisBots(W) {
+  const cr = S.crisis; if (!core.crisisOn(W)) return;
+  for (const u of Object.keys(W.A)) { if (!BOTS.isBot(u)) continue; const n = W.A[u]; if (n.ai && n.ai.boss) continue; const ch = (cr.choice || {})[u];
+    if (!ch) { if (rng() < .03) { const ex = n.ai && n.ai.p === 'warlord' ? .6 : .12; try { core.exec(W, u, { c: 'crisis', op: rng() < ex ? 'exploit' : 'coop' }, rng); } catch (e) { if (!e.user) throw e; } } continue; }
+    if (ch === 'coop' && cr.key !== 'boss' && (cr.botPool || 0) < cr.goal * WP.CRISIS.botShare && rng() < 1 / 40) { const a = Math.floor(Math.min((n.cash || 0) * .006, cr.goal * WP.CRISIS.botShare - (cr.botPool || 0))); if (a >= WP.CRISIS.minGive) try { core.exec(W, u, { c: 'crisis', op: 'give', amt: a }, rng); } catch (e) { if (!e.user) throw e; } }
+  }
+}
+function crisisCheck(W) {
+  const cr = S.crisis; if (!cr || cr.over) return; const now = Date.now(); W.CR = cr;
+  if (cr.key === 'boss') { const b = W.A[cr.boss]; if (!b) return crisisFinish(W, true); if (!(b.ai && b.ai.boss)) return crisisFinish(W, null, 'its backers pulled out'); }
+  else if ((cr.pool || 0) >= cr.goal) return crisisFinish(W, true);
+  if (now >= cr.end) return crisisFinish(W, false);
+}
+function crisisLoop(W) {
+  const now = Date.now(), c = crisisCfg();
+  if (S.crisis && !S.crisis.over) { crisisBots(W); crisisCheck(W); return; }
+  if (S.crisis && S.crisis.over && now - S.crisis.over > 12 * HOUR) { S.crisis = null; W.crch = true; }
+  if (c.auto && c.types.length && now >= S.nextCrisis && !crisisLive() && humans(W).length >= 2) {
+    const last = (S.crisisHist[0] || {}).key, pool = c.types.filter(k => k !== last); const key = (pool.length ? pool : c.types)[Math.floor(rng() * (pool.length || c.types.length))];
+    S.nextCrisis = now + HOUR; setTimeout(() => { try { crisisStart(key, c.hours, c.diff, null); } catch (e) { S.nextCrisis = Date.now() + 6 * HOUR; } }, 0); // after this world update has been saved
+  }
+}
+// ---------- the World Games ----------
+const GAMES_DEF = { auto: true, everyD: 3, hours: 24 };
+const gamesCfg = () => ({ ...GAMES_DEF, ...(S.config.games || {}) });
+function gamesStart(hours, by) {
+  if (S.games && !S.games.over) throw Object.assign(new Error('The World Games are already on.'), { status: 400 });
+  hours = Math.max(2, Math.min(96, Math.round(+hours || gamesCfg().hours))); const now = Date.now();
+  S.games = { id: rid(), start: now, end: now + hours * HOUR, inv: {}, spent: {}, botSpent: 0, by: by || null };
+  const t = `🏅 THE WORLD GAMES HAVE BEGUN! For ${hours} hours nations compete in Athletics, the Science Expo and the Culture Festival. Invest on your Overview page: gold, silver and bronze bring prestige and approval.`;
+  systemMessage(t); broadcast('announce', { text: 'The World Games have begun!' }); broadcast('games', S.games); for (const u of Object.keys(S.users)) if (S.docs['nations/' + u]) addNote(u, 'event', t); persist();
+}
+function gamesFinish(W) { const G = S.games; if (!G || G.over) return; W.G = G; const line = core.gamesEnd(W); S.gamesHist.unshift({ id: G.id, start: G.start, over: G.over, results: G.results, champ: G.champ || null }); S.gamesHist = S.gamesHist.slice(0, 20); S.nextGames = Date.now() + gamesCfg().everyD * 864e5 * (.85 + rng() * .3); W.gch = true; systemMessage(line); broadcast('announce', { text: line.slice(0, 140) }); persist(); }
+function gamesLoop(W) {
+  const now = Date.now(), c = gamesCfg(), G = S.games;
+  if (G && !G.over) {
+    if (now >= G.end) return gamesFinish(W);
+    const tot = Object.values(G.spent || {}).reduce((a, b) => a + b, 0);
+    for (const u of Object.keys(W.A)) { if (!BOTS.isBot(u) || rng() > 1 / 60) continue; const n = W.A[u]; if (n.ai && n.ai.boss) continue; if ((G.botSpent || 0) > Math.max(5e7, tot * WP.GAMES.botShare)) break;
+      const cat = Object.keys(WP.GAMES.cats)[Math.floor(rng() * 3)], a = Math.floor((n.cash || 0) * .004); if (a >= WP.GAMES.minGive) try { core.exec(W, u, { c: 'games', cat, amt: a }, rng); } catch (e) { if (!e.user) throw e; } }
+    return;
+  }
+  if (G && G.over && now - G.over > 12 * HOUR) { S.games = null; W.gch = true; }
+  if (c.auto && now >= S.nextGames && humans(W).length >= 2) { S.nextGames = now + HOUR; setTimeout(() => { try { gamesStart(c.hours, null); } catch (e) {} }, 0); }
+}
+// ---------- natural disasters ----------
+const DIS_DEF = { auto: true, everyH: 6 };
+const disCfg = () => ({ ...DIS_DEF, ...(S.config.dis || {}) });
+function disasterStrike(W, u, kind) {
+  const ids = u ? [u] : Object.keys(W.A).filter(v => core.hexesOf(W, v).length && !(W.A[v].ai && W.A[v].ai.boss)); if (!ids.length) return null;
+  const v = ids[Math.floor(rng() * ids.length)], hs = core.hexesOf(W, v), h = hs[Math.floor(rng() * hs.length)], p = core.P[h];
+  kind = WP.DISASTER[kind] && kind.length < 8 ? kind : p.m ? 'quake' : p.co && rng() < .6 ? 'storm' : p.r ? 'flood' : 'fire';
+  const rec = core.disasterHit(W, v, h, kind); if (!rec) return null; S.dis.unshift(rec); S.dis = S.dis.filter(d => Date.now() < d.until + 24 * HOUR).slice(0, 30); W.disch = true;
+  if (kind === 'fire' || kind === 'quake') S.burn[h] = { t: Date.now(), n: kind === 'fire' ? 8 : 4 };
+  systemMessage(`${WP.DISASTER[kind].ic} DISASTER: ${/^[aeiou]/i.test(WP.DISASTER[kind].n) ? 'an' : 'a'} ${WP.DISASTER[kind].n.toLowerCase()} has struck ${rec.place} in ${rec.name}. Send relief from your Overview page to earn prestige.`); return rec;
+}
+function disLoop(W) {
+  const now = Date.now(), c = disCfg();
+  for (const d of S.dis) { if (d.until <= now || d.done || !W.A[d.u] || BOTS.isBot(d.u) && rng() > .5) continue; // AI nations chip in for others now and then (up to 40% of the appeal)
+    for (const u of Object.keys(W.A)) { if (!BOTS.isBot(u) || u === d.u || rng() > 1 / 90) continue; const bot = Object.keys(d.aid).filter(BOTS.isBot).reduce((s, x) => s + d.aid[x], 0); if (bot >= d.need * .4) break; const a = Math.floor(Math.min((W.A[u].cash || 0) * .003, d.need * .4 - bot)); if (a >= WP.DISASTER.minGive) try { core.exec(W, u, { c: 'relief', id: d.id, amt: a }, rng); } catch (e) { if (!e.user) throw e; } } }
+  if (c.auto && now >= S.nextDis && humans(W).length >= 1) { S.nextDis = now + c.everyH * HOUR * (.5 + rng()); disasterStrike(W, null, null); }
+}
+// one world law a day goes to the Council, so world politics never sleeps
+const DAILY_LAWS = ['climate', 'arms', 'freetrade', 'science', 'food', 'health', 'peacekeeping', 'nonukes', 'tariffs', 'freemarket', 'truce'];
+function councilDaily(W) {
+  if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
+  if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
+  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)];
+  S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + 6 * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
+  systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within 6 hours on the World Council page.`); broadcast('council', councilView());
+}
 // ---------- world events ----------
 function startEvent(key, W) {
   const e = WP.EVENTS[key]; if (!e) return false;
@@ -567,7 +694,7 @@ function botVotes(W) {
       }
       else yes = ({ climate: { isolationist: .8, merchant: .6, warlord: .3, expansionist: .4 }, arms: { isolationist: .8, merchant: .6, warlord: .1, expansionist: .3 }, freetrade: { merchant: .95, expansionist: .6, warlord: .4, isolationist: .3 }, peacekeeping: { isolationist: .85, merchant: .7, warlord: .1, expansionist: .3 },
         npt: { isolationist: .85, merchant: .7, warlord: me.nuke ? .5 : .2, expansionist: .45 }, health: { isolationist: .7, merchant: .55, warlord: .35, expansionist: .5 }, science: { isolationist: .7, merchant: .75, warlord: .5, expansionist: .7 },
-        food: { isolationist: .75, merchant: .4, warlord: .55, expansionist: .6 }, debt: { isolationist: .5, merchant: .25, warlord: .6, expansionist: .6 } }[p.type] || {})[per] || .5;
+        food: { isolationist: .75, merchant: .4, warlord: .55, expansionist: .6 }, debt: { isolationist: .5, merchant: .25, warlord: .6, expansionist: .6 }, nonukes: { isolationist: .85, merchant: .75, warlord: me.nuke ? .15 : .4, expansionist: .5 }, tariffs: { isolationist: .7, merchant: .1, warlord: .5, expansionist: .35 }, freemarket: { merchant: .95, expansionist: .65, warlord: .4, isolationist: .25 }, truce: { isolationist: .85, merchant: .7, warlord: .1, expansionist: .3 } }[p.type] || {})[per] || .5;
       if (p.type === 'debt') yes = Math.min(.95, yes + ((me.debt || 0) > (me.gdp || 1) * .3 ? .35 : 0)); // nations in debt want relief
       p.votes[u] = rng() < yes ? 'y' : 'n';
     }
@@ -592,7 +719,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     W.welcome = null; commit(W);
     // world events
@@ -653,7 +780,7 @@ function readyReminders(W) {
 }
 // ---------- rollback snapshots: the game world (nations, council, events) every 10 minutes, kept 26 hours ----------
 const SNAP_DIR = path.join(DATA_DIR, 'snaps'); let lastSnap = 0;
-function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), nations, council: S.council, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
+function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), nations, council: S.council, blocs: S.blocs, crisis: S.crisis, games: S.games, dis: S.dis, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
 function takeSnap(tag) {
   try {
     fs.mkdirSync(SNAP_DIR, { recursive: true }); const t = Date.now(); lastSnap = t;
@@ -669,7 +796,7 @@ function rollback(name, by) {
   takeSnap('undo'); const now = Date.now();
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
   for (const [id, n] of Object.entries(st.nations)) { n.lastTick = now; S.docs['nations/' + id] = n; }
-  S.council = st.council || { props: [], active: {} }; S.event = st.event || null; S.nextEvent = st.nextEvent || now + 6 * HOUR; S.lastEventKey = st.lastEventKey; S.fallen = st.fallen || [];
+  S.council = st.council || { props: [], active: {} }; if (st.blocs) S.blocs = Object.assign(Object.create(null), st.blocs); if (st.crisis !== undefined) S.crisis = st.crisis; if (st.games !== undefined) S.games = st.games; if (Array.isArray(st.dis)) S.dis = st.dis; S.event = st.event || null; S.nextEvent = st.nextEvent || now + 6 * HOUR; S.lastEventKey = st.lastEventKey; S.fallen = st.fallen || [];
   persist(true); const when = new Date(sn.t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' });
   systemMessage(`⏪ The world has been rolled back to ${when} (Mountain time) by the administrators.`);
   broadcast('reload', { t: now }); audit(by, 'Rolled back the world', null, `to ${new Date(sn.t).toISOString()} (${Math.round((now - sn.t) / 60000)} min ago)`);
@@ -835,7 +962,7 @@ function bossPanel(W) {
 function overview() {
   const now = Date.now();
   const nations = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = d;
-  const W = core.world(Object.fromEntries(Object.entries(nations).map(([k, v]) => [k, core.normalize(v)])), effCfg(), now, S.event, S.council);
+  const W = core.world(Object.fromEntries(Object.entries(nations).map(([k, v]) => [k, core.normalize(v)])), effCfg(), now, S.event, S.council, S.blocs, S.crisis, extW());
   const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && now - (d.t || 0) < 5 * 60e3).length;
   let reqs5 = 0; const m = Math.floor(now / 60000); for (let i = 0; i < 5; i++) reqs5 += health.reqs.get(m - i) || 0;
   const flagCount = {}; for (const f of S.flags) flagCount[f.uid] = (flagCount[f.uid] || 0) + 1;
@@ -854,7 +981,7 @@ function overview() {
     health: { uptime: now - START, memoryMB: Math.round(process.memoryUsage().rss / 1048576), heapMB: Math.round(process.memoryUsage().heapUsed / 1048576), dataBytes, lastSave: health.lastSave, loopMs: health.loopMs, saveMs: health.saveMs, saveError: health.saveError, dataDir: DATA_DIR,
       onVolume: volume ? path.resolve(DATA_DIR).startsWith(path.resolve(volume)) : null, volume, streams: clients.size, online, reqs5, cmds: health.cmds, pushes: health.pushes, errors24: health.errors.filter(e => now - e.t < 864e5).length,
       node: process.version, load: os.loadavg()[0], accounts: Object.keys(S.users).length, nations: Object.keys(nations).length, sessions: Object.keys(S.sessions).length, scenarios: SCENARIOS.length, lastBackup: S.lastBackupT || (S.lastBackup ? Date.parse(S.lastBackup + 'T09:00:00Z') : null), pushSubs: Object.values(S.push).reduce((a, s) => a + s.length, 0) },
-    players, bots, botTarget: botTarget(W), bossPanel: bossPanel(W), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
+    players, bots, botTarget: botTarget(W), bossPanel: bossPanel(W), gamesPanel: { games: S.games, hist: S.gamesHist.slice(0, 10), cfg: gamesCfg(), next: S.nextGames }, disPanel: { list: S.dis.slice(0, 15), cfg: disCfg(), next: S.nextDis }, crisisPanel: { crisis: S.crisis, hist: S.crisisHist.slice(0, 15), cfg: crisisCfg(), next: S.nextCrisis, types: Object.fromEntries(Object.entries(WP.CRISES).map(([k, v]) => [k, { n: v.n, ic: v.ic, d: v.d }])), goals: Object.fromEntries(Object.keys(WP.CRISIS.diff).map(d => [d, core.crisisGoal(W, d)])), names: Object.fromEntries(Object.entries(W.A).map(([k, v]) => [k, v.name])) }, blocsAdmin: Object.values(S.blocs).map(b => ({ id: b.id, name: b.name, tag: b.tag, members: (b.members || []).map(m => (W.A[m] || {}).name || m), leader: (W.A[b.leader] || {}).name || '', bank: b.bank || 0, done: Object.keys(b.done || {}).length, created: b.created })), flags: S.flags.slice(0, 300), audit: S.audit.slice(0, 200), errors: health.errors.slice(0, 50), shared, config: S.config, nukes: S.nukes.slice(0, 50), resNames: Object.fromEntries(Object.entries(WP.RESOLUTIONS).map(([k, r]) => [k, r.n])),
     analytics: analytics(), reports: S.reports.slice(0, 100), bugs: S.bugs.filter(x => x.kind !== 'idea').slice(0, 100), ideas: S.bugs.filter(x => x.kind === 'idea').slice(0, 150), schedule: S.schedule, boosts: BOOSTS, backups: backups(), snaps: listSnaps().map(({ name, t, tag }) => ({ name, t, tag })), event: S.event, nextEvent: S.nextEvent, events: Object.fromEntries(Object.entries(WP.EVENTS).map(([k, e]) => [k, e.n])), council: councilView(), war: warRoom(W, nations)
   };
 }
@@ -891,6 +1018,23 @@ async function adminRoute(p, req, res, me) {
     const W = mkWorld(), b = BOTS.raiseBoss(W, W.cfg); if (!b) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
     commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
     audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
+  }
+  if (p === '/api/admin/crisis' && req.method === 'POST') { // Admin page → World crises
+    const b = await readBody(req, 4096), op = String(b.op || '');
+    if (op === 'start') { const cr = crisisStart(String(b.key), b.hours, String(b.diff || ''), me.name); audit(me.name, 'Started world crisis', WP.CRISES[cr.key].n, `${Math.round((cr.end - cr.start) / HOUR)}h · ${cr.diff} · goal ${WP.moneyS(cr.goal)}`); return send(res, 200, { ok: true }); }
+    if (op === 'settings') { const c = crisisCfg(); if (b.auto != null) c.auto = !!b.auto; if (isFinite(+b.everyD) && b.everyD !== '') c.everyD = Math.max(.5, Math.min(30, +b.everyD)); if (isFinite(+b.hours) && b.hours !== '') c.hours = Math.max(2, Math.min(96, Math.round(+b.hours))); if (WP.CRISIS.diff[b.diff]) c.diff = b.diff; if (Array.isArray(b.types)) c.types = b.types.filter(k => WP.CRISES[k]);
+      S.config.crisis = c; if (b.nextH != null && isFinite(+b.nextH) && b.nextH !== '') S.nextCrisis = Date.now() + Math.max(0, +b.nextH) * HOUR; persist(); audit(me.name, 'Changed world crisis settings', JSON.stringify(c)); return send(res, 200, { ok: true }); }
+    if (op === 'gstart') { gamesStart(b.hours, me.name); audit(me.name, 'Started the World Games', null, `${b.hours || gamesCfg().hours}h`); return send(res, 200, { ok: true }); }
+    if (op === 'gend') { if (!S.games || S.games.over) return send(res, 400, { error: 'The World Games are not on.' }); const W = mkWorld(); if (b.cancel) { S.games = null; W.gch = true; systemMessage('The World Games were called off.'); } else gamesFinish(W); commit(W); audit(me.name, 'Ended the World Games', null, b.cancel ? 'cancelled' : 'medals awarded'); return send(res, 200, { ok: true }); }
+    if (op === 'gsettings') { const c = gamesCfg(); if (b.auto != null) c.auto = !!b.auto; if (isFinite(+b.everyD) && b.everyD !== '') c.everyD = Math.max(.5, Math.min(30, +b.everyD)); if (isFinite(+b.hours) && b.hours !== '') c.hours = Math.max(2, Math.min(96, Math.round(+b.hours))); S.config.games = c; persist(); audit(me.name, 'Changed World Games settings', JSON.stringify(c)); return send(res, 200, { ok: true }); }
+    if (op === 'dstrike') { const W = mkWorld(); const t = typeof b.target === 'string' && Object.prototype.hasOwnProperty.call(W.A, b.target) ? b.target : null; const rec = disasterStrike(W, t, String(b.kind || '')); if (!rec) return send(res, 400, { error: 'No nation to strike.' }); commit(W); audit(me.name, 'Triggered a disaster', rec.name, `${rec.kind} at ${rec.place}`); return send(res, 200, { ok: true }); }
+    if (op === 'dsettings') { const c = disCfg(); if (b.auto != null) c.auto = !!b.auto; if (isFinite(+b.everyH) && b.everyH !== '') c.everyH = Math.max(1, Math.min(168, +b.everyH)); S.config.dis = c; persist(); audit(me.name, 'Changed disaster settings', JSON.stringify(c)); return send(res, 200, { ok: true }); }
+    if (op === 'blocdisband') { const bl = S.blocs[String(b.id)]; if (!bl || !Object.prototype.hasOwnProperty.call(S.blocs, String(b.id))) return send(res, 404, { error: 'No such alliance.' }); const W = mkWorld(); for (const m of bl.members || []) if (W.A[m]) { W.A[m].bloc = null; W.changed.add(m); } delete S.blocs[bl.id]; W.bch = true; commit(W); systemMessage(`The alliance ${bl.name} was disbanded by the administrators.`); audit(me.name, 'Disbanded alliance', bl.name); return send(res, 200, { ok: true }); }
+    const cr = S.crisis; if (!cr || cr.over) return send(res, 400, { error: 'There is no world crisis under way.' });
+    if (op === 'extend') { const h = Math.max(1, Math.min(48, Math.round(+b.hours || 6))); cr.end += h * HOUR; persist(); broadcast('crisis', crisisView()); audit(me.name, 'Extended world crisis', WP.CRISES[cr.key].n, `+${h}h`); return send(res, 200, { ok: true }); }
+    if (op === 'goal') { const g = Math.round(+b.goal); if (!(g >= 1e6)) return send(res, 400, { error: 'Enter a goal of at least $1M.' }); cr.goal = g; persist(); broadcast('crisis', crisisView()); audit(me.name, 'Changed world crisis goal', WP.CRISES[cr.key].n, WP.moneyS(g)); const W = mkWorld(); crisisCheck(W); commit(W); return send(res, 200, { ok: true }); }
+    if (op === 'end') { const W = mkWorld(); const res_ = b.result === 'success' ? true : b.result === 'fail' ? false : null; crisisFinish(W, res_, res_ === null ? 'by the administrators' : ''); commit(W); audit(me.name, 'Ended world crisis', WP.CRISES[cr.key].n, b.result || 'cancel'); return send(res, 200, { ok: true }); }
+    return send(res, 400, { error: 'Unknown action.' });
   }
   if (p === '/api/admin/boss' && req.method === 'POST') { // Admin page → Rising Power
     const b = await readBody(req, 4096), op = String(b.op || '');
@@ -1061,7 +1205,7 @@ async function adminRoute(p, req, res, me) {
       if (b.confirm !== 'WIPE') return send(res, 400, { error: 'Type WIPE to confirm.' });
       const backup = path.join(BACKUP_DIR, `backup-before-wipe-${Date.now()}.json`); fs.writeFileSync(backup, JSON.stringify(S)); S.burn = {}; S.strikes = [];
       for (const k of Object.keys(S.docs)) { const [c, id] = k.split('/'); if (COLS.includes(c)) setDoc(c, id, null); }
-      S.flags = []; S.council = { props: [], active: {} }; S.event = null; RH = []; rhGz = null; try { fs.unlinkSync(RANK_FILE); } catch (e) {} broadcast('council', councilView()); broadcast('event', null);
+      S.flags = []; S.council = { props: [], active: {} }; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.event = null; RH = []; rhGz = null; try { fs.unlinkSync(RANK_FILE); } catch (e) {} broadcast('council', councilView()); broadcast('event', null);
       systemMessage('A new era begins: the world has been reset. Found your nation again!');
       audit(me.name, 'Wiped the world', null, 'Backup saved as ' + path.basename(backup)); return send(res, 200, { ok: true });
     }
@@ -1254,11 +1398,12 @@ async function handle(req, res) {
       if (b.c === 'aid' && typeof b.v === 'string' && sharesNetwork(me.id, b.v)) flag(me.id, `Sent aid to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       if (b.c === 'found' && typeof b.name === 'string' && MOD.isProfane(b.name)) return send(res, 400, { error: 'Please choose a different name for your nation.' });
       if (b.c === 'flag' && typeof b.motto === 'string' && MOD.isProfane(b.motto)) return send(res, 400, { error: 'Please choose a different motto.' });
+      if (b.c === 'bloc' && ['name', 'tag', 'motto', 'text'].some(k => typeof b[k] === 'string' && MOD.isProfane(b[k]))) return send(res, 400, { error: 'Please choose different wording.' });
       if (b.c === 'offer' && b.v && S.users[b.v] && sharesNetwork(me.id, b.v)) flag(me.id, `Sent a trade offer to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       let r;
       try { r = core.exec(W, me.id, b, rng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
-      actLog(me.id, W, b, true, r.msg); pactCheck(W);
+      actLog(me.id, W, b, true, r.msg); pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
       commit(W);
       return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok });

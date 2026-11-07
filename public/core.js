@@ -79,6 +79,46 @@ const WONDERS = {
   olympics: { n: 'Olympic Games', d: '+6 approval and +4 stability for good, and +2% GDP from tourism.', stages: 3, cost: { cash: 3e6, goods: 600, food: 800 }, fx: { ap: 6, st: 4, gdp: 1.02 } },
   port: { n: 'Grand Global Port', d: 'Market fees cut in half for you, and trade bonuses count up to 7 partners instead of 5.', stages: 4, cost: { cash: 3.5e6, steel: 500, oil: 400 }, fx: { spread: .04, tcap: 2 } }
 };
+// alliances: teams of nations with a shared treasury, a flag, joint projects and daily team goals
+const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 40, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3 };
+const BPROJ = {
+  market: { n: 'Common Market', d: '+6% tax revenue for every member.', stages: 3, fx: { tax: 1.06 } },
+  defense: { n: 'Mutual Defense Network', d: 'Every member\'s provinces defend 8% better.', stages: 3, fx: { def: 1.08 } },
+  research: { n: 'Joint Research Institute', d: 'Research costs 12% less for every member.', stages: 3, fx: { research: .88 } },
+  devbank: { n: 'Development Bank', d: '+3% GDP for every member.', stages: 4, fx: { gdp: 1.03 } },
+  college: { n: 'War College', d: 'Operations earn 15% more XP for every member.', stages: 3, fx: { xp: 1.15 } },
+  hq: { n: 'Alliance Headquarters', d: '+3 approval and +3 stability for every member, and room for 2 more members (8 instead of 6).', stages: 4, fx: { ap: 3, st: 3 } }
+};
+// world crises: a threat to everyone. Each nation chooses to cooperate (pay into a shared world effort) or exploit (take an instant profit).
+// If the world effort is met in time, the threat is averted and the top contributors are rewarded; if not, disaster strikes.
+const CRISIS = { diff: { easy: .015, normal: .03, hard: .05 }, minGoal: 2e8, botShare: .45, minGive: 1e5, exploitGdp: .03, exploitAggr: 10 };
+const CRISES = {
+  pandemic: { n: 'Pandemic Z', ic: '🦠', d: 'A deadly new virus is spreading across every continent. A joint vaccine program can stop it — if the world funds it in time.',
+    coop: 'Fund the vaccine program', coopD: 'Pay into the global vaccine fund. If it is fully funded in time, the pandemic is stopped and every contributor is rewarded.',
+    exploit: 'Hoard medicine and profit', exploitD: 'Sell scarce medicine at sky-high prices: an instant windfall worth 3% of your GDP, +10 aggression, and the world will remember. If the program fails, your stockpiles protect you from half the losses.',
+    win: 'The vaccine program succeeded and the pandemic is over.', lose: 'The vaccine fund fell short. The pandemic swept the world: every nation lost 4% of its population, and GDP is 8% lower for 24 hours.', during: { gdp: .97 } },
+  asteroid: { n: 'Asteroid Kessler-7', ic: '☄️', d: 'Astronomers have spotted a city-killer asteroid on a collision course with Earth. Only a joint deflection mission can push it off course.',
+    coop: 'Fund the deflection mission', coopD: 'Pay for rockets and engineers. If the mission is fully funded in time, the asteroid is deflected and every contributor is rewarded.',
+    exploit: 'Sell doomsday bunkers', exploitD: 'Sell bunkers to the panicking public: an instant windfall worth 3% of your GDP and +10 aggression. If the asteroid hits, your bunkers spare you the impact winter.',
+    win: 'The deflection mission worked. Kessler-7 sailed harmlessly past Earth.', lose: 'The mission was never funded. Kessler-7 struck the Earth: the impact zone is devastated and an impact winter cuts GDP 10% for 24 hours for everyone without bunkers.' },
+  aliens: { n: 'First Contact', ic: '🛸', d: 'A signal from deep space has been decoded: an alien probe is offering knowledge to a united humanity. It will only share with a world that works together.',
+    coop: 'Join the welcome mission', coopD: 'Pay into a joint mission to meet the probe. If it is fully funded in time, every contributor gains a tech level (top contributors gain two).',
+    exploit: 'Try to seize the probe alone', exploitD: 'Send a secret team to grab the technology for yourself: a 40% chance of +2 tech levels, otherwise the attempt fails and costs you 2% of your treasury. +10 aggression either way.',
+    win: 'The world united and the probe shared its knowledge. Contributors leap ahead in technology.', lose: 'The world could not agree. The probe went silent and left the solar system.' },
+  boss: { n: 'The Rising Power', ic: '⚠', d: 'A Rising Power, armed by foreign backers, threatens to overrun the world. Only a coalition of nations can bring it down before the deadline.',
+    coop: 'Join the coalition', coopD: 'Fight it or fund the coalition: every battle against the Rising Power and every dollar you pay in counts toward your contribution. If it falls in time, the top contributors are rewarded.',
+    exploit: 'Sell arms to the Rising Power', exploitD: 'Profit from the war: an instant windfall worth 3% of your GDP and +10 aggression, but the Rising Power gains 3% more troops from your weapons.',
+    win: 'The coalition brought down the Rising Power.', lose: 'The deadline passed and the Rising Power still stands, emboldened.' }
+};
+// province development: each province can be built up from empty land to a metropolis
+const DEV = { names: ['Undeveloped', 'Farms', 'Industry', 'City', 'Metropolis'], max: 4, mult: [1, 2.5, 6, 14], steel: [0, 100, 300, 800], goods: [0, 50, 200, 600], base: 4e6, gdpPct: .004, cdMin: 15, prod: .3, score: 40, pop: 4e4, gdp: .015 };
+// the World Games: every few days nations invest in three contests; the best get medals and prestige
+const GAMES = { cats: { sport: { n: 'Athletics', ic: '🏅', d: 'Healthier nations get more out of every dollar.' }, science: { n: 'Science Expo', ic: '🔬', d: 'Every tech level makes your money go further.' }, culture: { n: 'Culture Festival', ic: '🎭', d: 'Better-educated nations shine brighter.' } },
+  prestige: [5, 3, 1], ap: [6, 4, 2], xp: [150, 100, 60], minGive: 1e5, botShare: .4 };
+// natural disasters hit real provinces; other nations can send relief and earn prestige
+const DISASTER = { quake: { n: 'Earthquake', ic: '🌋' }, storm: { n: 'Hurricane', ic: '🌀' }, fire: { n: 'Wildfire', ic: '🔥' }, flood: { n: 'Flood', ic: '🌊' }, h: 12, pop: .04, st: 5, needPct: .02, needMin: 5e6, minGive: 1e5 };
+// neglect: unstable empires risk outlying provinces declaring independence and becoming small AI nations
+const REBEL = { st: 35, minProv: 5, p: .0012, spyP: .004, maxNations: 6 };
 const EXPEDS = {
   mountains: { n: 'Mountain survey', d: 'Steel deposits and rare minerals — or an avalanche.', h: 3, cost: { cash: 2.5e5, food: 120, oil: 60 }, res: 'steel' },
   desert: { n: 'Desert prospecting', d: 'Oil fields under the sand — or a sandstorm.', h: 3, cost: { cash: 2.5e5, food: 150, oil: 40 }, res: 'oil' },
@@ -99,7 +139,7 @@ const ACH = {
   rich: ['Fort Knox', '$100 million in the treasury'], streak7: ['Loyal Leader', 'A 7-day login streak'], diplomat: ['Diplomat', '3 allies at once'], trader: ['Merchant Prince', '50 market trades'],
   wonder: ['Wonder of the World', 'Complete a megaproject'], nuclear: ['Nuclear Power', 'Build a nuclear deterrent'], survivor: ['Survivor', 'Lead your nation for 30 days'],
   general: ['Legendary General', 'Have a 5-star general'], senator: ['Senator', 'Reach the rank of Senator'], president: ['President', 'Reach the rank of President'],
-  explorer: ['Explorer', 'Complete 5 expeditions'], lawmaker: ['Lawmaker', 'Have 3 laws in force at once'], missions: ['Dedicated', 'Complete 30 daily missions'], dealmaker: ['Dealmaker', 'Complete 5 direct trades with other nations']
+  explorer: ['Explorer', 'Complete 5 expeditions'], hero: ['World Hero', 'Be a top-3 contributor when the world beats a crisis'], lawmaker: ['Lawmaker', 'Have 3 laws in force at once'], missions: ['Dedicated', 'Complete 30 daily missions'], dealmaker: ['Dealmaker', 'Complete 5 direct trades with other nations']
 };
 const FLAG_LAYOUTS = ['solid', 'h2', 'h3', 'h3w', 'v2', 'v3', 'stripes', 'vstripes', 'cross', 'nordic', 'nordic1', 'saltire', 'union', 'diag', 'diag2', 'bend', 'tri', 'tri3', 'chevron', 'pall', 'hoistband', 'canton', 'starsstripes', 'border', 'frame', 'quad', 'quadcross', 'xquad', 'circle', 'lozenge', 'rays', 'checker', 'wavy', 'mountain'];
 const FLAG_EMBLEMS = ['none', 'star', 'star6', 'star8', 'stars', 'starring', 'sun', 'moon', 'moonstar', 'circle', 'ring', 'shield', 'cross', 'triangle', 'diamond', 'crown', 'laurel', 'anchor', 'gear', 'tree', 'peak', 'waves', 'bolt', 'leaf', 'tower', 'swords', 'eagle', 'atom', 'flame', 'heart'];
@@ -204,7 +244,10 @@ const COVERT = {
   steal: { n: 'Steal technology', spies: 3, cost: 150000, d: 'Copy research from a more advanced nation (+1 tech level).' },
   sabotage: { n: 'Sabotage industry', spies: 2, cost: 100000, d: 'Destroy part of their stockpiles and damage infrastructure.' },
   unrest: { n: 'Incite unrest', spies: 2, cost: 100000, d: 'Fund protests: their stability −10 and approval −5.' },
-  rig: { n: 'Interfere in election', spies: 3, cost: 200000, d: 'Swing their next election against the government (democracies only). Target yourself to swing your own election in your favour.' }
+  rig: { n: 'Interfere in election', spies: 3, cost: 200000, d: 'Swing their next election against the government (democracies only). Target yourself to swing your own election in your favour.' },
+  rebellion: { n: 'Stir up rebellion', spies: 4, cost: 400000, d: 'Arm separatists in one of their outer provinces. For 24 hours it may break away and declare independence — far more likely if their stability is low.' },
+  fakenews: { n: 'Plant fake news', spies: 2, cost: 150000, d: 'Flood their media with lies: approval −8, stability −4, and the world blames them (+8 aggression).' },
+  siphon: { n: 'Siphon funds', spies: 3, cost: 250000, d: 'Quietly move 2% of their treasury (up to $50M) into your own.' }
 };
 // World Council resolutions. kind: 'punish' and 'protect' name a target nation; 'global' applies to everyone. h = how long it lasts.
 const RESOLUTIONS = {
@@ -230,6 +273,10 @@ const RESOLUTIONS = {
   science: { kind: 'global', h: 24, n: 'Science cooperation', d: 'For 24 hours research costs 25% less for every nation.' },
   food: { kind: 'global', h: 24, n: 'Food security program', d: 'For 24 hours farms everywhere produce 20% more food and the world food price is 15% lower.' },
   debt: { kind: 'global', h: 24, n: 'Debt relief', d: 'Every nation in debt has 20% of it forgiven the moment it passes. Printing the money pushes inflation 1 point higher worldwide for 24 hours.' },
+  nonukes: { kind: 'global', h: 24, n: 'Nuclear weapons ban', d: 'For 24 hours no nation may launch a nuclear missile, drop a dirty bomb or test a nuclear weapon.' },
+  tariffs: { kind: 'global', h: 24, n: 'Tariff war', d: 'For 24 hours market fees double and trade routes pay half their usual bonus. Self-sufficient nations come out ahead.' },
+  freemarket: { kind: 'global', h: 72, n: 'Free market week', d: 'For 72 hours market fees are slashed, every nation earns 3% more tax, and GDP is 2% higher everywhere.' },
+  truce: { kind: 'global', h: 24, n: 'World truce', d: 'For 24 hours no nation may declare a new war. Wars already declared go on.' },
   // pacts and declarations
   pact: { kind: 'pact', h: 72, n: 'Collective defense pact', d: 'Every nation that votes yes becomes a member for 72 hours. If anyone attacks a member (a battle, a strike or a nuke), every other member automatically declares war on the attacker. Choose whether it covers attacks by AI nations only or by anyone.' },
   custom: { kind: 'custom', h: 48, n: 'Custom resolution', d: 'Write your own resolution (up to 200 characters). If it passes it is listed as in force with everyone who voted for it, for 24, 48 or 72 hours. It is a public commitment: the game cannot enforce typed text. AI nations do not vote on custom resolutions.' }
@@ -299,6 +346,7 @@ function Core(PD, CARDS) {
   const pname = h => { const p = P[h]; if (!p) return 'Unknown'; return p.n === CN[p.ci] ? p.n : `${p.n}, ${CN[p.ci]}`; };
   // decisions with real stakes: costly investments pay off for a day, and gambles win and lose big (built from the card files, which stay as they are)
   const DEC = enhanceDecks(CARDS, CHAINS);
+  let BL = {}; // the alliances of the world being worked on (set by world())
   const getCard = i => (typeof i === 'string' && i.startsWith('ev:')) ? (EVENTS[i.slice(3)] || {}).card : (typeof i === 'string' && i.startsWith('ch:')) ? DEC.chains[i.slice(3)] : DEC.cards[i];
 
   function computeOwn(A) {
@@ -310,7 +358,7 @@ function Core(PD, CARDS) {
   }
   // global modifiers from the active world event and passed council resolutions
   function mods(ev, council, now) {
-    const m = { gdp: 1, tax: 1, unemp: 0, infl: 0, rate: 0, price: {}, food: 1, oil: 1, research: 1, upkeep: 1, atkCost: 1, aggrDecay: 1, mobilize: 10, aggrPerAttack: 15, spread: 0, pandemic: 0, apBonus: 0, health: 0, pandemicCut: 1, npt: false };
+    const m = { gdp: 1, tax: 1, unemp: 0, infl: 0, rate: 0, price: {}, food: 1, oil: 1, research: 1, upkeep: 1, atkCost: 1, aggrDecay: 1, mobilize: 10, aggrPerAttack: 15, spread: 0, pandemic: 0, apBonus: 0, health: 0, pandemicCut: 1, npt: false, tradeMul: 1, nonukes: false, truce: false };
     if (ev && ev.key && EVENTS[ev.key] && now < ev.end) { const e = EVENTS[ev.key].mod; for (const [k, v] of Object.entries(e)) { if (k === 'price') Object.assign(m.price, v); else if (k === 'aggr') m.aggrDecay = v; else if (k === 'unemp' || k === 'infl' || k === 'rate' || k === 'pandemic') m[k] += v; else m[k] *= v; } }
     const act = (council && council.active) || {};
     const on = k => act[k] && act[k] > now;
@@ -323,9 +371,13 @@ function Core(PD, CARDS) {
     if (on('science')) m.research *= .75;
     if (on('food')) { m.food *= 1.2; m.price = { ...m.price, food: (m.price.food || 1) * .85 }; }
     if (on('debt')) m.infl += 1;
+    if (on('nonukes')) m.nonukes = true;
+    if (on('tariffs')) { m.spread -= .08; m.tradeMul = .5; }
+    if (on('freemarket')) { m.spread = Math.max(m.spread, .06); m.tax *= 1.03; m.gdp *= 1.02; }
+    if (on('truce')) m.truce = true;
     return m;
   }
-  function world(A, cfg, now, ev, council) { now = now || Date.now(); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, changed: new Set(), news: [], notes: [], fallen: [] }; W.m = mods(ev, council, now); W.OWN = computeOwn(A); return W; }
+  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = mods(ev, council, now); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
   const owner = (W, h) => W.OWN[h] && W.OWN[h].u;
   const hexesOf = (W, u) => Object.keys(W.OWN).filter(h => W.OWN[h].u === u).map(Number);
   const rankOf = xp => { let i = 0; for (let j = 0; j < RANKS.length; j++) if ((xp || 0) >= RANKS[j][0]) i = j; return i; };
@@ -345,8 +397,10 @@ function Core(PD, CARDS) {
   const measure = (W, n, k) => !!n && (k === 'frozen' ? !!(n.frozen && n.frozen.until > W.now) : (n[k] || 0) > W.now);
   const ceasefireMsg = (W, a, b) => measure(W, a, 'ceasefire') || measure(W, b, 'ceasefire') ? `A World Council ceasefire is in force between ${a.name} and ${b.name} for another ${fmtT(Math.max(a.ceasefire || 0, b.ceasefire || 0) - W.now)}. No battles, strikes or launches until it ends.` : null;
   // trade partners: nations with a trade agreement, plus allies (allies trade automatically). Rogue states and embargoed nations trade with no one.
-  const tradesWith = (W, u, v) => (pact(W, u, v, 'trade') || (pact(W, u, v, 'ally') && !rogue(W, W.A[u]) && !rogue(W, W.A[v]))) && !embargoed(W, W.A[v]);
+  const tradesWith = (W, u, v) => (pact(W, u, v, 'trade') || (sameBloc(W, u, v) && !rogue(W, W.A[u]) && !rogue(W, W.A[v])) || (pact(W, u, v, 'ally') && !rogue(W, W.A[u]) && !rogue(W, W.A[v]))) && !embargoed(W, W.A[v]);
   const traders = (W, u) => embargoed(W, W.A[u]) ? [] : others(W, u).filter(v => tradesWith(W, u, v));
+  const blocOf = (W, u) => { const n = W.A[u], b = n && n.bloc && W.B[n.bloc]; return b && (b.members || []).includes(u) ? b : null; };
+  const sameBloc = (W, u, v) => { const b = blocOf(W, u); return !!b && b.members.includes(v); };
   const tradeDeals = (W, u) => others(W, u).filter(v => pact(W, u, v, 'trade'));
   const sanctioned = n => (n.aggr || 0) >= 50;
   // rogue state ("the North Korea treatment"): 75+ aggression brings a full embargo and isolation for at least 24 hours
@@ -358,8 +412,17 @@ function Core(PD, CARDS) {
   // diminishing returns: the first levels count fully, later ones less and less (stops one nation running away with the world)
   const soft = (x, s) => s * Math.log(1 + Math.max(0, x || 0) / s);
   const techF = n => (1 + soft(n.tech, 10) * .05) * (1 + n.train * .02);
+  const devLvl = (n, h) => (n && n.dev && n.dev[h]) || 0;
+  const devTotal = (W, u) => { const n = W.A[u]; if (!n || !n.dev) return 0; let t = 0; for (const h of Object.keys(n.dev)) if (W.OWN[h] && W.OWN[h].u === u) t += n.dev[h] || 0; return t; };
+  const devCost = (W, u, lvl) => { const n = W.A[u], i = lvl - 1; return { cash: Math.round(Math.max(DEV.base, (n.gdp || 0) * DEV.gdpPct) * DEV.mult[i] / 1e5) * 1e5, steel: DEV.steel[i], goods: DEV.goods[i] }; };
+  // a province changes hands: the new owner gets its development, one level lower (war and upheaval damage it)
+  function xferDev(W, from, to, h, drop) { const a = W.A[from], b = W.A[to], l = devLvl(a, h); if (a && a.dev) delete a.dev[h]; if (b && l - (drop || 0) > 0) { b.dev = b.dev || {}; b.dev[h] = l - (drop || 0); } }
+  // trade routes grow with age: a route counts once when new and up to twice after 7 days
+  const routeStart = (W, u, v) => { if (pact(W, u, v, 'trade')) return Math.max(R(W, u, v).trade || 0, R(W, v, u).trade || 0); if (pact(W, u, v, 'ally')) return Math.max(R(W, u, v).ally || 0, R(W, v, u).ally || 0); return W.now; };
+  const routeW = (W, u, v) => 1 + Math.min(1, Math.max(0, W.now - routeStart(W, u, v)) / (7 * 864e5));
+  const tradeVal = (W, u) => { const n = W.A[u]; return traders(W, u).map(v => routeW(W, u, v)).sort((a, b) => b - a).slice(0, tcap(n)).reduce((s, x) => s + x, 0) * W.m.tradeMul; };
   const power = (W, u) => { const n = W.A[u]; return ((n.troops || 0) + (n.ships || 0) * 25 + (n.air || 0) * 20) * techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n); };
-  const score = (W, u) => { const n = W.A[u]; return Math.round(hexesOf(W, u).length * 100 + (n.troops || 0) * .4 + (n.ships || 0) * 8 + (n.air || 0) * 6 + soft(n.tech, 10) * 60 + (n.xp || 0) * .1 + n.pop / 2000 + (n.gdp || 0) / 5e5); };
+  const score = (W, u) => { const n = W.A[u]; return Math.round(hexesOf(W, u).length * 100 + (n.troops || 0) * .4 + (n.ships || 0) * 8 + (n.air || 0) * 6 + soft(n.tech, 10) * 60 + (n.xp || 0) * .1 + n.pop / 2000 + (n.gdp || 0) / 5e5 + devTotal(W, u) * DEV.score + (n.prestige || 0) * 50); };
   const isCoastal = h => !!(P[h] && P[h].co);
   const hasCoast = (W, u) => hexesOf(W, u).some(isCoastal);
 
@@ -369,7 +432,7 @@ function Core(PD, CARDS) {
   function rating(W, n) { if ((n.defaulted || 0) > W.now - 48 * HOUR) return 'D'; const r = debtRatio(n); return r < .3 ? 'AAA' : r < .6 ? 'AA' : r < .9 ? 'A' : r < 1.2 ? 'BBB' : r < 1.5 ? 'BB' : r < 2 ? 'B' : 'CCC'; }
   function interestRate(W, n) { return 3 + Math.max(0, debtRatio(n) - .4) * 12 + ((n.defaulted || 0) > W.now - 48 * HOUR ? 10 : 0) + W.m.rate; }
   // combined effect of a nation's laws and wonders: multipliers (gdp, tax, research, xp, def, spend, oil) and additions (ap, st, unemp, health, edu, spread, tcap)
-  const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); return o; };
+  const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); const bl = n.bloc && BL[n.bloc]; if (bl) for (const k of Object.keys(bl.done || {})) if (BPROJ[k]) o.push(BPROJ[k].fx); return o; };
   const fxMul = (n, k) => { let v = 1; for (const f of fxOf(n)) if (f[k] != null) v *= f[k]; return v; };
   const fxAdd = (n, k) => { let v = 0; for (const f of fxOf(n)) if (f[k] != null) v += f[k]; return v; };
   const tcap = n => 5 + fxAdd(n, 'tcap');
@@ -379,7 +442,7 @@ function Core(PD, CARDS) {
   function gdpTarget(W, u) {
     const n = W.A[u], b = budget(n);
     const pc = 187.5 * (1 + soft(n.tech, 10) * .04) * (1 + soft(n.infra, 10) * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
-      * (1 + Math.min(tcap(n), traders(W, u).length) * .03) * fxMul(n, 'gdp') * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
+      * (1 + tradeVal(W, u) * .03) * (1 + soft(devTotal(W, u), 20) * DEV.gdp) * fxMul(n, 'gdp') * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
       * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * ((n.defaulted || 0) > W.now - 48 * HOUR ? .85 : 1) * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * W.m.gdp;
     return n.pop * pc;
   }
@@ -389,7 +452,7 @@ function Core(PD, CARDS) {
     const top = W._top.v, me = score(W, u); if (!top || me >= top * .3 || rogue(W, W.A[u])) return 0;
     return Math.round(.5 * (1 - me / (top * .3)) * 100) / 100;
   }
-  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + Math.min(tcap(n), traders(W, u).length) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
+  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = 1 + tradeVal(W, u) * .05 * (sanctioned(n) ? 0 : 1); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
   const overAt = n => OVER.at;
   const bribeRecent = (n, now) => (n.bribes || []).filter(t => now - t < BRIBE.windowD * 864e5);
@@ -403,15 +466,18 @@ function Core(PD, CARDS) {
     const n = W.A[u]; const p = { food: 0, oil: 0, steel: 0, goods: 0 };
     for (const h of hexesOf(W, u)) {
       const pr = P[h];
-      if (h == n.cap) { for (const k in CAPP) p[k] += CAPP[k]; } else { const t = TYPE[pr.t] || TYPE.P; for (const k in t.p) p[k] += t.p[k]; }
-      if (pr.r) p.food += 5; if (pr.m) p.steel += 4; if (pr.co) p.goods += 3;
+      const q = { food: 0, oil: 0, steel: 0, goods: 0 }; let dk = 1 + DEV.prod * devLvl(n, h);
+      if (h == n.cap) { for (const k in CAPP) q[k] += CAPP[k]; } else { const t = TYPE[pr.t] || TYPE.P; for (const k in t.p) q[k] += t.p[k]; }
+      if (pr.r) q.food += 5; if (pr.m) q.steel += 4; if (pr.co) q.goods += 3;
+      if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) dk *= .3; // a disaster zone produces little until it recovers
+      for (const k in q) p[k] += q[k] * dk;
     }
     const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income;
     for (const k in p) p[k] = Math.round(p[k] * m * (k === 'food' ? W.m.food : k === 'oil' ? W.m.oil : 1));
     return p;
   }
   const consumption = n => ({ food: Math.round(n.pop / 1000 * .25), oil: Math.round(((n.troops || 0) / 100 * .5 + (n.ships || 0) * .5 + (n.air || 0) * .4 + n.infra * .5) * fxMul(n, 'oil')), steel: 0, goods: Math.round(n.pop / 1000 * .05) });
-  const popCap = (W, u) => hexesOf(W, u).length * 150000 * (1 + soft(W.A[u].infra, 10) * .05);
+  const popCap = (W, u) => (hexesOf(W, u).length * 150000 + devTotal(W, u) * DEV.pop) * (1 + soft(W.A[u].infra, 10) * .05);
   // World market. Prices follow the last 6 hours of net trading by all nations, but each nation's own net counts for at most
   // a share of the market depth, so no single nation can push a price beyond about ×2.1 or ×0.47. Big orders pay the price along the way
   // (not the price before the order), so buying and immediately selling back always loses the market fee.
@@ -426,7 +492,7 @@ function Core(PD, CARDS) {
     for (let i = 0; i < N; i++) sum += mktMult(W, other + clamp(mine + q * (i + .5) / N, -cap, cap)); return sum / N; }
   // price multiplier at the very end of an order of q units, relative to the price before it (for "sensible max" buttons)
   function orderEdge(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75; return mktMult(W, other + clamp(mine + q, -cap, cap)) / mktMult(W, other + mine); }
-  function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(tcap(n), traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1); const inf = Math.max(0, (n.infl || 0) - 3) / 200; const lx = fxAdd(n, 'spread'); return { buy: 1.08 + sp - tb - W.m.spread + inf - lx, sell: .92 - sp + tb + W.m.spread + lx }; }
+  function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(tcap(n), traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1) * W.m.tradeMul; const inf = Math.max(0, (n.infl || 0) - 3) / 200; const lx = fxAdd(n, 'spread'); return { buy: 1.08 + sp - tb - W.m.spread + inf - lx, sell: .92 - sp + tb + W.m.spread + lx }; }
   const maxBorrow = n => Math.max(0, (n.gdp || 0) * 1.2 - (n.debt || 0));
 
   // ---------- costs ----------
@@ -572,6 +638,7 @@ function Core(PD, CARDS) {
   const hitRecently = (W, u, v) => { const n = W.A[u], a = W.A[v]; if (!n || !a) return false; return (n.hitBy && W.now - (n.hitBy[v] || 0) < 24 * HOUR) || (a.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR); };
   // fighting back is not aggression: u is defending against v if v started this war on u, joined it against u's pact, or v hit u or one of u's allies in the last day
   function defending(W, u, v) {
+    if (W.A[u] && W.A[u].cb && (W.A[u].cb[v] || 0) > W.now) return true; // caught their spies: a just cause for 24 hours
     const mine = R(W, u, v), theirs = R(W, v, u), since = warSince(W, u, v);
     if (mine.def) return true;
     for (const a of allies(W, u)) if (hitRecently(W, a, v)) return true;
@@ -742,7 +809,7 @@ function Core(PD, CARDS) {
     let loot = 0;
     const isCap = !!(W.OWN[h] && W.OWN[h].cap);
     if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
-    else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
+    else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, 1); me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
     Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) });
@@ -826,6 +893,7 @@ function Core(PD, CARDS) {
   // DIRTY BOMB: a missile with radioactive material. Cheaper and far weaker than a nuke, but it leaves a radioactive cloud over one province for 24 hours.
   function canDirty(W, u, v) {
     const why = canStrike(W, u, v); if (why) return why; const me = W.A[u];
+    if (W.m.nonukes) return 'A World Council nuclear weapons ban is in force: no dirty bombs until it expires.';
     if ((me.tech || 0) < DIRTY.tech) return `A dirty bomb requires tech level ${DIRTY.tech}.`;
     if (!W.cfg.nukeTest && rankOf(me.xp) < DIRTY.rank) return `A dirty bomb requires the rank of ${RANKS[DIRTY.rank][1]}.`;
     if (left(W, me, 'dirty') && !W.cfg.nukeTest) return `Your next dirty bomb will be ready in ${fmtT(left(W, me, 'dirty'))}.`;
@@ -897,6 +965,7 @@ function Core(PD, CARDS) {
     if (!n.nuke) fail('You need a nuclear deterrent before you can test one.');
     if (n.warhead) fail('Your program has moved on to a launchable warhead. Tests are for nations with a nuclear program and no warhead.');
     if (W.m.npt) fail('The Non-proliferation Treaty is in force: nuclear tests are banned until it expires.');
+    if (W.m.nonukes) fail('A World Council nuclear weapons ban is in force: no nuclear tests until it expires.');
     const wait = (n.cd && n.cd.ntest || 0) - W.now; if (wait > 0) fail(`Your next nuclear test can be held in ${wait > 48 * HOUR ? Math.ceil(wait / 864e5) + ' days' : fmtT(wait)}.`);
     if (n.ntestAt && n.ntestAt > W.now) fail('Your test is already scheduled.');
     if (n.cash < NTEST.cash) fail(`A nuclear test costs ${money(NTEST.cash)}.`);
@@ -950,6 +1019,7 @@ function Core(PD, CARDS) {
   function canLaunch(W, u, v) {
     const me = W.A[u], d = W.A[v]; if (!me) return 'Found a nation first.'; if (!d || v === u) return 'Unknown nation.';
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
+    if (W.m.nonukes) return 'A World Council nuclear weapons ban is in force: no launches until it expires.';
     if (!warheadReady(W, me)) return me.warhead ? `Your warhead is not armed yet: ${fmtT(me.warhead.ready - W.now)} left.` : 'You have no armed warhead.';
     if (!atWar(W, u, v)) return `You are not at war with ${d.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, d); if (cf) return cf; }
@@ -1027,7 +1097,9 @@ function Core(PD, CARDS) {
       if (!W.cfg.war) fail('Warfare is currently disabled by the administrators.');
       if (rankOf(me.xp) < 2) fail('You must reach the rank of Mayor to declare war.');
       if (atWar(W, u, v)) fail('You are already at war.');
-      setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
+      if (W.m.truce) fail('A World Council truce is in force: no new wars may be declared until it ends.');
+      if (sameBloc(W, u, v)) fail(`${them.name} is in your alliance. Leave the alliance or remove them before declaring war.`);
+      breakRoute(W, u, v, 'war'); setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
       news(W, u, `${me.name} has declared war on ${them.name}.`); log(them, `${me.name} has declared war on you.`, W); note(W, v, 'war', `${me.name} has declared war on you!`);
       if (W.cfg.conquest && !them.ai && Object.keys(them.hexes || {}).length === 1) { const hrs = W.cfg.lastStandH ?? 24; log(them, `You hold only your capital. ${me.name} can besiege it in ${hrs} hours — make peace, rally allies, fortify or expand.`, W); note(W, v, 'attack', `LAST STAND: ${me.name} can besiege your capital in ${hrs} hours.`); }
     } else if (kind === 'noally' || kind === 'notrade' || kind === 'nopeace') {
@@ -1065,7 +1137,7 @@ function Core(PD, CARDS) {
       setRel(me, v, 'trade', t);
       if (pact(W, u, v, 'trade')) { news(W, u, `${me.name} and ${them.name} signed a trade agreement.`); note(W, v, 'diplo', `${me.name} accepted your trade agreement.`); note(W, u, 'diplo', `Trade agreement with ${them.name} signed.`); }
       else { log(me, `Trade agreement proposed to ${them.name}.`, W); log(them, `${me.name} proposes a trade agreement.`, W); note(W, v, 'diplo', `${me.name} proposes a trade agreement.`); }
-    } else if (kind === 'untrade') { if (!pact(W, u, v, 'trade') && !offered(W, u, v, 'trade')) fail('There is no trade agreement to cancel.'); setRel(me, v, 'untrade', t); log(me, `Trade agreement with ${them.name} cancelled.`, W); log(them, `${me.name} cancelled your trade agreement.`, W); note(W, v, 'diplo', `${me.name} cancelled your trade agreement.`); }
+    } else if (kind === 'untrade') { if (!pact(W, u, v, 'trade') && !offered(W, u, v, 'trade')) fail('There is no trade agreement to cancel.'); breakRoute(W, u, v, 'cancel'); setRel(me, v, 'untrade', t); log(me, `Trade agreement with ${them.name} cancelled.`, W); log(them, `${me.name} cancelled your trade agreement.`, W); note(W, v, 'diplo', `${me.name} cancelled your trade agreement.`); }
     else fail('Unknown action.');
     touch(W, u, v); return { msg: 'Done.' };
   }
@@ -1119,6 +1191,7 @@ function Core(PD, CARDS) {
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
     if (v === u && op !== 'rig') fail('You cannot target yourself with that operation.');
     if (op === 'rig' && them.gov !== 'dem') fail('That nation does not hold elections.');
+    if (op === 'rebellion' && hexesOf(W, v).length < 3) fail('Separatists need a nation with at least 3 provinces.');
     if (left(W, me, 'covert')) fail(`Your agents are still on assignment: ${fmtT(left(W, me, 'covert'))}.`);
     if (me.spies < o.spies) fail(`This operation needs ${o.spies} agents. You have ${me.spies}.`);
     if (me.cash < o.cost) fail(`This operation costs ${money(o.cost)}.`);
@@ -1130,12 +1203,15 @@ function Core(PD, CARDS) {
       if (op === 'steal') { if (them.tech > me.tech) { me.tech++; msg = `Your agents stole research from ${them.name}. Tech level ${me.tech}.`; } else { me.cash += o.cost * .5; msg = `Your agents infiltrated ${them.name} but found nothing more advanced than your own research.`; } log(them, 'Security services suspect a data breach at a research institute.', W); }
       else if (op === 'sabotage') { for (const r in RES) them.res[r] = Math.round(them.res[r] * .8); if (them.infra > 0 && rng() < .5) them.infra--; msg = `Sabotage in ${them.name} succeeded: stockpiles destroyed${them.infra >= 0 ? ' and infrastructure damaged' : ''}.`; log(them, 'Explosions at industrial sites destroyed supplies. The culprits are unknown.', W); note(W, v, 'covert', 'Sabotage hit your industry. The culprits are unknown.'); }
       else if (op === 'unrest') { them.stability = clamp(them.stability - 10, 0, 100); them.approval = clamp(them.approval - 5, 0, 100); msg = `Protests have broken out across ${them.name}.`; log(them, 'Mysteriously well-funded protests have broken out.', W); }
+      else if (op === 'rebellion') { const hs = hexesOf(W, v).filter(h => h != them.cap).sort((a, b) => P[them.cap] ? kmBetween(b, them.cap) - kmBetween(a, them.cap) : 0), h = hs[0]; them.unrest = them.unrest || {}; them.unrest[h] = W.now + 24 * HOUR; msg = `Your agents are arming separatists in ${pname(h)}. For 24 hours it may declare independence from ${them.name}.`; log(them, `Separatist unrest has flared up in ${pname(h)}. Raise stability or garrison it to keep it.`, W); note(W, v, 'covert', `⚠ Armed separatists are active in ${pname(h)}. It may break away within 24 hours unless your stability is high.`); }
+      else if (op === 'fakenews') { them.approval = clamp(them.approval - 8, 0, 100); them.stability = clamp(them.stability - 4, 0, 100); them.aggr = clamp((them.aggr || 0) + 8, 0, 100); msg = `Fake news is spreading through ${them.name}: its government is reeling and the world now sees it as more aggressive.`; log(them, 'A wave of fake news has hit your nation: approval −8, stability −4, aggression +8.', W); note(W, v, 'covert', 'A fake-news campaign hit your nation. The source is unknown.'); }
+      else if (op === 'siphon') { const a = Math.round(Math.min(5e7, Math.max(0, them.cash) * .02)); them.cash -= a; me.cash += a; msg = `Your agents siphoned ${money(a)} out of ${them.name}'s treasury.`; log(them, `Auditors found ${money(a)} missing from the treasury.`, W); note(W, v, 'covert', `${money(a)} vanished from your treasury. Foreign agents are suspected.`); }
       else if (op === 'rig') { them.rig = (them.rig || 0) + (self ? 8 : -10); msg = self ? 'Your agents quietly secured votes for the next election (+8%).' : `Your agents are swinging ${them.name}'s next election against its government.`; }
     } else {
       const caught = rng() < .7; const lost = Math.ceil(o.spies / 2); me.spies -= lost;
       if (caught && !self) {
         me.aggr = clamp((me.aggr || 0) + 10, 0, 100); setRel(me, v, 'unally', W.now);
-        news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`);
+        news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); them.cb = them.cb || {}; them.cb[u] = W.now + 24 * HOUR; note(W, v, 'covert', `You have a just cause against ${me.name} for 24 hours: attacking it adds no aggression.`);
         log(them, `Your counter-intelligence caught agents from ${me.name} attempting to ${o.n.toLowerCase()}.`, W); note(W, v, 'covert', `Agents from ${me.name} were caught attempting to ${o.n.toLowerCase()} in your nation!`);
         msg = `The operation failed and your agents were caught. ${lost} agents lost; the world now knows.`;
       } else if (caught && self) { me.approval = clamp(me.approval - 10, 0, 100); news(W, u, `Election fraud scandal: ${me.name}'s government was caught rigging its own election.`); msg = 'Your vote-rigging was exposed! Approval −10.'; }
@@ -1191,7 +1267,7 @@ function Core(PD, CARDS) {
     if (n.rad) { if (radOn(W, n)) { n.pop *= .9993; n.stability = clamp(n.stability - .05, 0, 100); n.approval = clamp(n.approval - .03, 0, 100); } else delete n.rad; }
     // (big empires no longer rebel for being big: size only costs money, via the size upkeep above)
     if (rogue(W, n)) { n.approval = clamp(n.approval - .1, 0, 100); n.stability = clamp(n.stability - .1, 0, 100); }
-    if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; delete n.hexes[h]; delete W.OWN[h]; news(W, u, `Separatists in ${pname(h)} declared independence from ${n.name}.`); note(W, u, 'economy', `Separatists in ${pname(h)} declared independence.`); } }
+    if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; breakAway(W, u, h, 'fell to separatists, who declared independence'); } }
     if (n.gov !== 'dem' && n.stability < 12 && n.approval < 20 && rng() < .06) { const ks = Object.keys(GOV).filter(k => k !== n.gov); n.gov = ks[Math.floor(rng() * ks.length)]; n.cash *= .7; n.troops = Math.floor(n.troops * .85); n.stability = 45; n.approval = 50; if (n.gov === 'dem') n.nextElection = W.now + W.cfg.electionH * HOUR; news(W, u, `Revolution in ${n.name}. The new regime is a ${GOV[n.gov].n}.`); note(W, u, 'economy', `Revolution! Your nation is now a ${GOV[n.gov].n}.`); }
   }
   function election(W, u, rng) {
@@ -1214,8 +1290,8 @@ function Core(PD, CARDS) {
       if (W.now - c.t > 48 * HOUR || owner(W, h) !== u) { delete n.conq[h]; any = true; continue; }
       const p = .02 * (1 - Math.min(1, ratio)) * (n.stability < 40 ? 1.5 : 1);
       if (p > 0 && rng() < p) {
-        delete n.hexes[h]; delete n.conq[h]; any = true; const back = c.from && W.A[c.from] ? c.from : null;
-        if (back) { W.A[back].hexes[h] = W.now; log(W.A[back], `${pname(h)} rose up against ${n.name} and rejoined your nation.`, W); note(W, back, 'attack', `${pname(h)} rebelled against ${n.name} and returned to you!`); touch(W, back); }
+        const back = c.from && W.A[c.from] ? c.from : null; if (!back) { breakAway(W, u, h, 'rose up against its new rulers'); delete n.conq[h]; any = true; continue; } delete n.hexes[h]; delete n.conq[h]; any = true;
+        if (back) { xferDev(W, u, back, h, 1); W.A[back].hexes[h] = W.now; log(W.A[back], `${pname(h)} rose up against ${n.name} and rejoined your nation.`, W); note(W, back, 'attack', `${pname(h)} rebelled against ${n.name} and returned to you!`); touch(W, back); }
         W.OWN = computeOwn(W.A); n.stability = clamp(n.stability - 3, 0, 100);
         log(n, `Rebellion! ${pname(h)} rose up and ${back ? 'returned to ' + W.A[back].name : 'declared independence'}. Keep about ${GARRISON} troops per province to hold new land.`, W);
         note(W, u, 'attack', `Rebellion in ${pname(h)} — the province ${back ? 'returned to ' + W.A[back].name : 'broke away'}.`);
@@ -1260,6 +1336,8 @@ function Core(PD, CARDS) {
     if (k > 0) { mState(W, u); achCheck(W, u); }
     if (n.chain && W.now >= n.chain.at && n.cards.length < 4) { n.cards.push({ id: rid(), i: 'ch:' + n.chain.k }); delete n.chain; changed = true; }
     if (k > 0 && n.conq) for (let i = 0; i < Math.min(k, 12); i++) if (rebels(W, u, rng)) changed = true;
+    if (k > 0 && active) for (let i = 0; i < Math.min(k, 12); i++) if (neglect(W, u, rng)) changed = true;
+    if (!n.ai && n.stability < REBEL.st && hexesOf(W, u).length >= REBEL.minProv && W.now - (n.rebWarn || 0) > 12 * HOUR) { n.rebWarn = W.now; note(W, u, 'attack', `⚠ Unrest is spreading: with stability below ${REBEL.st}, outlying provinces may declare independence. Raise stability (Address the Nation, budget, laws) and keep troops in your provinces.`); changed = true; }
     while (W.now >= n.nextCard) { if (n.cards.length < 3 && active) addCard(W, u, rng); n.nextCard += 40 * MIN; changed = true; }
     if (n.gov === 'dem' && n.nextElection && W.now >= n.nextElection) { election(W, u, rng); changed = true; }
     for (const h of Object.keys(n.hexes)) if (owner(W, h) !== u) { delete n.hexes[h]; changed = true; }
@@ -1388,7 +1466,7 @@ function Core(PD, CARDS) {
 
     return null;
   }
-  function moveProv(W, u, v, list) { const a = W.A[u], b = W.A[v]; for (const h of list || []) { delete a.hexes[h]; if (a.conq) delete a.conq[h]; b.hexes[h] = W.now; b.ptrade = b.ptrade || {}; b.ptrade[h] = W.now; }
+  function moveProv(W, u, v, list) { const a = W.A[u], b = W.A[v]; for (const h of list || []) { xferDev(W, u, v, h, 0); delete a.hexes[h]; if (a.conq) delete a.conq[h]; b.hexes[h] = W.now; b.ptrade = b.ptrade || {}; b.ptrade[h] = W.now; }
     for (const x of [a, b]) if (x.ptrade) for (const k of Object.keys(x.ptrade)) if (W.now - x.ptrade[k] > PROV_LOCK) delete x.ptrade[k];
     if (list && list.length) { a.approval = clamp(a.approval - 3, 0, 100); W.OWN = computeOwn(W.A); } }
   const moveBundle = (from, to, b) => { for (const [k, v] of Object.entries(b)) { if (k === 'prov') continue; if (k === 'cash') { if (from) from.cash -= v; if (to) to.cash += v; } else { if (from) from.res[k] -= v; if (to) to.res[k] += v; } } };
@@ -1455,6 +1533,269 @@ function Core(PD, CARDS) {
     n.color = col; n.cd.color = now + 864e5; touch(W, u); return { msg: 'Map colour changed.' };
   }
 
+
+  // ---------- alliances (teams) ----------
+  const blocCap = b => (b.done && b.done.hq) ? BLOC.hqMax : BLOC.max;
+  const blocGdp = (W, b) => (b.members || []).reduce((s, m) => s + ((W.A[m] && W.A[m].gdp) || 0), 0);
+  // each project stage costs 2% of the members' combined GDP (at least $25M), paid from the alliance treasury
+  const blocStageCost = (W, b) => Math.round(Math.max(25e6, blocGdp(W, b) * .02) / 1e5) * 1e5;
+  const blocGoalReward = (W, b) => Math.round(Math.max(5e6, blocGdp(W, b) * .005) / 1e5) * 1e5;
+  const blocScore = (W, b) => (b.members || []).filter(m => W.A[m]).reduce((s, m) => s + score(W, m), 0) + Object.keys(b.done || {}).length * 500;
+  const today = t => new Date(t).toISOString().slice(0, 10);
+  function blocGoalState(W, b) { const d = today(W.now); if (!b.goal || b.goal.day !== d) b.goal = { day: d, ops: 0, dec: 0, done: {} }; const m = Math.max(1, (b.members || []).length); return { ...b.goal, need: { ops: BLOC.goalOps * m, dec: BLOC.goalDec * m } }; }
+  function blocGoal(W, u, k) {
+    const b = blocOf(W, u); if (!b) return; const g0 = blocGoalState(W, b), g = b.goal; g[k] = (g[k] || 0) + 1; W.bch = true;
+    if (!g.done[k] && g[k] >= g0.need[k]) {
+      g.done[k] = W.now; const rw = blocGoalReward(W, b); b.bank = (b.bank || 0) + rw;
+      for (const m of b.members) if (W.A[m]) { gainXP(W, m, 40); note(W, m, 'diplo', `🤝 Alliance goal reached: ${k === 'ops' ? 'operations' : 'decisions'}! ${money(rw)} went into the ${b.name} treasury and every member earned 40 XP.`); touch(W, m); }
+      blocLog(b, `Team goal reached (${k === 'ops' ? 'operations' : 'decisions'}): ${money(rw)} added to the treasury.`, W);
+    }
+  }
+  const blocLog = (b, x, W) => { b.log = [{ t: W.now, x }, ...(b.log || [])].slice(0, 30); };
+  const cleanName = (v, min, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
+  function blocFlag(f) { f = f || {}; const l = FLAG_LAYOUTS.includes(f.l) ? f.l : 'h3', e = FLAG_EMBLEMS.includes(f.e) ? f.e : 'star', c = (Array.isArray(f.c) ? f.c : []).slice(0, 3).map(x => FLAG_HEX.test(x) ? String(x).toLowerCase() : FLAG_COLORS[6]); while (c.length < 3) c.push(FLAG_COLORS[10]); return { l, c, e }; }
+  function blocCmd(W, u, op, c) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); const mine = blocOf(W, u);
+    const isLeader = mine && mine.leader === u, needLeader = () => { if (!mine) fail('You are not in an alliance.'); if (!isLeader) fail('Only the alliance leader can do that.'); };
+    const nameOk = (name, skip) => { const x = cleanName(name, BLOC.nameMin, BLOC.nameMax); if (x.length < BLOC.nameMin) fail(`Alliance names need at least ${BLOC.nameMin} characters.`); if (Object.values(W.B).some(b => b !== skip && b.name.toLowerCase() === x.toLowerCase())) fail('Another alliance already uses that name.'); return x; };
+    const tagOk = (tag, skip) => { const x = String(tag || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); if (x.length < 2) fail('The tag needs 2 to 4 letters or numbers.'); if (Object.values(W.B).some(b => b !== skip && b.tag === x)) fail('Another alliance already uses that tag.'); return x; };
+    const peer = v => { if (!has(W.A, v)) fail('Unknown nation.'); return W.A[v]; };
+    const done = msg => { W.bch = true; touch(W, u); return { msg }; };
+    switch (op) {
+      case 'create': {
+        if (mine) fail(`You are already in ${mine.name}. Leave it first.`);
+        if (rankOf(n.xp) < BLOC.rank) fail('Founding an alliance needs the rank of Mayor.');
+        if (n.cash < BLOC.cost) fail(`Founding an alliance costs ${money(BLOC.cost)}.`);
+        const name = nameOk(c.name), tag = tagOk(c.tag), id = 'b' + rid();
+        n.cash -= BLOC.cost; W.B[id] = { id, name, tag, flag: blocFlag(c.flag), motto: cleanName(c.motto, 0, 80), leader: u, members: [u], created: W.now, bank: 0, contrib: {}, invites: {}, done: {}, proj: null, wall: [], log: [], open: false };
+        n.bloc = id; blocLog(W.B[id], `${n.name} founded the alliance.`, W); news(W, u, `${n.name} founded a new alliance: ${name} [${tag}].`); gainXP(W, u, 25);
+        return done(`${name} [${tag}] is founded. Invite other leaders from their nation card or the Alliance page.`);
+      }
+      case 'edit': {
+        needLeader(); if (c.name != null) mine.name = nameOk(c.name, mine); if (c.tag != null) mine.tag = tagOk(c.tag, mine); if (c.flag) mine.flag = blocFlag(c.flag); if (c.motto != null) mine.motto = cleanName(c.motto, 0, 80); if (c.open != null) mine.open = !!c.open;
+        return done('Alliance updated.');
+      }
+      case 'invite': {
+        needLeader(); const t = peer(String(c.v)); const v = String(c.v); if (v === u) fail('You are already a member.'); if (t.ai) fail('AI nations do not join alliances.');
+        if (mine.members.includes(v)) fail(`${t.name} is already a member.`); if (blocOf(W, v)) fail(`${t.name} is already in another alliance.`);
+        if (mine.members.length >= blocCap(mine)) fail(`Your alliance is full (${blocCap(mine)} members).`);
+        if (rogue(W, t)) fail(`${t.name} is a rogue state.`);
+        mine.invites[v] = W.now; note(W, v, 'diplo', `🤝 ${n.name} invites you to join the alliance ${mine.name} [${mine.tag}]. Answer on the Diplomacy page.`); log(t, `${n.name} invited you to join ${mine.name} [${mine.tag}].`, W); touch(W, v);
+        return done(`Invitation sent to ${t.name}.`);
+      }
+      case 'uninvite': { needLeader(); delete mine.invites[String(c.v)]; return done('Invitation withdrawn.'); }
+      case 'join': {
+        const b = has(W.B, String(c.id)) ? W.B[String(c.id)] : null; if (!b) fail('That alliance no longer exists.');
+        if (mine) fail(`You are already in ${mine.name}. Leave it first.`);
+        const inv = b.invites && b.invites[u]; if (!b.open && !(inv && W.now - inv < BLOC.inviteH * HOUR)) fail('You need an invitation to join that alliance.');
+        if (b.members.length >= blocCap(b)) fail('That alliance is full.'); if (rogue(W, n)) fail('Rogue states cannot join an alliance.');
+        const foe = b.members.find(m => W.A[m] && atWar(W, u, m)); if (foe) fail(`You are at war with ${W.A[foe].name}, a member. Make peace first.`);
+        delete b.invites[u]; b.members.push(u); n.bloc = b.id; blocLog(b, `${n.name} joined.`, W);
+        for (const m of b.members) if (m !== u && W.A[m]) { note(W, m, 'diplo', `🤝 ${n.name} joined your alliance ${b.name}.`); touch(W, m); }
+        news(W, u, `${n.name} joined the alliance ${b.name} [${b.tag}].`); return done(`Welcome to ${b.name}!`);
+      }
+      case 'decline': { const b = has(W.B, String(c.id)) ? W.B[String(c.id)] : null; if (b && b.invites) delete b.invites[u]; return done('Invitation declined.'); }
+      case 'leave': {
+        if (!mine) fail('You are not in an alliance.'); blocRemove(W, mine, u, `${n.name} left the alliance.`); news(W, u, `${n.name} left the alliance ${mine.name}.`); return done(`You left ${mine.name}.`);
+      }
+      case 'kick': { needLeader(); const v = String(c.v); if (v === u || !mine.members.includes(v)) fail('Not a member.'); const t = W.A[v]; blocRemove(W, mine, v, `${t ? t.name : 'A nation'} was removed by the leader.`); if (t) { note(W, v, 'diplo', `You were removed from the alliance ${mine.name}.`); touch(W, v); } return done('Member removed.'); }
+      case 'lead': { needLeader(); const v = String(c.v); if (!mine.members.includes(v) || v === u) fail('Choose another member.'); mine.leader = v; blocLog(mine, `${W.A[v].name} is the new leader.`, W); note(W, v, 'diplo', `You are now the leader of ${mine.name}.`); touch(W, v); return done(`${W.A[v].name} now leads the alliance.`); }
+      case 'disband': { needLeader(); for (const m of [...mine.members]) if (W.A[m]) { W.A[m].bloc = null; touch(W, m); if (m !== u) note(W, m, 'diplo', `The alliance ${mine.name} was disbanded.`); } if (mine.bank > 0) n.cash += mine.bank; news(W, u, `The alliance ${mine.name} has been disbanded.`); delete W.B[mine.id]; return done(`${mine.name} was disbanded${mine.bank > 0 ? `; ${money(mine.bank)} from the treasury went to you` : ''}.`); }
+      case 'give': {
+        if (!mine) fail('You are not in an alliance.'); const amt = Math.floor(Number(c.amt)); if (!(amt >= 1e5)) fail('Deposit at least $100,000.'); if (amt > n.cash) fail('You do not have that much money.');
+        n.cash -= amt; mine.bank = (mine.bank || 0) + amt; mine.contrib[u] = (mine.contrib[u] || 0) + amt; blocLog(mine, `${n.name} deposited ${moneyS(amt)}.`, W); gainXP(W, u, Math.min(30, Math.round(amt / 1e7) + 2));
+        return done(`${moneyS(amt)} deposited into the ${mine.name} treasury.`);
+      }
+      case 'grant': {
+        needLeader(); const v = String(c.v); if (!mine.members.includes(v) || !W.A[v]) fail('Choose a member.'); const amt = Math.floor(Number(c.amt)); if (!(amt >= 1e5)) fail('Send at least $100,000.'); if (amt > (mine.bank || 0)) fail('The treasury does not hold that much.');
+        mine.bank -= amt; W.A[v].cash += amt; blocLog(mine, `The leader sent ${moneyS(amt)} to ${W.A[v].name}.`, W); if (v !== u) note(W, v, 'diplo', `${mine.name} sent you ${moneyS(amt)} from the alliance treasury.`); touch(W, v);
+        return done(`${moneyS(amt)} sent to ${W.A[v].name}.`);
+      }
+      case 'proj': {
+        if (!mine) fail('You are not in an alliance.'); const k = String(c.k); if (!has(BPROJ, k)) fail('Unknown project.'); const P_ = BPROJ[k];
+        if (mine.done[k]) fail(`Your alliance already completed the ${P_.n}.`);
+        if (mine.proj && mine.proj.k !== k) fail(`Your alliance is building the ${BPROJ[mine.proj.k].n}. Finish it first.`);
+        if (!mine.proj && !isLeader) fail('Only the leader can choose a new project. Any member can then build its stages.');
+        if (mine.proj && mine.proj.next > W.now) fail(`Stage ${mine.proj.stage} is still being built: next stage in ${fmtT(mine.proj.next - W.now)}.`);
+        const cost = blocStageCost(W, mine); if ((mine.bank || 0) < cost) fail(`Each stage costs ${moneyS(cost)} from the alliance treasury (it holds ${moneyS(mine.bank || 0)}).`);
+        mine.bank -= cost; const pr = mine.proj || (mine.proj = { k, stage: 0 }); pr.stage++; pr.next = W.now + BLOC.stageH * HOUR; gainXP(W, u, 20);
+        if (pr.stage >= P_.stages) { mine.done[k] = W.now; mine.proj = null; blocLog(mine, `${P_.n} completed! ${P_.d}`, W); news(W, u, `The alliance ${mine.name} completed the ${P_.n}.`); for (const m of mine.members) if (W.A[m]) { note(W, m, 'diplo', `🏛 Your alliance completed the ${P_.n}: ${P_.d}`); touch(W, m); } return done(`${P_.n} completed!`); }
+        blocLog(mine, `${n.name} built stage ${pr.stage} of ${P_.stages} of the ${P_.n} (${moneyS(cost)}).`, W); return done(`Stage ${pr.stage} of ${P_.stages} built. Next stage in ${BLOC.stageH} hours.`);
+      }
+      case 'post': {
+        if (!mine) fail('You are not in an alliance.'); const x = cleanName(c.text, 1, 240); if (!x) fail('Write a message first.');
+        if ((mine.wall || []).filter(w => w.u === u && W.now - w.t < 60e3).length >= 3) fail('Slow down a little.');
+        mine.wall = [{ t: W.now, u, x }, ...(mine.wall || [])].slice(0, BLOC.wall); return done('Posted.');
+      }
+      default: fail('Unknown alliance action.');
+    }
+  }
+  function blocRemove(W, b, v, why) {
+    b.members = b.members.filter(m => m !== v); if (W.A[v]) { W.A[v].bloc = null; touch(W, v); } blocLog(b, why, W);
+    if (!b.members.length) { delete W.B[b.id]; return; }
+    if (b.leader === v) { const nxt = b.members.filter(m => W.A[m]).sort((x, y) => score(W, y) - score(W, x))[0] || b.members[0]; b.leader = nxt; blocLog(b, `${W.A[nxt] ? W.A[nxt].name : 'A member'} is the new leader.`, W); if (W.A[nxt]) note(W, nxt, 'diplo', `You are now the leader of ${b.name}.`); }
+    W.bch = true;
+  }
+  // keep alliances consistent with the world: fallen nations leave, stale invitations expire, nations point at their real alliance
+  function blocTick(W) {
+    for (const b of Object.values(W.B)) {
+      for (const m of [...b.members]) if (!W.A[m]) blocRemove(W, b, m, 'A member nation has fallen and left the alliance.');
+      if (!W.B[b.id]) continue;
+      for (const [v, t] of Object.entries(b.invites || {})) if (W.now - t > BLOC.inviteH * HOUR || !W.A[v]) { delete b.invites[v]; W.bch = true; }
+      for (const m of b.members) if (W.A[m] && W.A[m].bloc !== b.id) { W.A[m].bloc = b.id; touch(W, m); }
+      blocGoalState(W, b);
+    }
+    for (const [u, n] of Object.entries(W.A)) if (n.bloc && !blocOf(W, u)) { n.bloc = null; touch(W, u); }
+  }
+
+
+  // ---------- trade routes: breaking an old one hurts ----------
+  function breakRoute(W, u, v, how) {
+    if (!pact(W, u, v, 'trade') && !(how === 'war' && pact(W, u, v, 'ally'))) return; const days = (W.now - routeStart(W, u, v)) / 864e5; if (days < 1) return;
+    const me = W.A[u], them = W.A[v], fine = Math.round(Math.min(.05, .01 * days) * Math.max(0, me.cash || 0)); me.cash -= fine; them.cash += fine;
+    me.approval = clamp(me.approval - 3, 0, 100); me.stability = clamp(me.stability - 3, 0, 100);
+    log(me, `Breaking your ${Math.floor(days)}-day trade route with ${them.name} cost ${money(fine)} in compensation, 3 approval and 3 stability.`, W);
+    log(them, `${me.name} broke your ${Math.floor(days)}-day trade route and paid you ${money(fine)} in compensation.`, W); note(W, v, 'diplo', `${me.name} broke your trade route and paid ${money(fine)} in compensation.`); touch(W, v);
+  }
+  // ---------- province development ----------
+  function develop(W, u, h) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); h = Number(h); if (!Number.isInteger(h) || !P[h]) fail('Unknown province.');
+    if (owner(W, h) !== u) fail('You can only develop your own provinces.');
+    const lvl = devLvl(n, h) + 1; if (lvl > DEV.max) fail(`${pname(h)} is already a metropolis.`);
+    if (lvl === 3 && rankOf(n.xp) < 2) fail('Building a city needs the rank of Mayor.'); if (lvl === 4 && rankOf(n.xp) < 3) fail('Building a metropolis needs the rank of Governor.');
+    if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) fail(`${pname(h)} is a disaster zone. Rebuild once it recovers.`);
+    if (left(W, n, 'dev')) fail(`Your construction crews are busy: ${fmtT(left(W, n, 'dev'))}.`);
+    const c = devCost(W, u, lvl); if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.goods || 0) < c.goods) fail(`Developing to ${DEV.names[lvl]} costs ${money(c.cash)}${c.steel ? `, ${num(c.steel)} steel` : ''}${c.goods ? `, ${num(c.goods)} goods` : ''}.`);
+    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.dev = n.dev || {}; n.dev[h] = lvl; n.cd.dev = W.now + DEV.cdMin * MIN * W.cfg.cd; gainXP(W, u, 8 * lvl);
+    log(n, `${pname(h)} was developed into ${DEV.names[lvl] === 'Industry' ? 'an industrial region' : DEV.names[lvl] === 'Farms' ? 'farmland' : 'a ' + DEV.names[lvl].toLowerCase()} (${money(c.cash)}).`, W);
+    if (lvl === 4) news(W, u, `${pname(h)} in ${n.name} has grown into a metropolis.`);
+    touch(W, u); W.selHex = h; return { msg: `${pname(h)} is now ${DEV.names[lvl] === 'Farms' ? 'farmland' : DEV.names[lvl] === 'Industry' ? 'an industrial region' : 'a ' + DEV.names[lvl].toLowerCase()}: +${Math.round(DEV.prod * 100)}% output, more people and +${DEV.score} score.` };
+  }
+  // ---------- rebellions: provinces breaking away ----------
+  function breakAway(W, u, h, why) {
+    const n = W.A[u]; if (!n || h == n.cap || owner(W, h) !== u) return false; const l = devLvl(n, h);
+    delete n.hexes[h]; if (n.conq) delete n.conq[h]; if (n.unrest) delete n.unrest[h]; if (n.dev) delete n.dev[h]; W.OWN = computeOwn(W.A);
+    n.stability = clamp(n.stability - 3, 0, 100); (W.breakaways = W.breakaways || []).push({ from: u, h, dev: l, fromName: n.name });
+    log(n, `${pname(h)} ${why || 'declared independence'} and broke away from ${n.name}.`, W); note(W, u, 'attack', `⚠ ${pname(h)} has declared independence! Raise stability and garrison your provinces to keep the rest.`);
+    news(W, u, `${pname(h)} has declared independence from ${n.name}.`); touch(W, u); return true;
+  }
+  function neglect(W, u, rng) {
+    const n = W.A[u], held = hexesOf(W, u); let hit = false; const ratio = (n.troops || 0) / Math.max(1, held.length * GARRISON), g = ratio >= 1 ? .5 : 1;
+    for (const [h, until] of Object.entries(n.unrest || {})) { if (until < W.now || owner(W, h) !== u) { delete n.unrest[h]; continue; } if (rng() < REBEL.spyP * (1 - n.stability / 100) * g) { breakAway(W, u, Number(h), 'rose up with foreign-armed separatists'); hit = true; } }
+    if (held.length >= REBEL.minProv && n.stability < REBEL.st) {
+      const p = REBEL.p * (REBEL.st - n.stability) / REBEL.st * (n.approval < 40 ? 1.5 : 1) * g;
+      if (rng() < p) { const far = held.filter(h => h != n.cap).sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0]; if (far != null && breakAway(W, u, far, 'tired of neglect, declared independence')) hit = true; }
+    }
+    return hit;
+  }
+  // a breakaway province becomes a small AI nation (called by the server, never by players)
+  function foundRebel(W, id, h, info) {
+    if (W.A[id] || owner(W, h)) return false; const P_ = P[h]; let name = `Free State of ${P_.n}`.slice(0, 28); if (Object.values(W.A).some(n => n.name.toLowerCase() === name.toLowerCase())) name = `Republic of ${P_.n}`.slice(0, 28);
+    if (Object.values(W.A).some(n => n.name.toLowerCase() === name.toLowerCase())) name = (`${P_.n} ` + Math.floor(W.now / 1000 % 1000)).slice(0, 28);
+    const n = W.A[id] = normalize({ v: 4, name, color: info.color || COLORS[0], gov: 'dem', created: W.now - 3 * 864e5, cap: h, hexes: { [h]: W.now }, xp: 320, cash: 6e6, pop: 1.2e5, troops: 700, ships: isCoastal(h) ? 2 : 0, air: 0, spies: 2, tech: Math.max(0, (info.tech || 2) - 2), train: 0, infra: 1, fort: 1, tax: 20, approval: 75, stability: 65, aggr: 0,
+      res: { food: 400, oil: 150, steel: 150, goods: 80 }, cd: {}, cnt: {}, lastTick: W.now, nextCard: W.now + 30 * MIN, cards: [], seen: [], log: [], out: [], rel: {}, trades: [], exp: 0, imp: 0, budget: { ...DEFBUDGET }, debt: 0, unemp: 6, infl: 2, health: 50, edu: 50, iq: 50, morale: 80, nextElection: W.now + W.cfg.electionH * HOUR, ai: { p: 'isolationist', rebel: true, from: info.from || null } });
+    if (info.dev > 1) n.dev = { [h]: info.dev - 1 }; W.OWN = computeOwn(W.A); n.gdp = gdpTarget(W, id); n.gdpHist = [{ t: W.now, v: n.gdp }]; touch(W, id);
+    news(W, id, `${name} has declared independence${info.fromName ? ` from ${info.fromName}` : ''}.`); return name;
+  }
+  // ---------- the World Games ----------
+  const gamesOn = W => !!(W.G && !W.G.over && W.now >= W.G.start && W.now < W.G.end);
+  const gamesF = (n, cat) => cat === 'sport' ? 1 + (n.health == null ? 50 : n.health) / 100 : cat === 'science' ? 1 + soft(n.tech, 10) * .06 : 1 + (n.edu == null ? 50 : n.edu) / 100;
+  const gamesRank = (G, cat) => Object.entries((G.inv || {})[cat] || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  function gamesCmd(W, u, cat, amt) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!gamesOn(W)) fail('The World Games are not on right now.'); if (!has(GAMES.cats, cat)) fail('Unknown contest.');
+    const a = Math.floor(Number(amt)); if (!(a >= GAMES.minGive)) fail(`Invest at least ${money(GAMES.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
+    const G = W.G; G.inv = G.inv || {}; G.inv[cat] = G.inv[cat] || {}; G.spent = G.spent || {}; const pts = Math.round(a * gamesF(n, cat));
+    n.cash -= a; G.inv[cat][u] = (G.inv[cat][u] || 0) + pts; G.spent[u] = (G.spent[u] || 0) + a; if (n.ai) G.botSpent = (G.botSpent || 0) + a; W.gch = true; gainXP(W, u, Math.min(30, 2 + Math.round(a / 2e7)));
+    const pos = gamesRank(G, cat).findIndex(([v]) => v === u) + 1; touch(W, u);
+    return { msg: `${moneyS(a)} invested in the ${GAMES.cats[cat].n} (×${gamesF(n, cat).toFixed(2)} = ${num(pts)} points). You are #${pos}.` };
+  }
+  function gamesEnd(W) {
+    const G = W.G; G.over = W.now; G.results = {}; const won = {};
+    for (const [cat, C_] of Object.entries(GAMES.cats)) {
+      const top = gamesRank(G, cat).filter(([v]) => W.A[v]).slice(0, 3); G.results[cat] = top.map(([v, p]) => ({ u: v, name: W.A[v].name, pts: p }));
+      top.forEach(([v], i) => { const n = W.A[v]; n.medals = n.medals || { g: 0, s: 0, b: 0 }; n.medals['gsb'[i]]++; n.prestige = (n.prestige || 0) + GAMES.prestige[i]; won[v] = (won[v] || 0) + GAMES.prestige[i];
+        applyEff(W, v, { boost: { ap: GAMES.ap[i], h: 24 } }); gainXP(W, v, GAMES.xp[i]); note(W, v, 'event', `${['🥇', '🥈', '🥉'][i]} ${['Gold', 'Silver', 'Bronze'][i]} in the ${C_.n}! +${GAMES.prestige[i]} prestige, +${GAMES.ap[i]} approval for 24 hours, ${GAMES.xp[i]} XP.`); touch(W, v); });
+    }
+    const champ = Object.entries(won).sort((a, b) => b[1] - a[1])[0];
+    if (champ) { G.champ = { u: champ[0], name: W.A[champ[0]].name }; applyEff(W, champ[0], { boost: { gdp: 1.03, h: 48 } }); note(W, champ[0], 'event', '🏆 You topped the medal table at the World Games! +3% GDP for 48 hours from tourism.'); }
+    return `🏅 The World Games are over.${champ ? ` ${W.A[champ[0]].name} tops the medal table.` : ''} ${Object.entries(G.results).map(([c, r]) => `${GAMES.cats[c].n}: ${r[0] ? '🥇 ' + r[0].name : 'no entries'}`).join(' · ')}.`;
+  }
+  // ---------- natural disasters ----------
+  function disasterHit(W, u, h, kind) {
+    const n = W.A[u], K = DISASTER[kind]; if (!n || !K) return null; const lost = Math.round(n.pop * DISASTER.pop);
+    n.pop -= lost; n.stability = clamp(n.stability - DISASTER.st, 0, 100); n.res.food = Math.round((n.res.food || 0) * .9); const dl = devLvl(n, h); if (dl > 0) n.dev[h] = dl - 1;
+    const rec = { id: rid(), u, name: n.name, h, place: pname(h), kind, t: W.now, until: W.now + DISASTER.h * HOUR, need: Math.round(Math.max(DISASTER.needMin, (n.gdp || 0) * DISASTER.needPct) / 1e5) * 1e5, got: 0, aid: {}, lost };
+    note(W, u, 'event', `${K.ic} ${/^[aeiou]/i.test(K.n) ? 'An' : 'A'} ${K.n.toLowerCase()} struck ${pname(h)}: ${num(lost)} people lost, stability −${DISASTER.st}${dl > 0 ? `, and it fell back to ${DEV.names[dl - 1].toLowerCase()}` : ''}. Output there is cut for ${DISASTER.h} hours. Other nations can send relief.`);
+    news(W, u, `${K.ic} ${/^[aeiou]/i.test(K.n) ? 'An' : 'A'} ${K.n.toLowerCase()} has struck ${pname(h)} in ${n.name}.`); touch(W, u); return rec;
+  }
+  function relief(W, u, id, amt) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); const d = (W.DIS || []).find(x => x.id === String(id) && x.until > W.now); if (!d) fail('That disaster appeal has closed.');
+    if (d.u === u) fail('You cannot send relief to yourself.'); const v = W.A[d.u]; if (!v) fail('That nation no longer exists.'); if (atWar(W, u, d.u)) fail(`You are at war with ${v.name}.`);
+    const a = Math.floor(Number(amt)); if (!(a >= DISASTER.minGive)) fail(`Send at least ${money(DISASTER.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
+    const before = d.aid[u] || 0, pr0 = Math.min(3, Math.floor(before / d.need * 8) / 2), pr1 = Math.min(3, Math.floor((before + a) / d.need * 8) / 2);
+    n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
+    if (!before) n.approval = clamp(n.approval + 1, 0, 100); gainXP(W, u, Math.min(30, 3 + Math.round(a / 1e7)));
+    note(W, d.u, 'diplo', `${n.name} sent ${moneyS(a)} in disaster relief for ${d.place}.`); log(v, `${n.name} sent ${money(a)} in disaster relief.`, W); touch(W, d.u);
+    if (!d.done && d.got >= d.need) { d.done = W.now; v.pop += Math.round(d.lost * .5); v.stability = clamp(v.stability + 5, 0, 100); news(W, d.u, `The world rallied behind ${v.name}: relief for ${d.place} is fully funded.`); for (const x of Object.keys(d.aid)) if (W.A[x]) note(W, x, 'diplo', `Relief for ${d.place} is fully funded. Thank you!`); }
+    touch(W, u); return { msg: `${moneyS(a)} of relief sent to ${v.name}.${pr1 > pr0 ? ` +${pr1 - pr0} prestige.` : ''}` };
+  }
+  // ---------- world crises ----------
+  const crisisOn = W => !!(W.CR && W.CR.key && CRISES[W.CR.key] && !W.CR.over && W.now < W.CR.end);
+  const crisisGoal = (W, diff) => { let g = 0; for (const n of Object.values(W.A)) g += n.gdp || 0; return Math.round(Math.max(CRISIS.minGoal, g * (CRISIS.diff[diff] || CRISIS.diff.normal)) / 1e6) * 1e6; };
+  const crisisRank = cr => Object.entries(cr.contrib || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  function crisisGive(W, u, amt, label) { const cr = W.CR, n = W.A[u]; cr.contrib[u] = (cr.contrib[u] || 0) + amt; if (cr.key !== 'boss') cr.pool = (cr.pool || 0) + amt; W.crch = true; if (n && n.ai) cr.botPool = (cr.botPool || 0) + amt; }
+  function crisisCmd(W, u, op, amt, rng) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!crisisOn(W)) fail('There is no world crisis right now.');
+    const cr = W.CR, K = CRISES[cr.key], ch = (cr.choice = cr.choice || {})[u]; cr.contrib = cr.contrib || {};
+    if (op === 'exploit') {
+      if (ch) fail(ch === 'coop' ? 'You already chose to cooperate.' : 'You already chose to exploit this crisis.');
+      cr.choice[u] = 'exploit'; n.aggr = clamp((n.aggr || 0) + CRISIS.exploitAggr * aggrScale(W, u) * .75, 0, 100); let msg;
+      if (cr.key === 'aliens') { if (rng() < .4) { n.tech += 2; msg = `Your secret team seized alien technology: +2 tech levels (now ${n.tech}).`; news(W, u, `${n.name} secretly seized technology from the alien probe.`); }
+        else { const loss = Math.round((n.cash || 0) * .02); n.cash -= loss; msg = `The secret mission failed and cost ${money(loss)}.`; news(W, u, `${n.name} was caught trying to seize the alien probe for itself.`); } }
+      else { const gain = Math.round((n.gdp || 0) * CRISIS.exploitGdp); n.cash += gain; msg = `${K.exploit}: ${money(gain)} earned.`;
+        news(W, u, { pandemic: `${n.name} is profiteering from the pandemic by hoarding medicine.`, asteroid: `${n.name} is selling doomsday bunkers instead of helping to stop the asteroid.`, boss: `${n.name} is selling weapons to the Rising Power.` }[cr.key] || `${n.name} is exploiting the crisis.`);
+        if (cr.key === 'boss' && cr.boss && W.A[cr.boss]) { const B_ = W.A[cr.boss]; B_.troops = Math.round((B_.troops || 0) * 1.03); touch(W, cr.boss); } }
+      W.crch = true; log(n, msg, W); touch(W, u); return { msg };
+    }
+    if (op === 'coop' || op === 'give') {
+      if (ch === 'exploit') fail('You chose to exploit this crisis and cannot join the world effort now.');
+      if (!ch) { cr.choice[u] = 'coop'; W.crch = true; news(W, u, `${n.name} joined the world effort against ${K.n}.`); gainXP(W, u, 10); }
+      if (op === 'coop' && amt == null) { touch(W, u); return { msg: 'You joined the world effort. Every contribution counts.' }; }
+      const a = Math.floor(Number(amt)); if (!(a >= CRISIS.minGive)) fail(`Contribute at least ${money(CRISIS.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
+      n.cash -= a; crisisGive(W, u, a); gainXP(W, u, Math.min(40, 2 + Math.round(a / 2e7))); log(n, `Contributed ${money(a)} to the world effort against ${K.n}.`, W); touch(W, u);
+      return { msg: `${moneyS(a)} contributed. ${cr.key === 'boss' ? 'The coalition thanks you.' : `The world effort is at ${Math.min(100, Math.floor((cr.pool || 0) / cr.goal * 100))}%.`}` };
+    }
+    fail('Unknown action.');
+  }
+  // fighting the Rising Power during its crisis counts as a contribution: $25,000 per enemy soldier lost, $50M for every province taken
+  function crisisHit(W, u, b, v) {
+    if (!crisisOn(W) || W.CR.key !== 'boss' || !b || !v || v !== W.CR.boss) return; const cr = W.CR; cr.choice = cr.choice || {}; cr.contrib = cr.contrib || {};
+    if (cr.choice[u] === 'exploit') return; if (!cr.choice[u]) cr.choice[u] = 'coop';
+    crisisGive(W, u, Math.round((b.lossD || 0) * 25000 + (b.win || b.conquered ? 5e7 : 0)));
+  }
+  // the crisis ends: rewards or disaster. Returns a summary line for the world.
+  function crisisEnd(W, ok, rng) {
+    const cr = W.CR, K = CRISES[cr.key]; cr.over = W.now; cr.ok = !!ok; const top = crisisRank(cr).filter(([v]) => W.A[v] && cr.choice[v] !== 'exploit').slice(0, 3); cr.top = top.map(([v, a]) => ({ u: v, name: W.A[v].name, amt: a }));
+    const coop = Object.keys(cr.choice || {}).filter(v => W.A[v] && cr.choice[v] === 'coop'), expl = Object.keys(cr.choice || {}).filter(v => W.A[v] && cr.choice[v] === 'exploit');
+    const boost = (v, b) => applyEff(W, v, { boost: b });
+    if (ok) {
+      for (const v of coop) { const n = W.A[v]; if (!(cr.contrib[v] > 0)) continue; gainXP(W, v, 50); boost(v, { gdp: 1.03, ap: 3, h: 24 }); if (cr.key === 'aliens') n.tech += 1; note(W, v, 'event', `${K.ic} ${K.win} Thank you for contributing: +3% GDP and +3 approval for 24 hours${cr.key === 'aliens' ? ', and +1 tech level' : ''}.`); touch(W, v); }
+      top.forEach(([v, a], i) => { const n = W.A[v]; const back = Math.round(a * [.5, .35, .25][i]); n.cash += back; gainXP(W, v, [300, 200, 120][i]); if (cr.key === 'aliens') n.tech += 1; n.ach = n.ach || {}; if (!n.ach.hero) n.ach.hero = W.now;
+        boost(v, { tax: 1.08, st: 4, h: 48 }); note(W, v, 'event', `🏅 You were the #${i + 1} contributor to the world effort against ${K.n}! Reward: ${money(back)} back, ${[300, 200, 120][i]} XP, +8% tax revenue and +4 stability for 48 hours${cr.key === 'aliens' ? ', and another tech level' : ''}.`); touch(W, v); });
+      for (const v of expl) { const n = W.A[v]; n.approval = clamp(n.approval - 6, 0, 100); n.stability = clamp(n.stability - 4, 0, 100); note(W, v, 'event', `The world beat ${K.n} without you. Your people are ashamed: approval −6, stability −4.`); touch(W, v); }
+      return `${K.ic} ${K.win}${top.length ? ` Heroes of the world: ${top.map(([v], i) => `${i + 1}. ${W.A[v].name}`).join(', ')}.` : ''}`;
+    }
+    let extra = '';
+    if (cr.key === 'pandemic') for (const [v, n] of Object.entries(W.A)) { const half = cr.choice[v] === 'exploit'; n.pop = Math.round(n.pop * (half ? .98 : .96)); boost(v, { gdp: half ? .96 : .92, h: 24 }); touch(W, v); }
+    else if (cr.key === 'asteroid') {
+      const ids = Object.keys(W.A).filter(v => hexesOf(W, v).length); const v = ids.length ? ids[Math.floor(rng() * ids.length)] : null;
+      if (v) { const n = W.A[v], hs = hexesOf(W, v).filter(h => h != n.cap), h = hs.length ? hs[Math.floor(rng() * hs.length)] : n.cap; n.pop = Math.round(n.pop * .85); n.infra = Math.max(0, (n.infra || 0) - 2); n.stability = clamp(n.stability - 10, 0, 100); W.impact = h; extra = ` It struck ${pname(h)} in ${n.name}.`; note(W, v, 'event', `☄️ The asteroid struck ${pname(h)}! 15% of your population was lost, infrastructure −2, stability −10.`); }
+      for (const [x, n] of Object.entries(W.A)) { if (cr.choice[x] !== 'exploit') boost(x, { gdp: .9, h: 24 }); touch(W, x); }
+    }
+    else if (cr.key === 'boss' && cr.boss && W.A[cr.boss]) { const B_ = W.A[cr.boss]; B_.troops = Math.round((B_.troops || 0) * 1.3); touch(W, cr.boss); extra = ' Its army grew 30% stronger.'; }
+    for (const v of coop) if (cr.contrib[v] > 0) { gainXP(W, v, 25); note(W, v, 'event', `${K.ic} ${K.lose} You tried: +25 XP for your contribution.`); }
+    return `${K.ic} ${K.lose}${extra}`;
+  }
   function exec0(W, u, cmd, rng) {
     const c = cmd || {};
     switch (c.c) {
@@ -1488,30 +1829,35 @@ function Core(PD, CARDS) {
       case 'bonds': return bonds(W, u, c.amt, !!c.repay);
       case 'gov': return setGov(W, u, String(c.g));
       case 'covert': return covert(W, u, String(c.op), String(c.v), rng);
+      case 'bloc': return blocCmd(W, u, String(c.op || ''), c);
+      case 'crisis': return crisisCmd(W, u, String(c.op || ''), c.amt, rng);
+      case 'develop': return develop(W, u, c.h);
+      case 'games': return gamesCmd(W, u, String(c.cat || ''), c.amt);
+      case 'relief': return relief(W, u, c.id, c.amt);
       case 'hideguide': { const n = W.A[u]; if (n) { n.hideGuide = true; touch(W, u); } return { msg: '' }; }
       default: fail('Unknown command.');
     }
   }
   // every command passes through here so daily missions and achievements can follow along
   function exec(W, u, cmd, rng) {
-    const r = exec0(W, u, cmd, rng), c = cmd || {}, n = W.A[u]; if (!n || c.c === 'found') return r;
+    const pre = cmd && cmd.c === 'attack' ? owner(W, Number(cmd.h)) : null, r = exec0(W, u, cmd, rng), c = cmd || {}, n = W.A[u]; if (!n || c.c === 'found') return r;
     try {
       const t = n.tally = n.tally || {};
-      if (c.c === 'act') { mTrack(W, u, 'ops', 1); if (['tax', 'prod', 'research', 'expand', 'recruit', 'infra'].includes(c.k)) mTrack(W, u, c.k, 1); }
-      else if (c.c === 'decide') mTrack(W, u, 'decide', 1);
+      if (c.c === 'act') { mTrack(W, u, 'ops', 1); blocGoal(W, u, 'ops'); if (['tax', 'prod', 'research', 'expand', 'recruit', 'infra'].includes(c.k)) mTrack(W, u, c.k, 1); }
+      else if (c.c === 'decide') { mTrack(W, u, 'decide', 1); blocGoal(W, u, 'dec'); }
       else if (c.c === 'market') { const q = Math.floor(Number(c.q)) || 0; mTrack(W, u, c.buy ? 'import' : 'export', q); n.cnt.trades = (n.cnt.trades || 0) + 1; }
       else if (c.c === 'aid') mTrack(W, u, 'aid', 1);
-      else if (c.c === 'attack' && r && r.battle) { if (r.battle.win || r.battle.conquered) { t.wins = (t.wins || 0) + 1; mTrack(W, u, 'win', 1); } if (r.battle.conquered) { t.caps = (t.caps || 0) + 1; } }
+      else if (c.c === 'attack' && r && r.battle) { crisisHit(W, u, r.battle, pre); if (r.battle.win || r.battle.conquered) { t.wins = (t.wins || 0) + 1; mTrack(W, u, 'win', 1); } if (r.battle.conquered) { t.caps = (t.caps || 0) + 1; } }
       mState(W, u); achCheck(W, u);
     } catch (e) { }
     return r;
   }
 
 
-  return { AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { Core, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { Core, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });

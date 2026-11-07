@@ -337,5 +337,5 @@ module.exports = function makeBots(core, WP, rng) {
       default: throw new Error('Unknown order.');
     }
   }
-  return { spawn, turn, isBot, PERS, raiseBoss: pickBoss, bossCommand, bossCfg, BOSS_DEF };
+  return { spawn, turn, isBot, PERS, distinctColor, raiseBoss: pickBoss, bossCommand, bossCfg, BOSS_DEF };
 };
