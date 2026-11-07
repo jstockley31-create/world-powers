@@ -257,7 +257,8 @@ function sendNation(id) {
   let own = null; for (const c of clients) { if (c.uid === id && n != null) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } else writeRaw(c, pub); }
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
-const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => p), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
+const playerVotes = v => Object.fromEntries(Object.entries(v || {}).filter(([u]) => !BOTS.isBot(u)));
+const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => ({ ...p, votes: playerVotes(p.votes) })), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
 // alliances: everyone sees names, flags, members, projects and treasuries; only members read their own message board
 function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [] }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
@@ -560,7 +561,7 @@ function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of
 // a vote closes early once the outcome is certain: it passes when yes leads by more than the votes still out (and has at least 3), and fails when yes can no longer win
 function decideEarly(W, p) {
   if (p.status !== 'open' || Date.now() >= p.end) return false;
-  const ys = Object.values(p.votes).filter(v => v === 'y').length, ns = Object.values(p.votes).filter(v => v === 'n').length, left = canStillVote(W, p);
+  const pv = Object.values(playerVotes(p.votes)), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length, left = canStillVote(W, p);
   if ((ys >= COUNCIL_MIN_YES && ys > ns + left) || ys + left <= ns || ys + left < COUNCIL_MIN_YES) { p.end = Date.now(); p.early = true; return true; }
   return false;
 }
@@ -569,7 +570,7 @@ function councilResolve(W) {
   for (const p of S.council.props) { if (decideEarly(W, p)) changed = true; }
   for (const p of S.council.props) {
     if (p.status !== 'open' || now < p.end) continue;
-    const ys = Object.values(p.votes).filter(v => v === 'y').length, ns = Object.values(p.votes).filter(v => v === 'n').length;
+    const pv = Object.values(playerVotes(p.votes)), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length;
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
     p.status = ys > ns && ys >= COUNCIL_MIN_YES ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
@@ -795,6 +796,8 @@ function readyReminders(W) {
     if (readyOps >= 4) { m.lastReady = now; pushTo(u, { title: 'World Powers', body: `${n.name}: taxes and ${readyOps - 1} other operations are ready.`, url: '/play', tag: 'ready' }); }
   }
 }
+// votes opened under the old rules: drop AI votes and close them within 3 hours
+{ const lim = Date.now() + COUNCIL_H * HOUR; for (const p of (S.council && S.council.props) || []) if (p.status === 'open') { p.votes = playerVotes(p.votes); if (p.end > lim) p.end = lim; } }
 // ---------- rollback snapshots: the game world (nations, council, events) every 10 minutes, kept 26 hours ----------
 const SNAP_DIR = path.join(DATA_DIR, 'snaps'); let lastSnap = 0;
 function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), nations, council: S.council, blocs: S.blocs, crisis: S.crisis, games: S.games, dis: S.dis, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
