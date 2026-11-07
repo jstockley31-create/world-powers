@@ -487,6 +487,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .tag.gold{border-color:#a07d2a;color:#ffd36b;background:#2a2010}
 .ntdone.icpt{border-color:#ffd36b;background:rgba(40,30,6,.96)}
 .ofprov{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px;max-height:150px;overflow:auto;border:1px solid var(--bd2);border-radius:6px;padding:8px;margin:2px 0 6px;background:var(--s2,rgba(255,255,255,.02))}.ofprov label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ofprov input{width:auto;margin:0}
+.pollq{margin:0 0 14px}.pollopts{display:grid;gap:6px;margin-top:8px}.pollopt{display:flex;gap:10px;align-items:center;text-align:left;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--s2,#11171e);color:inherit;font:inherit;cursor:pointer;min-height:44px}.pollopt .pl{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--bd);font-weight:600;font-size:13px}.pollopt.on{border-color:var(--ac,#d4a64a);background:rgba(212,166,74,.12)}.pollopt.on .pl{background:var(--ac,#d4a64a);border-color:var(--ac,#d4a64a);color:#17120a}.pollother{width:100%;box-sizing:border-box;margin-top:8px;font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--s1,#0c1218);color:inherit;resize:vertical}
 .hvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}.hvcard{border:1px solid var(--bd);border-radius:8px;padding:10px;background:var(--s2,#11171e);display:flex;flex-direction:column}.hvcard p{font-size:12.5px;margin:4px 0 6px;line-height:1.4}.hvcard .btn{margin-top:auto;align-self:flex-start}
 .dirtybox{margin-top:14px;padding:12px;border:1px solid #3d5a1f;border-radius:8px;background:linear-gradient(180deg,rgba(120,200,50,.08),rgba(120,200,50,.02))}.dirtybox b{color:#b8f07a;font-size:15px}.dirtybox p{font-size:12.5px;color:var(--mu);margin:4px 0 10px}.dirty-btn{background:#2c4313;border-color:#4d7a1f;color:#d4ff9e;width:auto}.dirtybox .dirty-btn{width:100%}.dirty-btn:disabled{opacity:.5}
 .dipwrap{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;margin-bottom:16px}
@@ -642,7 +643,7 @@ window.claude={use:async n=>{await authed;return n==='db'?db:n==='user'?user:nul
 window.WP={me:()=>st.me,api,extra:{}};
 const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
-function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],voteAt:d.voteAt||0,council:d.council,blocs:d.blocs||{},crisis:d.crisis||null,nukes:d.nukes||[],games:d.games||null,dis:d.dis||[],event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
+function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],voteAt:d.voteAt||0,council:d.council,blocs:d.blocs||{},crisis:d.crisis||null,nukes:d.nukes||[],polls:d.polls||[],games:d.games||null,dis:d.dis||[],event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 // the live stream can stall without any error (a phone waking up, a network switch, a proxy hiccup): watch for silence and reconnect, which reloads the whole world
 let curES=null,lastMsg=0,lastDoc=0,lastOwn=0,expT=0,connT=0,connFails=0;
 function reconnect(why,force){if(!force&&Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
@@ -667,6 +668,8 @@ on('council',e=>{WP.extra.council=JSON.parse(e.data);emit('wp-council',WP.extra.
 on('games',e=>{WP.extra.games=JSON.parse(e.data);emit('wp-games',WP.extra.games)});
 on('dis',e=>{WP.extra.dis=JSON.parse(e.data)||[];emit('wp-dis',WP.extra.dis)});
 on('crisis',e=>{WP.extra.crisis=JSON.parse(e.data);emit('wp-crisis',WP.extra.crisis)});
+on('poll',e=>{const q=JSON.parse(e.data);WP.extra.polls=[...(WP.extra.polls||[]).filter(x=>x.id!==q.id),q];emit('wp-poll',q)});
+on('pollend',e=>{const q=JSON.parse(e.data);WP.extra.polls=(WP.extra.polls||[]).filter(x=>x.id!==q.id);emit('wp-pollend',q)});
 on('blocs',e=>{WP.extra.blocs=JSON.parse(e.data)||{};emit('wp-blocs',WP.extra.blocs)});
 on('event',e=>{WP.extra.event=JSON.parse(e.data);emit('wp-event',WP.extra.event)});
 on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(st.me&&d.id===st.me.id)lastOwn=lastDoc;if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
@@ -2121,8 +2124,25 @@ async function togglePush(){try{if(X().pushOn){const reg=await navigator.service
  const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const key=X().vapid;const raw=Uint8Array.from(atob(key.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-key.length%4)%4)),c=>c.charCodeAt(0));
  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:raw});await WP.api('POST','/api/push/subscribe',{sub:sub.toJSON()});WP.extra.pushOn=true;toast('Notifications are on.');bellPanel()}catch(e){toast('Could not turn on notifications: '+(e.message||e))}}
 // ================= modal / toast =================
-function modal(html){const m=$('mod');m.innerHTML=`<section class="panel">${html}</section>`;m.style.display='flex'}
-function closeModal(){planner=null;$('mod').style.display='none';$('mod').innerHTML=''}
+function modal(html,isPoll){if(pollOpenId&&!isPoll){pollSeen.delete(pollOpenId);pollOpenId=null} /* another window pushed the poll aside: it comes back later */const m=$('mod');m.innerHTML=`<section class="panel">${html}</section>`;m.style.display='flex'}
+function closeModal(){planner=null;if(pollOpenId){pollSeen.delete(pollOpenId);pollOpenId=null} /* closed by the game (a nuke alert, say): the poll comes back afterwards */$('mod').style.display='none';$('mod').innerHTML=''}
+// ---- polls from the game's admin: each pops up once (answer it, or close it to skip) ----
+let pollOpenId=null;const pollSeen=new Set();
+const pollDrop=id=>{if(WP.extra.polls)WP.extra.polls=WP.extra.polls.filter(x=>x.id!==id)};
+function pollCheck(){if(!loaded||!me||nukeBusy||pollOpenId||$('mod').style.display==='flex'||document.hidden)return;const q=(X().polls||[]).find(x=>!pollSeen.has(x.id));if(q){pollSeen.add(q.id);pollShow(q)}}
+function pollShow(q){pollOpenId=q.id;const L='ABCDEFGH';
+ modal(`<header><h2>📋 ${esc(q.title)}</h2><button class="btn sm ghost" data-act="pollskip">Close</button></header><div class="bd poll" data-poll="${esc(q.id)}">${q.intro?`<p style="margin:0 0 12px;white-space:pre-line">${esc(q.intro)}</p>`:''}
+  ${q.questions.map((Q,i)=>`<div class="pollq" data-q="${i}" data-multi="${Q.multi?1:0}"><b>${q.questions.length>1?`${i+1}. `:''}${esc(Q.q)}</b>${Q.multi?'<span class="mu" style="font-size:12px"> (pick any)</span>':''}
+   <div class="pollopts">${Q.opts.map((o,j)=>`<button type="button" class="pollopt" data-act="pollpick" data-a="${i}" data-b="${j}"><span class="pl">${L[j]}</span><span>${esc(o)}</span></button>`).join('')}</div>
+   ${Q.other?`<textarea class="pollother" maxlength="300" rows="2" placeholder="${Q.opts.length?'Or write your own answer':'Your answer'}"></textarea>`:''}</div>`).join('')}
+  <p class="rd" id="pollErr" style="font-size:13px;margin:0 0 8px;display:none"></p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="pollsend">Send my answers</button><button class="btn ghost" data-act="pollskip">Not now</button></div>
+  <p class="mu" style="font-size:12px;margin:10px 0 0">Your answers go to the game's admin. This poll shows only once.</p></div>`,true)}
+setInterval(pollCheck,3000);window.addEventListener('wp-poll',()=>setTimeout(pollCheck,600));
+window.addEventListener('wp-pollend',e=>{const id=e.detail&&e.detail.id;if(id&&pollOpenId===id){pollOpenId=null;$('mod').style.display='none';$('mod').innerHTML='';toast('That poll has closed.')}});
+async function pollSend(){const box=document.querySelector('#mod .poll');if(!box)return;const id=box.dataset.poll,err=$('pollErr'),answers=[];
+ for(const qe of box.querySelectorAll('.pollq')){const pick=[...qe.querySelectorAll('.pollopt.on')].map(b=>+b.dataset.b),ot=qe.querySelector('.pollother'),other=ot?ot.value.trim():'';if(!pick.length&&!other){err.textContent=`Pick an answer for question ${+qe.dataset.q+1} first.`;err.style.display='block';qe.scrollIntoView({block:'nearest'});return}answers.push({pick,other})}
+ try{await WP.api('POST','/api/poll',{id,answers});pollOpenId=null;pollDrop(id);closeModal();toast('Thanks! Your answers were sent.')}catch(x){err.textContent=x.message||'Could not send. Try again.';err.style.display='block'}}
 let askFn=null;function ask(title,body,label,fn){askFn=fn;modal(`<header><h2>${title}</h2></header><div class="bd"><p style="margin-top:0">${body}</p><div style="display:flex;gap:8px"><button class="btn dng" data-act="askyes">${label}</button><button class="btn" data-act="close">Cancel</button></div></div>`)}
 let nukeQ=[],nukeBusy=false;
 let toastT,heldToasts=[];function toast(t){if(!t)return;if(nukeBusy&&/☢/.test(t)){heldToasts.push(t);return}const el=$('toast');el.textContent=t;el.style.display='block';clearTimeout(toastT);toastT=setTimeout(()=>el.style.display='none',4500)}
@@ -2144,6 +2164,9 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'offeropen':offerModal(a,b);break;
  case'dipsel':dipSel=a||null;render();if(isMob())window.scrollTo(0,0);else{const d=document.querySelector('.doss');if(d&&d.getBoundingClientRect().top<0)d.scrollIntoView({block:'start'})}break;
  case'dipf':dipF=a;render();break;
+ case'pollpick':{const qe=el.closest('.pollq');if(!qe)break;if(qe.dataset.multi!=='1')qe.querySelectorAll('.pollopt.on').forEach(x=>{if(x!==el)x.classList.remove('on')});el.classList.toggle('on');const er=$('pollErr');if(er)er.style.display='none';break}
+ case'pollsend':pollSend();break;
+ case'pollskip':{const id=pollOpenId;pollOpenId=null;if(id){pollDrop(id);WP.api('POST','/api/poll',{id,skip:true}).catch(()=>{})}closeModal();break}
  case'heavy':{const v=a,t=A[v],k=b,H=C.HEAVY[k];if(!t||!H)break;ask(`${H.ic} ${H.n} on ${esc(t.name)}?`,HV_TXT[k](H)+(k==='bombard'?'':` It costs ${esc(C.heavyCostTxt(k))}.`),k==='cyber'?'Launch':'Fire',async()=>{const r=await cmd({c:'heavy',v,k},false);if(r){toast(r.msg);SND.play('win');if(k!=='cyber'){followStrike=Date.now()+20000;planner=null;if(P[t.cap])goWatch(t.cap,1.6);else closeModal()}else drawPlanner()}});break}
  case'dirty':{const v=a,t=A[v];if(!t)break;const D=C.DIRTY;ask(`☢ Drop a dirty bomb on ${esc(t.name)}?`,`It costs ${money(D.cash)}, ${num(D.steel)} steel, ${num(D.oil)} oil and ${num(D.goods)} goods, hits a random province, and leaves a radioactive cloud there for ${D.h} hours. ${t.ai?`It adds ${Math.round(D.aggr/3)} aggression against an AI nation`:`It adds ${Math.round(D.aggr*4/3)} aggression against a real player, and the World Council will vote to condemn you`} (none if you're defending yourself).`,'Drop it',async()=>{const r=await cmd({c:'dirty',v},false);if(r){toast(r.msg);SND.play('win');followStrike=Date.now()+20000;planner=null;if(P[t.cap])goWatch(t.cap,1.6);else closeModal()}});break}
  case'release':{const h=+a;ask(`Release ${esc(P[h].n)}?`,`It becomes free land anyone can settle, and you lose everything it produces. Your people won't like giving up territory: <b>−${C.RELEASE.st} stability and −${C.RELEASE.ap} approval</b>. You can release one province per hour.`,'Release province',()=>cmd({c:'release',h}).then(r=>{if(r){selHex=null;render()}}),true);break}
@@ -2261,7 +2284,7 @@ document.addEventListener('change',async e=>{const t=e.target;if(t.dataset&&t.da
  if(t.id==='cpType'){councilDraft.type=t.value;const w=$('cpTargetWrap');if(w)w.style.display=resTargeted(t.value)?'':'none';for(const[id,k]of[['cpScopeWrap','pact'],['cpHoursWrap','custom'],['cpTextWrap','custom']]){const e=$(id);if(e)e.style.display=t.value===k?'':'none'}const d=$('cpDesc');if(d)d.textContent=RESOLUTIONS[t.value].d+resLen(RESOLUTIONS[t.value])}});
 document.addEventListener('mousedown',e=>{const bp=$('bellPanel');if(bp.classList.contains('on')&&!bp.contains(e.target)&&!e.target.closest('#bellBtn'))bp.classList.remove('on')});
 function keepName(){const el=$('fn_name');if(el)found_.name=el.value}
-$('mod').addEventListener('click',e=>{if(e.target.id!=='mod')return;if(planner||$('mod').querySelector('input,textarea,select'))return;closeModal()});
+$('mod').addEventListener('click',e=>{if(e.target.id!=='mod')return;if(pollOpenId||planner||$('mod').querySelector('input,textarea,select'))return;closeModal()});
 let taxT;document.addEventListener('input',e=>{if(e.target.id==='taxr'&&me){const t=+e.target.value;$('taxv').textContent=t+'%';const old=me.tax;me.tax=t;$('taxinc').textContent=money(taxIncome());me.tax=old;clearTimeout(taxT);taxT=setTimeout(()=>cmd({c:'tax',t}),500)}});
 $('chatin').addEventListener('submit',e=>{e.preventDefault();const i=$('cin');sendChat(i.value);i.value='';cinFit()});
 // the chat box grows with what you type (up to 6 lines); Enter sends, Shift+Enter starts a new line

@@ -37,7 +37,7 @@ try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { 
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
-for (const k of ['finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
+for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
 const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
@@ -242,6 +242,10 @@ const clients = new Set();
 function write(c, event, data) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
 function writeRaw(c, str) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { c.res.write(str); } catch (e) {} }
 function broadcast(event, data) { if (!clients.size) return; const str = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const c of clients) writeRaw(c, str); }
+// ---- polls: questions the admin sends to every player; each player sees the pop-up once (answer or skip) ----
+const pollOpen = q => q && q.active && (!q.ends || q.ends > Date.now());
+const pollPublic = q => ({ id: q.id, title: q.title, intro: q.intro, questions: q.questions, ends: q.ends || 0 });
+const pollFor = uid => S.polls.filter(q => pollOpen(q) && !(q.answers || {})[uid] && !(q.skips || {})[uid]).slice(0, 3).map(pollPublic);
 function sendTo(uid, event, data) { for (const c of clients) if (c.uid === uid) write(c, event, data); }
 const isOnline = uid => [...clients].some(c => c.uid === uid);
 // serialize once per nation (one copy for its owner, one public copy for everyone else) instead of once per connected player
@@ -261,7 +265,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilView(), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilView(), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -1029,6 +1033,23 @@ async function adminRoute(p, req, res, me) {
     commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
     audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
   }
+  if (p === '/api/admin/poll' && req.method === 'POST') { // Admin page → Polls: questions sent to every player
+    const b = await readBody(req, 32768), op = String(b.op || ''), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim();
+    const find = () => S.polls.find(x => x.id === b.id);
+    if (op === 'list') return send(res, 200, { polls: S.polls, players: Object.keys(S.users).filter(id => !S.users[id].banned && S.docs['nations/' + id]).length });
+    if (op === 'create') {
+      const title = clean(b.title).slice(0, 120), intro = clean(b.intro).slice(0, 600); if (!title) return send(res, 400, { error: 'Give the poll a title.' });
+      const qs = (Array.isArray(b.questions) ? b.questions : []).slice(0, 10).map(x => ({ q: clean(x && x.q).slice(0, 300), opts: (Array.isArray(x && x.opts) ? x.opts : []).map(o => clean(o).slice(0, 120)).filter(Boolean).slice(0, 8), multi: !!(x && x.multi), other: !!(x && x.other) })).filter(x => x.q && (x.opts.length >= 2 || (x.other && !x.opts.length)));
+      if (!qs.length) return send(res, 400, { error: 'Add at least one question with two or more answers (or a written answer).' });
+      const hrs = +b.hours, q = { id: crypto.randomBytes(6).toString('hex'), t: Date.now(), by: me.name, title, intro, questions: qs, active: true, ends: hrs > 0 ? Date.now() + Math.min(24 * 30, hrs) * HOUR : 0, answers: {}, skips: {} };
+      S.polls.unshift(q); S.polls = S.polls.slice(0, 100); persist(); audit(me.name, 'Sent a poll to players', title); broadcast('poll', pollPublic(q)); return send(res, 200, { ok: true, id: q.id });
+    }
+    const q = find(); if (!q) return send(res, 404, { error: 'Poll not found.' });
+    if (op === 'close') { q.active = false; persist(); broadcast('pollend', { id: q.id }); return send(res, 200, { ok: true }); }
+    if (op === 'reopen') { q.active = true; if (q.ends && q.ends < Date.now()) q.ends = 0; persist(); broadcast('poll', pollPublic(q)); return send(res, 200, { ok: true }); }
+    if (op === 'delete') { S.polls = S.polls.filter(x => x !== q); persist(); broadcast('pollend', { id: q.id }); audit(me.name, 'Deleted a poll', q.title); return send(res, 200, { ok: true }); }
+    return send(res, 400, { error: 'Unknown action.' });
+  }
   if (p === '/api/admin/finance' && req.method === 'POST') { // Admin page → Money: donations and expenses shown on the public Fair play page
     const b = await readBody(req, 8192), op = String(b.op || '');
     const clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f]/g, ' ').trim();
@@ -1449,6 +1470,17 @@ async function handle(req, res) {
     // ---- notifications ----
     if (p === '/api/notes/read' && req.method === 'POST') { for (const n of S.notes[me.id] || []) n.read = true; persist(); return send(res, 200, { ok: true }); }
     if (p === '/api/notes/clear' && req.method === 'POST') { const b = await readBody(req, 1024); if (typeof b.id === 'string') S.notes[me.id] = (S.notes[me.id] || []).filter(n => n.id !== b.id); else S.notes[me.id] = []; persist(); return send(res, 200, { ok: true });}
+    if (p === '/api/poll' && req.method === 'POST') {
+      const b = await readBody(req, 8192), q = S.polls.find(x => x.id === b.id); if (!q) return send(res, 404, { error: 'That poll has ended.' });
+      if (!pollOpen(q)) return send(res, 400, { error: 'That poll has closed.' }); q.answers = q.answers || {}; q.skips = q.skips || {};
+      if (q.answers[me.id]) return send(res, 400, { error: 'You already answered this poll.' });
+      if (b.skip) { q.skips[me.id] = Date.now(); persist(); return send(res, 200, { ok: true }); }
+      const A = Array.isArray(b.answers) ? b.answers : [], out = [];
+      for (let i = 0; i < q.questions.length; i++) { const Q = q.questions[i], a = A[i] || {}; let pick = (Array.isArray(a.pick) ? a.pick : [a.pick]).map(Number).filter(x => Number.isInteger(x) && x >= 0 && x < Q.opts.length); pick = [...new Set(pick)]; if (!Q.multi) pick = pick.slice(0, 1);
+        const other = Q.other ? MOD.clean(String(a.other || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 300)) : ''; if (!pick.length && !other) return send(res, 400, { error: `Answer question ${i + 1} first.` }); out.push({ pick, other }); }
+      q.answers[me.id] = { t: Date.now(), a: out, name: (S.users[me.id] || {}).name || '', nation: (S.docs['nations/' + me.id] || {}).name || '' }; delete q.skips[me.id]; persist();
+      return send(res, 200, { ok: true });
+    }
     if (p === '/api/prefs' && req.method === 'POST') {
       const b = await readBody(req, 2048); const pr = prefsOf(me.id); for (const k of NOTE_KINDS) if (typeof b[k] === 'boolean') pr[k] = b[k]; meta(me.id).prefs = pr; persist(); return send(res, 200, { ok: true, prefs: pr });
     }
