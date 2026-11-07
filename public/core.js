@@ -1715,18 +1715,22 @@ function Core(PD, CARDS) {
     const c = capMoveCost(W, u); if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.goods || 0) < c.goods || (n.res.oil || 0) < c.oil) return `Moving the capital costs ${money(c.cash)}, ${num(c.steel)} steel, ${num(c.goods)} goods and ${num(c.oil)} oil.`;
     return '';
   }
-  function moveCap(W, u, h) {
+  function moveCap(W, u, h, newName) {
     const why = canMoveCap(W, u, h); if (why) fail(why); h = Number(h); const n = W.A[u], c = capMoveCost(W, u), old = n.cap;
+    // a new capital, a new era: the nation may take a new name at the same time
+    let rename = null; if (typeof newName === 'string' && newName.trim() && newName.trim().replace(/\s+/g, ' ') !== n.name) { const nm = newName.trim().replace(/\s+/g, ' ');
+      if (nm.length < 2 || nm.length > 28 || !/^[\p{L}\p{N} .,'&()-]+$/u.test(nm)) fail('Choose a name of 2–28 letters, numbers and basic punctuation.');
+      if (Object.entries(W.A).some(([v, x]) => v !== u && x.name.toLowerCase() === nm.toLowerCase())) fail('That name is already in use.'); rename = nm; }
     n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.res.oil -= c.oil;
     n.hexes[old] = n.hexes[old] || n.created; n.hexes[h] = n.hexes[h] || W.now; n.cap = h; n.capMoved = W.now; if (n.conq) delete n.conq[h]; /* the government moving in ends any unrest from conquest */
     n.stability = clamp(n.stability - CAPMOVE.st, 0, 100); n.approval = clamp(n.approval - CAPMOVE.ap, 0, 100); n.morale = clamp((n.morale == null ? 70 : n.morale) - CAPMOVE.morale, 0, 100);
     W._src = 'capital'; applyEff(W, u, { boost: { ...CAPMOVE.weak, h: CAPMOVE.weakH } }); W._src = ''; // the government is in disarray for a day
     const domeMsg = n.dome ? ' Your Golden Dome was left behind and dismantled: build a new one around the new capital.' : '';
     if (n.dome) n.dome = null;
-    W.OWN = computeOwn(W.A); W.selHex = h;
-    news(W, u, `${n.name} has moved its capital from ${pname(old)} to ${pname(h)}.`);
+    W.OWN = computeOwn(W.A); W.selHex = h; const oldName = n.name; if (rename) n.name = rename;
+    news(W, u, rename ? `${oldName} has moved its capital to ${pname(h)} and renamed itself ${rename}.` : `${n.name} has moved its capital from ${pname(old)} to ${pname(h)}.`);
     log(n, `The capital moved from ${pname(old)} to ${pname(h)} at a cost of ${money(c.cash)}.${domeMsg}`, W); touch(W, u);
-    return { msg: `${pname(h)} is your new capital. It cost ${moneyS(c.cash)} and materials; stability −${CAPMOVE.st}, approval −${CAPMOVE.ap}, morale −${CAPMOVE.morale}. For ${CAPMOVE.weakH} hours while the government settles in: −20% tax revenue, −15% defense everywhere and −5% GDP. The new capital's defenses are still going up (full capital bonus in ${CAPMOVE.fortH} hours).${domeMsg}` };
+    return { msg: `${rename ? `Welcome to ${rename}! ` : ''}${pname(h)} is your new capital. It cost ${moneyS(c.cash)} and materials; stability −${CAPMOVE.st}, approval −${CAPMOVE.ap}, morale −${CAPMOVE.morale}. For ${CAPMOVE.weakH} hours while the government settles in: −20% tax revenue, −15% defense everywhere and −5% GDP. The new capital's defenses are still going up (full capital bonus in ${CAPMOVE.fortH} hours).${domeMsg}` };
   }
   // ---------- trade routes: breaking an old one hurts ----------
   function breakRoute(W, u, v, how) {
@@ -1911,7 +1915,7 @@ function Core(PD, CARDS) {
       case 'bloc': return blocCmd(W, u, String(c.op || ''), c);
       case 'crisis': return crisisCmd(W, u, String(c.op || ''), c.amt, rng);
       case 'develop': return develop(W, u, c.h);
-      case 'movecap': return moveCap(W, u, c.h);
+      case 'movecap': return moveCap(W, u, c.h, c.name);
       case 'disarm': return decommission(W, u);
       case 'domeup': return domeUp(W, u);
       case 'games': return gamesCmd(W, u, String(c.cat || ''), c.amt);

@@ -1330,10 +1330,8 @@ function renderTop(){const nb=$('natbox'),k=$('kpis');if(!me){nb.innerHTML=loade
  const mu=X().mailUnread||0;$('mailCnt').textContent=mu;$('mailCnt').classList.toggle('on',mu>0)}
 function updTimers(){if(!me)return;updExp();const nr=readyOps().length,T=[];
  // each chip: a fixed part and a changing value. The bar is patched in place (never rebuilt every second), so a tap that lands mid-update still counts as a click
- T.push({k:'runall',cls:`tm runall ${nr&&!runningAll?'rdy':''}`,act:'runall',title:'Run every ready operation',pre:'⚡ '+(runningAll?'Running…':nr?'Run all ready ':'Nothing to run'),val:runningAll||!nr?'':String(nr)});
- for(const a of myActs()){const l=left(a.k),bk=l?'':opBlock(a.k);T.push({k:a.k,cls:`tm ${l||bk?'':'rdy'}`,act:'page',a:a.k==='expand'?'world':'ops',title:bk?a.n+': '+bk:a.n,pre:I(a.i)+a.s,val:l?fmtT(l):bk?'BLOCKED':'READY'})}
- if(me.cards.length)T.push({k:'dec',cls:'tm dec',act:'page',a:'overview',title:'',pre:`${I('alert')}${me.cards.length} decision${me.cards.length>1?'s':''} pending`,val:''});
- if(me.gov==='dem'&&me.nextElection)T.push({k:'elec',cls:`tm ${me.nextElection-Date.now()<24*HOUR?'dec':''}`,act:'page',a:'gov',title:'',pre:I('vote')+'Election',val:fmtT(Math.max(0,me.nextElection-Date.now()))});
+ // the top of the page holds just one button: Collect Taxes (every other operation lives on the Operations page)
+ {const l=left('tax'),bk=l?'':opBlock('tax');T.push({k:'tax',cls:`tm runall ${l||bk?'':'rdy'}`,act:'do',a:'tax',title:bk||'Collect Taxes',pre:'🪙 Collect Taxes',val:l?fmtT(l):bk?'BLOCKED':''})}
  const box=$('timers'),kids=box.children;
  if(kids.length!==T.length||T.some((t,i)=>kids[i].dataset.k!==t.k)){box.innerHTML=T.map(t=>`<span class="${t.cls}" data-k="${t.k}" data-act="${t.act}"${t.a?` data-a="${t.a}"`:''} title="${esc(t.title)}"><i class="tp">${t.pre}</i><b>${esc(t.val)}</b></span>`).join('');for(let i=0;i<T.length;i++){kids[i]._p=T[i].pre}}
  else T.forEach((t,i)=>{const c=kids[i];if(c.className!==t.cls)c.className=t.cls;if(c.title!==t.title)c.title=t.title;if(c._p!==t.pre){c.firstChild.innerHTML=t.pre;c._p=t.pre}const b=c.lastChild;if(b.textContent!==t.val)b.textContent=t.val});
@@ -2149,7 +2147,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'domeup':cmd({c:'domeup'});break;
  case'disarm':{const K=WPCore.DISARM;ask('Decommission your nuclear weapons?',`Your deterrent${me.warhead?' and your warhead are':' is'} dismantled for good. Your capital can be besieged again, and you can't start a new program for ${K.banD} days. In return: approval +${K.ap+(me.warhead?K.warheadAp:0)}, stability +${K.st}, aggression −${K.aggr}, the world's praise, and no more upkeep or inspection fees.`,'Decommission',()=>cmd({c:'disarm'}));break}
  case'movecap2':{const sel=$('capSel');if(!sel||!sel.value)break;const o=document.createElement('button');o.dataset.act='movecap';o.dataset.a=sel.value;document.body.appendChild(o);o.click();o.remove();break}
- case'movecap':{const c=C.capMoveCost(W,uid),K=WPCore.CAPMOVE;ask(`Move your capital to ${esc(P[+a].n)}?`,`Moving the government is a huge undertaking: <b>${money(c.cash)}</b>, ${num(c.steel)} steel, ${num(c.goods)} goods and ${num(c.oil)} oil. Stability −${K.st}, approval −${K.ap} and morale −${K.morale}. <b>For ${K.weakH} hours your nation is weakened</b> while the government settles in: −20% tax revenue, −15% defense in every province and −5% GDP.${me.dome?` <b>Your Golden Dome is left behind and dismantled</b>: you'll have to build (and upgrade) a new one.`:''} The new capital's full defense bonus takes ${K.fortH} hours, and you can't move it again for ${K.cdH} hours. Your old capital becomes a normal province.`,'Move the capital',()=>cmd({c:'movecap',h:+a}));break}
+ case'movecap':{const c=C.capMoveCost(W,uid),K=WPCore.CAPMOVE;ask(`Move your capital to ${esc(P[+a].n)}?`,`Moving the government is a huge undertaking: <b>${money(c.cash)}</b>, ${num(c.steel)} steel, ${num(c.goods)} goods and ${num(c.oil)} oil. Stability −${K.st}, approval −${K.ap} and morale −${K.morale}. <b>For ${K.weakH} hours your nation is weakened</b> while the government settles in: −20% tax revenue, −15% defense in every province and −5% GDP.${me.dome?` <b>Your Golden Dome is left behind and dismantled</b>: you'll have to build (and upgrade) a new one.`:''} The new capital's full defense bonus takes ${K.fortH} hours, and you can't move it again for ${K.cdH} hours. Your old capital becomes a normal province.</p><div class="field" style="margin:0 0 12px"><label>Rename your nation (optional): a new capital, a new era</label><input id="capName" maxlength="28" value="${esc(me.name)}"></div><p style="display:none">`,'Move the capital',()=>cmd({c:'movecap',h:+a,name:window._capName&&window._capName!==me.name?window._capName:undefined}));break}
  case'prof':profile(a);break;
  case'fly':{closeModal();if(page!=='world'){page='world';render()}if(A[a]&&P[A[a].cap])GL.flyTo(P[A[a].cap].c,2.6);break}
  case'gfull':setFull(!gFull);break;
@@ -2215,7 +2213,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'bigtext':bigText=!bigText;document.body.classList.toggle('bigtext',bigText);try{localStorage.setItem('wp_bigtext',bigText?'1':'0')}catch(err){}moreSheet();break;
  case'push':togglePush();break;
  case'sound':SND.set(!SND.on);bellPanel();break;
- case'askyes':{const f=askFn;askFn=null;closeModal();f&&f();break}
+ case'askyes':{const f=askFn;askFn=null;const cn=$('capName');window._capName=cn?cn.value.trim():null;closeModal();f&&f();break}
  case'close':closeModal();break;
  case'dock':dockMin=!dockMin;$('dock').classList.toggle('min',dockMin);el.textContent=dockMin?'Show':'Hide';if(!dockMin)markChatSeen();break}});
 document.addEventListener('change',async e=>{const t=e.target;if(t.dataset&&t.dataset.pref){const r=await WP.api('POST','/api/prefs',{[t.dataset.pref]:t.checked}).catch(()=>null);if(r)WP.extra.prefs=r.prefs}
