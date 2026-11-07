@@ -47,6 +47,22 @@ const LABEL={cd:'Operation timer speed',income:'Income multiplier',xp:'XP multip
 const fmt=(k,v)=>typeof v==='boolean'?(v?'On':'Off'):k==='cd'||k==='income'||k==='xp'?('×'+v):k==='botWar'?({yes:'Yes',retaliate:'Only in retaliation',no:'No'}[v]||v):v;
 const KIND={'Edited nation':'r','Restored nation from snapshot':'r','Rolled back the world':'r','Wiped the world':'r','Reset nation':'r','Changed game settings':'y','Scheduled':'y','Cancelled scheduled event':'y','Started world event':'g','Ended world event':'g','Added AI nation':'','Removed AI nation':'','Cancelled council vote':'y'};
 let D=null,filter='all';
+const usd=n=>'$'+(+n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const day=t=>new Date(t).toLocaleDateString([], {year:'numeric',month:'short',day:'numeric'});
+let finAll=false;
+function finBlock(){const F=D.finance||[];const don=F.filter(e=>e.kind==='donation').reduce((a,e)=>a+e.amount,0),exp=F.filter(e=>e.kind==='expense').reduce((a,e)=>a+e.amount,0),bal=don-exp;
+ const ms=new Date();ms.setDate(1);ms.setHours(0,0,0,0);const mDon=F.filter(e=>e.kind==='donation'&&e.date>=+ms).reduce((a,e)=>a+e.amount,0),mExp=F.filter(e=>e.kind==='expense'&&e.date>=+ms).reduce((a,e)=>a+e.amount,0);
+ const rows=finAll?F:F.slice(0,15);
+ return `<h2 id="money">Where the money goes</h2>
+ <p class="mu" style="margin:0 0 8px">World Powers is free to play. Every donation and every cost of running the game is listed here by the game's owner, newest first.</p>
+ <div class="grid">
+  <div class="kv"><span>Donations received</span><b style="color:#7ee2a0">${usd(don)}</b></div>
+  <div class="kv"><span>Spent on the game</span><b style="color:#ff9b8a">${usd(exp)}</b></div>
+  <div class="kv"><span>${bal>=0?'Left over':'Paid by the owner'}</span><b>${usd(Math.abs(bal))}</b></div>
+  <div class="kv"><span>This month</span><b style="color:#7ee2a0">+${usd(mDon)} in</b><div style="color:#ff9b8a;font-weight:600">−${usd(mExp)} out</div></div>
+ </div>
+ ${F.length?`<div class="card" style="padding:4px 12px;overflow-x:auto;margin-top:8px"><table><thead><tr><th>Date</th><th>What</th><th style="text-align:right">Amount</th></tr></thead><tbody>${rows.map(e=>`<tr><td class="t">${day(e.date)}</td><td><span class="tag ${e.kind==='donation'?'g':'r'}">${e.kind==='donation'?'Donation':'Expense'}</span> ${esc(e.label)}${e.note?`<div class="mu" style="font-size:13px;margin-top:3px">${esc(e.note)}</div>`:''}</td><td style="text-align:right;white-space:nowrap;font-weight:600;color:${e.kind==='donation'?'#7ee2a0':'#ff9b8a'}">${e.kind==='donation'?'+':'−'}${usd(e.amount)}</td></tr>`).join('')}</tbody></table>${F.length>15?`<p style="text-align:center;margin:8px 0"><button data-fin="1" style="background:none;border:1px solid #2a3542;border-radius:20px;color:#c5ced8;padding:4px 14px;font:inherit;font-size:13px;cursor:pointer">${finAll?'Show fewer':'Show all '+F.length}</button></p>`:''}</div>`:`<div class="card mu" style="margin-top:8px">Nothing listed yet.</div>`}
+ <p style="margin:10px 0 0"><a href="https://paypal.me/striphesstockgame" target="_blank" rel="noopener" style="display:inline-block;padding:7px 16px;border:1px solid #e07a9c88;border-radius:8px;color:#f3a3bd;text-decoration:none;font-weight:600">♥ Donate via PayPal</a></p>`}
 function render(){if(!D)return;const changed=Object.keys(D.settings).filter(k=>D.settings[k]!==D.defaults[k]&&k!=='bots');
  const log=D.log.filter(e=>filter==='all'||(filter==='edits'?/Edited nation|Reset nation|Restored nation/.test(e.action):filter==='world'?/Rolled back|Wiped/.test(e.action):filter==='settings'?/settings|Scheduled|scheduled/.test(e.action):true));
  const last=D.log[0],edits30=D.log.filter(e=>/Edited nation|Restored nation/.test(e.action)&&Date.now()-e.t<30*864e5).length;
@@ -58,6 +74,7 @@ function render(){if(!D)return;const changed=Object.keys(D.settings).filter(k=>D
   <div class="kv"><span>Last admin action</span><b>${last?ago(last.t):'None ever'}</b></div>
   <div class="kv"><span>Nations · players</span><b>${D.world.nations} · ${D.world.players}</b></div>
  </div>
+ ${finBlock()}
  <h2>Settings in force right now</h2>
  ${changed.length?`<p class="mu" style="margin:0 0 8px">${changed.length} setting${changed.length>1?'s differ':' differs'} from the standard rules (highlighted).</p>`:`<p class="mu" style="margin:0 0 8px">All rules are at their standard values.</p>`}
  ${D.boost?`<div class="card" style="border-color:#7a5a10;background:#1d1606;margin:0 0 8px">Active boost for everyone: <b>${esc(D.boost.label)}</b> until ${when(D.boost.end)}</div>`:''}
@@ -70,7 +87,7 @@ function render(){if(!D)return;const changed=Object.keys(D.settings).filter(k=>D
  <p class="mu" style="margin:0 0 8px">Each row is a different version of the game code going live. Same fingerprint = identical rules.</p>
  <div class="card" style="padding:4px 12px"><table><thead><tr><th>Live from</th><th>Fingerprint</th></tr></thead><tbody>${D.releases.map((r,i)=>`<tr><td class="t">${when(r.t)}${i===0?' <span class="tag g">current</span>':''}</td><td class="fp">${esc(r.fp)}</td></tr>`).join('')}</tbody></table></div>
  <details style="margin-top:10px"><summary>Fingerprints of each game file</summary><div class="card" style="padding:4px 12px;overflow-x:auto"><table><tbody>${D.files.map(f=>`<tr><td style="white-space:nowrap">${esc(f.name)}</td><td class="fp">${esc(f.sha)}</td></tr>`).join('')}</tbody></table></div><p class="mu" style="font-size:13px">SHA-256 of each file. The game fingerprint is the SHA-256 of this list.</p></details>`;}
-document.addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){filter=b.dataset.f;render()}});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){filter=b.dataset.f;render()}if(e.target.closest('[data-fin]')){finAll=!finAll;render()}});
 async function load(){try{D=await (await fetch('/api/fairplay',{cache:'no-store'})).json();render()}catch(e){document.getElementById('app').innerHTML='<p class="mu">Could not load the record. Try refreshing.</p>'}}
 load();setInterval(load,60000);
 </script>

@@ -1040,6 +1040,8 @@ function Core(PD, CARDS) {
     touch(W, u); return { msg: `Warhead assembly begun — armed in ${fmtT(nkT(W).buildH * HOUR)}.` };
   }
   const warheadReady = (W, n) => !!(n && n.warhead && (n.warhead === 2 || n.warhead.ready <= W.now || (W.cfg.nukeTest && n.warhead.t + 60e3 <= W.now)));
+  // was this nation nuked by v in the last 72 hours? (any of its attackers, not only the latest)
+  const struckBy = (W, me, v) => !!(me && ((me.nuked && me.nuked.by === v && W.now - me.nuked.t < 72 * HOUR) || ((me.nukedBy || {})[v] && W.now - me.nukedBy[v] < 72 * HOUR)));
   function canLaunch(W, u, v) {
     const me = W.A[u], d = W.A[v]; if (!me) return 'Found a nation first.'; if (!d || v === u) return 'Unknown nation.';
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
@@ -1049,7 +1051,7 @@ function Core(PD, CARDS) {
     { const cf = ceasefireMsg(W, me, d); if (cf) return cf; }
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     if (!d.ai && W.now - d.created < W.cfg.protectH * HOUR) return `${d.name} is under new-nation protection.`;
-    if (nuked(W, d)) return `${d.name} is already in ruins from a nuclear strike.`;
+    // several nations may strike the same country, one after another (each strike adds its own damage)
     return null;
   }
   function detonate(W, u, v, h, retaliation) {
@@ -1059,7 +1061,8 @@ function Core(PD, CARDS) {
     d.pop -= loss.pop; d.troops -= loss.troops; d.ships -= loss.ships; d.air -= loss.air; d.infra -= loss.infra; d.gdp = (d.gdp || 0) * .6;
     for (const r in RES) d.res[r] = Math.floor((d.res[r] || 0) * .6);
     d.approval = clamp(d.approval - 30, 0, 100); d.stability = clamp(d.stability - 40, 0, 100); d.health = clamp((d.health || 50) - 25, 0, 100); d.morale = clamp((d.morale || 50) - 30, 0, 100);
-    d.nuked = { t: W.now, until: W.now + WARHEAD.nukedH * HOUR, h: +h, by: u, byName: me.name };
+    d.nuked = { t: W.now, until: Math.max(W.now + WARHEAD.nukedH * HOUR, d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name };
+    d.nukedBy = Object.fromEntries(Object.entries({ ...(d.nukedBy || {}), [u]: W.now }).filter(([, t]) => W.now - t < 72 * HOUR));
     // fallout zone and worldwide nuclear winter
     const hit = [];
     for (const x of Object.keys(W.A)) {
@@ -1069,7 +1072,7 @@ function Core(PD, CARDS) {
       touch(W, x);
     }
     // the attacker becomes a pariah. A second strike (automatic retaliation, or answering a nation that nuked you in the last 72 hours) is defense, not aggression.
-    const secondStrike = retaliation || !!(me.nuked && me.nuked.by === v && W.now - me.nuked.t < 72 * HOUR);
+    const secondStrike = retaliation || struckBy(W, me, v);
     me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR;
     if (!secondStrike) {
       me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + 72 * HOUR);
@@ -1087,7 +1090,7 @@ function Core(PD, CARDS) {
   }
   // a Golden Dome destroyed the nuclear missile in flight: no detonation, but the warhead is spent and the launch still counts
   function interceptNuke(W, u, v, h, retaliation) {
-    const me = W.A[u], d = W.A[v], secondStrike = retaliation || !!(me.nuked && me.nuked.by === v && W.now - me.nuked.t < 72 * HOUR);
+    const me = W.A[u], d = W.A[v], secondStrike = retaliation || struckBy(W, me, v);
     me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR;
     if (!secondStrike) { me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + 72 * HOUR); for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after it launched a nuclear missile.`); touch(W, a); } }
     me.approval = clamp(me.approval - (secondStrike ? 3 : 12), 0, 100); d.approval = clamp(d.approval + 8, 0, 100); d.stability = clamp(d.stability + 5, 0, 100);

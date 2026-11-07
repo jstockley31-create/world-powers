@@ -37,7 +37,7 @@ try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { 
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
-for (const k of ['flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
+for (const k of ['finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
 const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
@@ -1029,6 +1029,19 @@ async function adminRoute(p, req, res, me) {
     commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
     audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
   }
+  if (p === '/api/admin/finance' && req.method === 'POST') { // Admin page → Money: donations and expenses shown on the public Fair play page
+    const b = await readBody(req, 8192), op = String(b.op || '');
+    const clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f]/g, ' ').trim();
+    const entry = (e = {}) => { const amt = Math.round(Math.abs(+b.amount) * 100) / 100; if (!isFinite(amt) || amt <= 0 || amt > 1e7) throw new Error('Enter an amount above $0.'); const label = clean(b.label).slice(0, 80); if (!label) throw new Error('Add a short description.');
+      const d = Date.parse(String(b.date || '')); return { ...e, kind: b.kind === 'expense' ? 'expense' : 'donation', amount: amt, label, note: clean(b.note).slice(0, 300), date: isFinite(d) ? d : Date.now() }; };
+    try {
+      if (op === 'add') { const e = entry({ id: crypto.randomBytes(6).toString('hex'), t: Date.now() }); S.finance.unshift(e); S.finance.sort((x, y) => y.date - x.date); S.finance = S.finance.slice(0, 2000); persist(); audit(me.name, 'Added ' + e.kind, e.label, '$' + e.amount); return send(res, 200, { ok: true, finance: S.finance }); }
+      if (op === 'edit') { const i = S.finance.findIndex(x => x.id === b.id); if (i < 0) return send(res, 404, { error: 'Entry not found.' }); S.finance[i] = entry(S.finance[i]); S.finance.sort((x, y) => y.date - x.date); persist(); audit(me.name, 'Edited ' + S.finance[i].kind, S.finance[i].label, '$' + S.finance[i].amount); return send(res, 200, { ok: true, finance: S.finance }); }
+      if (op === 'del') { const i = S.finance.findIndex(x => x.id === b.id); if (i < 0) return send(res, 404, { error: 'Entry not found.' }); const [e] = S.finance.splice(i, 1); persist(); audit(me.name, 'Deleted ' + e.kind, e.label, '$' + e.amount); return send(res, 200, { ok: true, finance: S.finance }); }
+      if (op === 'list') return send(res, 200, { ok: true, finance: S.finance });
+    } catch (e) { return send(res, 400, { error: e.message }); }
+    return send(res, 400, { error: 'Unknown action.' });
+  }
   if (p === '/api/admin/crisis' && req.method === 'POST') { // Admin page → World crises
     const b = await readBody(req, 4096), op = String(b.op || '');
     if (op === 'start') { const cr = crisisStart(String(b.key), b.hours, String(b.diff || ''), me.name); audit(me.name, 'Started world crisis', WP.CRISES[cr.key].n, `${Math.round((cr.end - cr.start) / HOUR)}h · ${cr.diff} · goal ${WP.moneyS(cr.goal)}`); return send(res, 200, { ok: true }); }
@@ -1267,7 +1280,7 @@ async function handle(req, res) {
     if (req.method === 'GET' && p === '/api/fairplay') {
       const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'aiBoss', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
       return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500), logTotal: S.fairlog.length,
-        settings: Object.fromEntries(keys.map(k => [k, c[k]])), defaults: Object.fromEntries(keys.map(k => [k, WP.DEFCFG[k]])), boost: c.boost || null, council: S.council.active, event: S.event,
+        settings: Object.fromEntries(keys.map(k => [k, c[k]])), defaults: Object.fromEntries(keys.map(k => [k, WP.DEFCFG[k]])), boost: c.boost || null, council: S.council.active, event: S.event, finance: S.finance.slice(0, 500),
         world: { nations: Object.keys(S.docs).filter(k => k.startsWith('nations/')).length, players: Object.keys(S.users).length } }, { 'Cache-Control': 'no-store' });
     }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
