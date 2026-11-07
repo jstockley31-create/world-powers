@@ -26,6 +26,8 @@ const COLS = ['nations', 'chat', 'online'];
 const SESSION_DAYS = 30;
 const MAP_VERSION = 4;
 const START = Date.now();
+// World Council votes: players only (AI nations don't vote), 3 hours, a majority of the votes cast wins (at least 2 yes), and a vote closes early once the result is certain
+const COUNCIL_H = 3, COUNCIL_MIN_YES = 2;
 const HOUR = 36e5;
 const ACTIVE_WINDOW = 2 * HOUR; // nations keep producing for 2 hours after their leader was last seen
 const NOTE_KINDS = ['ready', 'attack', 'war', 'diplo', 'mail', 'election', 'event', 'council', 'covert', 'economy', 'rank', 'mention', 'admin'];
@@ -466,8 +468,8 @@ function councilDaily(W) {
   if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
   const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)];
-  S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + 6 * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
-  systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within 6 hours on the World Council page.`); broadcast('council', councilView());
+  S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
+  systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); broadcast('council', councilView());
 }
 // ---------- world events ----------
 function startEvent(key, W) {
@@ -538,12 +540,12 @@ function councilPropose(uid, b) {
   }
   if (!plea) { if (n.cash < 1e5) throw Object.assign(new Error('Submitting a resolution costs $100,000.'), { status: 400 }); n.cash -= 1e5; W.changed.add(uid); commit(W); }
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
-  const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + 6 * HOUR, votes: { [uid]: 'y' }, status: 'open' };
+  const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' };
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
   if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
   S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); broadcast('council', councilView());
   const txt = plea ? `${n.name} petitions the World Council to lift its sanctions and welcome it back. Vote now.` : `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
-  systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ' Voting closes in 6 hours.');
+  systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ` Voting closes in ${COUNCIL_H} hours.`);
   return p;
 }
 function councilVote(uid, b) {
@@ -553,13 +555,13 @@ function councilVote(uid, b) {
   if (!p.votes[uid]) { const twins = Object.keys(p.votes).filter(o => o !== uid && S.users[o] && sharesNetwork(uid, o)); if (twins.length) { flag(uid, `Voted on the same World Council resolution as ${twins.map(o => S.users[o].name).join(', ')}, from the same network (possible second account)`); (p.net = p.net || []).push(uid); } }
   p.votes[uid] = b.vote; { const W = mkWorld(); if (decideEarly(W, p)) { councilResolve(W); commit(W); } } persist(); broadcast('council', councilView()); return p;
 }
-// who could still vote: AI nations (not on written resolutions) and players active in the last 3 days who have a nation
-function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of Object.keys(W.A)) { if (p.votes[u]) continue; if (BOTS.isBot(u)) { if (p.type !== 'custom') n++; } else if (S.users[u] && now - ((S.meta[u] || {}).lastSeen || 0) < 72 * HOUR) n++; } return n; }
+// who could still vote: players active in the last 3 days who have a nation (AI nations don't vote)
+function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of Object.keys(W.A)) { if (p.votes[u] || BOTS.isBot(u)) continue; if (S.users[u] && now - ((S.meta[u] || {}).lastSeen || 0) < 72 * HOUR) n++; } return n; }
 // a vote closes early once the outcome is certain: it passes when yes leads by more than the votes still out (and has at least 3), and fails when yes can no longer win
 function decideEarly(W, p) {
   if (p.status !== 'open' || Date.now() >= p.end) return false;
   const ys = Object.values(p.votes).filter(v => v === 'y').length, ns = Object.values(p.votes).filter(v => v === 'n').length, left = canStillVote(W, p);
-  if ((ys >= 3 && ys > ns + left) || ys + left <= ns || ys + left < 3) { p.end = Date.now(); p.early = true; return true; }
+  if ((ys >= COUNCIL_MIN_YES && ys > ns + left) || ys + left <= ns || ys + left < COUNCIL_MIN_YES) { p.end = Date.now(); p.early = true; return true; }
   return false;
 }
 function councilResolve(W) {
@@ -570,7 +572,7 @@ function councilResolve(W) {
     const ys = Object.values(p.votes).filter(v => v === 'y').length, ns = Object.values(p.votes).filter(v => v === 'n').length;
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
-    p.status = ys > ns && ys >= 3 ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
+    p.status = ys > ns && ys >= COUNCIL_MIN_YES ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
     const label = resLabel(p.type, tn && tn.name, p);
     if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
@@ -643,7 +645,7 @@ function pactCheck(W) {
   }
 }
 // ---------- the World Council takes notice on its own ----------
-// Bad behaviour puts a resolution to the vote automatically. Everyone (players and AI) still votes; nothing passes without a majority.
+// Bad behaviour puts a resolution to the vote automatically. Players vote (AI nations don't); nothing passes without a majority.
 const AUTO_RULES = [
   // [type, test(nation, recent attacks, W, id) -> reason or null]
   ['sanction', (n, atk, W, u) => !core.rogue(W, n) && ((n.aggr || 0) >= 60 || atk.victims >= 3) ? (atk.victims >= 3 ? `attacked ${atk.victims} different nations in 12 hours` : `pushed its aggression to ${Math.round(n.aggr)}`) : null],
@@ -665,10 +667,10 @@ function councilWatch(W) {
       const why = test(n, atk, W, u); if (!why || resBlocked(W, type, u)) continue; const key = type + ':' + u;
       if (S.council.watch[key] && now - S.council.watch[key] < 24 * HOUR) continue;
       S.council.watch[key] = now; const R = WP.RESOLUTIONS[type];
-      S.council.props.unshift({ id: rid(), by: null, auto: true, why, type, target: u, t: now, end: now + 6 * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
+      S.council.props.unshift({ id: rid(), by: null, auto: true, why, type, target: u, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
       const txt = `The World Council has taken notice: ${n.name} ${why}. A vote on "${resLabel(type, n.name)}" is now open.`;
       systemMessage('🏛 ' + txt); const hit = new Set(battles.map(e => e.to)), nuclear = /nuclear/.test(why);
-      for (const v of Object.keys(S.users)) if (v !== u && (nuclear || hit.has(v))) addNote(v, 'council', txt + ' Voting closes in 6 hours.');
+      for (const v of Object.keys(S.users)) if (v !== u && (nuclear || hit.has(v))) addNote(v, 'council', txt + ` Voting closes in ${COUNCIL_H} hours.`);
       if (S.users[u]) addNote(u, 'council', R.kind === 'protect' ? `The World Council is voting on "${R.n}" for your nation because it ${why}.` : `The World Council is voting on "${R.n}" against your nation because it ${why}. You have 6 hours to make your case in chat.`);
       persist(); broadcast('council', councilView());
       if (open().filter(p => p.auto).length >= 3) return;
@@ -678,6 +680,7 @@ function councilWatch(W) {
 }
 // AI nations cast votes according to their personality and relations
 function botVotes(W) {
+  return; // AI nations no longer vote in the World Council (players decide everything); the old voting logic is kept below in case it is wanted again
   for (const p of S.council.props) {
     if (p.status !== 'open') continue;
     for (const u of Object.keys(W.A)) {
