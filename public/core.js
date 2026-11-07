@@ -119,6 +119,10 @@ const GAMES = { cats: { sport: { n: 'Athletics', ic: '🏅', d: 'Healthier natio
 const DISASTER = { quake: { n: 'Earthquake', ic: '🌋' }, storm: { n: 'Hurricane', ic: '🌀' }, fire: { n: 'Wildfire', ic: '🔥' }, flood: { n: 'Flood', ic: '🌊' }, h: 12, pop: .04, st: 5, needPct: .02, needMin: 5e6, minGive: 1e5 };
 // neglect: unstable empires risk outlying provinces declaring independence and becoming small AI nations
 const REBEL = { st: 35, minProv: 5, p: .0012, spyP: .004, maxNations: 6 };
+// moving the capital: a huge national undertaking (new ministries, relocating the Golden Dome, moving the government). Once every 72 hours at most.
+const CAPMOVE = { gdpPct: .5, min: 2.5e8, steel: 6000, goods: 4000, oil: 3000, domeX: .5, st: 25, ap: 12, morale: 15, cdH: 72, fortH: 12, holdH: 24, rank: 2, weakH: 24, weak: { tax: .8, def: .85, gdp: .95 } };
+// nuclear accidents: any nation with a nuclear program risks a Chernobyl. Rare, random, and nothing can prevent it.
+const NUKEACC = { perDay: 1 / 25, warheadX: 1.5, gapD: 7, h: 48, pop: .05, food: .4, steel: .2, goods: .2, oil: .1, cashPct: .02, st: 10, ap: 8, health: 10, crops: .7 };
 const EXPEDS = {
   mountains: { n: 'Mountain survey', d: 'Steel deposits and rare minerals — or an avalanche.', h: 3, cost: { cash: 2.5e5, food: 120, oil: 60 }, res: 'steel' },
   desert: { n: 'Desert prospecting', d: 'Oil fields under the sand — or a sandstorm.', h: 3, cost: { cash: 2.5e5, food: 150, oil: 40 }, res: 'oil' },
@@ -473,7 +477,7 @@ function Core(PD, CARDS) {
       for (const k in q) p[k] += q[k] * dk;
     }
     const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income;
-    for (const k in p) p[k] = Math.round(p[k] * m * (k === 'food' ? W.m.food : k === 'oil' ? W.m.oil : 1));
+    for (const k in p) p[k] = Math.round(p[k] * m * (k === 'food' ? W.m.food * (radOn(W, n) && n.rad.acc ? NUKEACC.crops : 1) : k === 'oil' ? W.m.oil : 1));
     return p;
   }
   const consumption = n => ({ food: Math.round(n.pop / 1000 * .25), oil: Math.round(((n.troops || 0) / 100 * .5 + (n.ships || 0) * .5 + (n.air || 0) * .4 + n.infra * .5) * fxMul(n, 'oil')), steel: 0, goods: Math.round(n.pop / 1000 * .05) });
@@ -597,7 +601,7 @@ function Core(PD, CARDS) {
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? 1.5 : 1) * genF(n, 'defense') * fxMul(n, 'def') * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
+    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : 1) * genF(n, 'defense') * fxMul(n, 'def') * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const bestGen = (n, type) => (n.gens || []).filter(g => g.type === type).reduce((b, g) => !b || g.stars > b.stars ? g : b, null);
@@ -1649,6 +1653,47 @@ function Core(PD, CARDS) {
   }
 
 
+
+
+  // ---------- nuclear accidents ----------
+  function nukeAccident(W, u, rng) {
+    const n = W.A[u]; if (!n) return null; const hs = hexesOf(W, u), pool = hs.filter(h => h != n.cap), h = (pool.length ? pool : hs)[Math.floor(rng() * (pool.length ? pool : hs).length)]; if (h == null) return null;
+    const lost = Math.round(n.pop * NUKEACC.pop), clean = Math.round(Math.max(5e6, (n.gdp || 0) * NUKEACC.cashPct) / 1e5) * 1e5;
+    n.pop -= lost; n.res.food = Math.round((n.res.food || 0) * (1 - NUKEACC.food)); n.res.steel = Math.round((n.res.steel || 0) * (1 - NUKEACC.steel)); n.res.goods = Math.round((n.res.goods || 0) * (1 - NUKEACC.goods)); n.res.oil = Math.round((n.res.oil || 0) * (1 - NUKEACC.oil));
+    const paid = Math.max(0, Math.min(clean, n.cash || 0)); n.cash -= paid; if (clean > paid) n.debt = (n.debt || 0) + (clean - paid);
+    n.stability = clamp(n.stability - NUKEACC.st, 0, 100); n.approval = clamp(n.approval - NUKEACC.ap, 0, 100); n.health = clamp((n.health == null ? 50 : n.health) - NUKEACC.health, 0, 100);
+    n.rad = { h, t: W.now, until: W.now + NUKEACC.h * HOUR, acc: true }; n.nukeAcc = W.now;
+    note(W, u, 'war', `☢ NUCLEAR ACCIDENT at ${pname(h)}! A reactor failure has released radiation: ${num(lost)} people lost, crops contaminated (food output −30% for ${NUKEACC.h} hours), stockpiles spent on the clean-up and ${money(clean)} in clean-up costs. Stability −${NUKEACC.st}, approval −${NUKEACC.ap}.`);
+    log(n, `Nuclear accident at ${pname(h)}: ${num(lost)} people lost, ${money(clean)} spent on the clean-up.`, W);
+    news(W, u, `☢ Nuclear accident in ${n.name}: a reactor failure at ${pname(h)} has released radiation.`); touch(W, u);
+    return { h, place: pname(h), name: n.name, lost, clean };
+  }
+  // ---------- moving the capital ----------
+  const capMoveCost = (W, u) => { const n = W.A[u]; return { cash: Math.round((Math.max(CAPMOVE.min, (n.gdp || 0) * CAPMOVE.gdpPct) + (n.dome ? DOME.cash * CAPMOVE.domeX : 0)) / 1e6) * 1e6, steel: CAPMOVE.steel, goods: CAPMOVE.goods, oil: CAPMOVE.oil }; };
+  function canMoveCap(W, u, h) {
+    const n = W.A[u]; if (!n) return 'Found a nation first.'; h = Number(h); if (!Number.isInteger(h) || !P[h]) return 'Unknown province.';
+    if (h == n.cap) return 'This is already your capital.'; if (owner(W, h) !== u) return 'You can only move your capital to one of your own provinces.';
+    if (rankOf(n.xp) < CAPMOVE.rank) return 'Moving the capital needs the rank of Mayor.';
+    const wait = (n.capMoved || 0) + CAPMOVE.cdH * HOUR - W.now; if (wait > 0) return `You moved your capital recently. You can move it again in ${fmtT(wait)}.`;
+    if (hexAge(W, h) * 24 < CAPMOVE.holdH) return `You must hold ${pname(h)} for at least ${CAPMOVE.holdH} hours first.`;
+    if (n.unrest && (n.unrest[h] || 0) > W.now) return `Separatists are active in ${pname(h)}.`;
+    if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) return `${pname(h)} is a disaster zone.`;
+    const c = capMoveCost(W, u); if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.goods || 0) < c.goods || (n.res.oil || 0) < c.oil) return `Moving the capital costs ${money(c.cash)}, ${num(c.steel)} steel, ${num(c.goods)} goods and ${num(c.oil)} oil.`;
+    return '';
+  }
+  function moveCap(W, u, h) {
+    const why = canMoveCap(W, u, h); if (why) fail(why); h = Number(h); const n = W.A[u], c = capMoveCost(W, u), old = n.cap;
+    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.res.oil -= c.oil;
+    n.hexes[old] = n.hexes[old] || n.created; n.hexes[h] = n.hexes[h] || W.now; n.cap = h; n.capMoved = W.now; if (n.conq) delete n.conq[h]; /* the government moving in ends any unrest from conquest */
+    n.stability = clamp(n.stability - CAPMOVE.st, 0, 100); n.approval = clamp(n.approval - CAPMOVE.ap, 0, 100); n.morale = clamp((n.morale == null ? 70 : n.morale) - CAPMOVE.morale, 0, 100);
+    W._src = 'capital'; applyEff(W, u, { boost: { ...CAPMOVE.weak, h: CAPMOVE.weakH } }); W._src = ''; // the government is in disarray for a day
+    const domeMsg = n.dome ? ` The Golden Dome is being dismantled and rebuilt around the new capital: offline for ${DOME.buildH} hours.` : '';
+    if (n.dome) n.dome.ready = W.now + DOME.buildH * HOUR;
+    W.OWN = computeOwn(W.A); W.selHex = h;
+    news(W, u, `${n.name} has moved its capital from ${pname(old)} to ${pname(h)}.`);
+    log(n, `The capital moved from ${pname(old)} to ${pname(h)} at a cost of ${money(c.cash)}.${domeMsg}`, W); touch(W, u);
+    return { msg: `${pname(h)} is your new capital. It cost ${moneyS(c.cash)} and materials; stability −${CAPMOVE.st}, approval −${CAPMOVE.ap}, morale −${CAPMOVE.morale}. For ${CAPMOVE.weakH} hours while the government settles in: −20% tax revenue, −15% defense everywhere and −5% GDP. The new capital's defenses are still going up (full capital bonus in ${CAPMOVE.fortH} hours).${domeMsg}` };
+  }
   // ---------- trade routes: breaking an old one hurts ----------
   function breakRoute(W, u, v, how) {
     if (!pact(W, u, v, 'trade') && !(how === 'war' && pact(W, u, v, 'ally'))) return; const days = (W.now - routeStart(W, u, v)) / 864e5; if (days < 1) return;
@@ -1832,6 +1877,7 @@ function Core(PD, CARDS) {
       case 'bloc': return blocCmd(W, u, String(c.op || ''), c);
       case 'crisis': return crisisCmd(W, u, String(c.op || ''), c.amt, rng);
       case 'develop': return develop(W, u, c.h);
+      case 'movecap': return moveCap(W, u, c.h);
       case 'games': return gamesCmd(W, u, String(c.cat || ''), c.amt);
       case 'relief': return relief(W, u, c.id, c.amt);
       case 'hideguide': { const n = W.A[u]; if (n) { n.hideGuide = true; touch(W, u); } return { msg: '' }; }
@@ -1854,10 +1900,10 @@ function Core(PD, CARDS) {
   }
 
 
-  return { devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { Core, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { Core, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });

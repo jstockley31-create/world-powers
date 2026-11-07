@@ -68,7 +68,7 @@ if (!S.adminPath) S.adminPath = '/hq-' + crypto.randomBytes(12).toString('hex');
 if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 // ---------- fair play: a fingerprint of the exact game code running, its release history, and a public log of admin game actions ----------
-const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
+const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Triggered a nuclear accident', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
 const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
 const CODE = CODE_FILES.filter(f => fs.existsSync(path.join(__dirname, f))).map(f => ({ name: f, sha: crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, f))).digest('hex') }));
 const FINGERPRINT = crypto.createHash('sha256').update(CODE.map(c => c.name + ':' + c.sha).join('\n')).digest('hex');
@@ -446,6 +446,16 @@ function disLoop(W) {
     for (const u of Object.keys(W.A)) { if (!BOTS.isBot(u) || u === d.u || rng() > 1 / 90) continue; const bot = Object.keys(d.aid).filter(BOTS.isBot).reduce((s, x) => s + d.aid[x], 0); if (bot >= d.need * .4) break; const a = Math.floor(Math.min((W.A[u].cash || 0) * .003, d.need * .4 - bot)); if (a >= WP.DISASTER.minGive) try { core.exec(W, u, { c: 'relief', id: d.id, amt: a }, rng); } catch (e) { if (!e.user) throw e; } } }
   if (c.auto && now >= S.nextDis && humans(W).length >= 1) { S.nextDis = now + c.everyH * HOUR * (.5 + rng()); disasterStrike(W, null, null); }
 }
+// nuclear accidents: rare and random for nations with a nuclear program (about once a month each, never twice in a week)
+function nukeAccLoop(W) {
+  const now = Date.now(), K = WP.NUKEACC; if (S.config.nukeAcc === false) return;
+  for (const [u, n] of Object.entries(W.A)) { if (!n.nuke || now - (n.nukeAcc || 0) < K.gapD * 864e5) continue;
+    if (rng() < K.perDay * (n.warhead ? K.warheadX : 1) / 2880) nukeAccidentNow(W, u); }
+}
+function nukeAccidentNow(W, u) {
+  const r = core.nukeAccident(W, u, rng); if (!r) return null; S.burn[r.h] = { t: Date.now(), n: 12 }; burnList();
+  systemMessage(`☢ NUCLEAR ACCIDENT in ${r.name}: a reactor failure at ${r.place} has released radiation. ${WP.num(r.lost)} people lost; crops in the area are contaminated.`); broadcast('announce', { text: `☢ Nuclear accident in ${r.name}` }); return r;
+}
 // one world law a day goes to the Council, so world politics never sleeps
 const DAILY_LAWS = ['climate', 'arms', 'freetrade', 'science', 'food', 'health', 'peacekeeping', 'nonukes', 'tariffs', 'freemarket', 'truce'];
 function councilDaily(W) {
@@ -719,7 +729,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     W.welcome = null; commit(W);
     // world events
@@ -1028,6 +1038,7 @@ async function adminRoute(p, req, res, me) {
     if (op === 'gend') { if (!S.games || S.games.over) return send(res, 400, { error: 'The World Games are not on.' }); const W = mkWorld(); if (b.cancel) { S.games = null; W.gch = true; systemMessage('The World Games were called off.'); } else gamesFinish(W); commit(W); audit(me.name, 'Ended the World Games', null, b.cancel ? 'cancelled' : 'medals awarded'); return send(res, 200, { ok: true }); }
     if (op === 'gsettings') { const c = gamesCfg(); if (b.auto != null) c.auto = !!b.auto; if (isFinite(+b.everyD) && b.everyD !== '') c.everyD = Math.max(.5, Math.min(30, +b.everyD)); if (isFinite(+b.hours) && b.hours !== '') c.hours = Math.max(2, Math.min(96, Math.round(+b.hours))); S.config.games = c; persist(); audit(me.name, 'Changed World Games settings', JSON.stringify(c)); return send(res, 200, { ok: true }); }
     if (op === 'dstrike') { const W = mkWorld(); const t = typeof b.target === 'string' && Object.prototype.hasOwnProperty.call(W.A, b.target) ? b.target : null; const rec = disasterStrike(W, t, String(b.kind || '')); if (!rec) return send(res, 400, { error: 'No nation to strike.' }); commit(W); audit(me.name, 'Triggered a disaster', rec.name, `${rec.kind} at ${rec.place}`); return send(res, 200, { ok: true }); }
+    if (op === 'nukeacc') { const W = mkWorld(); const t = typeof b.target === 'string' && Object.prototype.hasOwnProperty.call(W.A, b.target) ? b.target : null; const pool = t ? [t] : Object.keys(W.A).filter(k => W.A[k].nuke); if (!pool.length) return send(res, 400, { error: 'No nation has a nuclear program.' }); if (t && !W.A[t].nuke) return send(res, 400, { error: `${W.A[t].name} has no nuclear program.` }); const r = nukeAccidentNow(W, pool[Math.floor(rng() * pool.length)]); commit(W); audit(me.name, 'Triggered a nuclear accident', r.name, r.place); return send(res, 200, { ok: true }); }
     if (op === 'dsettings') { const c = disCfg(); if (b.auto != null) c.auto = !!b.auto; if (isFinite(+b.everyH) && b.everyH !== '') c.everyH = Math.max(1, Math.min(168, +b.everyH)); S.config.dis = c; persist(); audit(me.name, 'Changed disaster settings', JSON.stringify(c)); return send(res, 200, { ok: true }); }
     if (op === 'blocdisband') { const bl = S.blocs[String(b.id)]; if (!bl || !Object.prototype.hasOwnProperty.call(S.blocs, String(b.id))) return send(res, 404, { error: 'No such alliance.' }); const W = mkWorld(); for (const m of bl.members || []) if (W.A[m]) { W.A[m].bloc = null; W.changed.add(m); } delete S.blocs[bl.id]; W.bch = true; commit(W); systemMessage(`The alliance ${bl.name} was disbanded by the administrators.`); audit(me.name, 'Disbanded alliance', bl.name); return send(res, 200, { ok: true }); }
     const cr = S.crisis; if (!cr || cr.over) return send(res, 400, { error: 'There is no world crisis under way.' });
