@@ -597,8 +597,8 @@ const emit=(n,d)=>window.dispatchEvent(new CustomEvent(n,{detail:d}));
 const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c}))};
 function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],voteAt:d.voteAt||0,council:d.council,event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 // the live stream can stall without any error (a phone waking up, a network switch, a proxy hiccup): watch for silence and reconnect, which reloads the whole world
-let curES=null,lastMsg=0,lastDoc=0,lastOwn=0,expT=0,connT=0;
-function reconnect(why){if(Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
+let curES=null,lastMsg=0,lastDoc=0,lastOwn=0,expT=0,connT=0,connFails=0;
+function reconnect(why,force){if(!force&&Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
 WP.resync=reconnect;
 // after an action, our own nation must update (not just anyone's): if it hasn't within 4 s, reconnect, which reloads everything
 WP.expect=()=>{const at=Date.now();clearTimeout(expT);expT=setTimeout(()=>{if(curES&&(st.me&&st.cols.nations&&st.cols.nations[st.me.id]?lastOwn<at:lastDoc<at))reconnect('no update to our own nation after an action')},4000)};
@@ -629,8 +629,8 @@ on('ntest',e=>window.dispatchEvent(new CustomEvent('wp-ntest',{detail:JSON.parse
 on('firesout',()=>window.dispatchEvent(new CustomEvent('wp-firesout')));
 on('announce',e=>window.dispatchEvent(new CustomEvent('wp-announce',{detail:JSON.parse(e.data)})));
  let downT=null,wasDown=false;const nb=(t,ok)=>{const b=document.getElementById('netbar');if(!b)return;b.querySelector('span').textContent=t;b.classList.toggle('ok',!!ok);b.classList.add('on')};
- es.onopen=()=>{lastMsg=Date.now();clearTimeout(downT);downT=null;if(wasDown){wasDown=false;nb('Back online',true);setTimeout(()=>{const b=document.getElementById('netbar');if(b)b.classList.remove('on')},1800)}};
- es.onerror=async()=>{if(curES!==es)return;if(!downT&&!wasDown)downT=setTimeout(()=>{wasDown=true;nb('Reconnecting… the game is updating or your connection dropped')},2500);try{await api('GET','/api/me')}catch(x){if(x.status===401||x.status===403){es.close();location.href='/play'}}}}
+ es.onopen=()=>{lastMsg=Date.now();connFails=0;clearTimeout(downT);downT=null;if(wasDown){wasDown=false;nb('Back online',true);setTimeout(()=>{const b=document.getElementById('netbar');if(b)b.classList.remove('on')},1800)}};
+ es.onerror=async()=>{if(curES!==es)return;if(!downT&&!wasDown)downT=setTimeout(()=>{wasDown=true;nb('Reconnecting… the game is updating or your connection dropped')},2500);try{await api('GET','/api/me')}catch(x){if(x.status===401||x.status===403){es.close();location.href='/play';return}}if(es.readyState===2&&curES===es){clearTimeout(es._rt);es._rt=setTimeout(()=>{if(curES===es)reconnect('stream closed',true)},Math.min(30000,3000*Math.pow(2,Math.min(4,(es._n=(connFails=(connFails||0)+1)-1)))))}}}
 // ---------- sign-in screen ----------
 const CSS=`#auth{position:fixed;inset:0;z-index:60;background:#05080c;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);font-family:Inter,system-ui,sans-serif;color:#e6edf3}
 #auth .left{position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#0d1d2d 0%,#05080c 70%)}
@@ -669,7 +669,11 @@ function showLogin(){let el=document.getElementById('auth');const first=!el;
  el.querySelector('input').focus();
  if(first)window.dispatchEvent(new Event('wp-login'))}
 function go(){const el=document.getElementById('auth');if(el)el.remove();const lo=document.getElementById('logoutBtn');if(lo){lo.style.display='';lo.title='Signed in as '+st.me.name+' ('+st.me.email+')';lo.onclick=async()=>{lo.disabled=true;try{await api('POST','/api/logout',{})}catch(e){}location.href='/'}}connect();resolveAuth()}
-async function start(){try{st.me=await api('GET','/api/me')}catch(e){return showLogin()}
+let startTry=0;function connecting(on){let el=document.getElementById('bootnet');if(!on){if(el)el.remove();return}if(!el){el=document.createElement('div');el.id='bootnet';el.style.cssText='position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:#090d12;color:#c5ced8;font:15px Inter,system-ui,sans-serif;text-align:center;padding:24px';el.innerHTML='<div><div style="width:34px;height:34px;border:3px solid #2a3746;border-top-color:#d4a64a;border-radius:50%;margin:0 auto 16px;animation:wpspin 1s linear infinite"></div><b style="color:#fff">Connecting to World Powers…</b><div style="margin-top:6px;color:#8b98a5;font-size:13px">Check your signal. This will continue on its own.</div></div><style>@keyframes wpspin{to{transform:rotate(360deg)}}</style>';document.body.appendChild(el)}}
+async function start(){try{st.me=await api('GET','/api/me')}catch(e){
+  // a weak signal, no connection, or the server restarting for an update is not "signed out": keep trying instead of showing the sign-in screen
+  if(e.status===401||e.status===403)return showLogin();connecting(true);startTry++;return setTimeout(start,Math.min(10000,800*startTry))}
+ connecting(false);startTry=0;
  const va=QS.get('viewas');
  if(va&&st.me.admin){try{const r=await api('GET','/api/admin/viewas?id='+encodeURIComponent(va));st.me={...r.me,viewAs:true};applyInit(r.snap);
   const b=document.createElement('div');b.id='viewasBar';b.innerHTML=`Viewing the game as <b>${String(r.me.name).replace(/[<>&]/g,'')}</b> — read-only snapshot. <a href="${location.pathname}?viewas=${encodeURIComponent(va)}">Refresh</a> · <a href="/play">Exit</a>`;
