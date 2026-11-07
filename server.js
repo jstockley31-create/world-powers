@@ -227,7 +227,12 @@ const buckets = new Map();
 function limited(key, max, windowMs) { const now = Date.now(); let b = buckets.get(key); if (!b || now > b.reset) { b = { n: 0, reset: now + windowMs }; buckets.set(key, b); } return ++b.n > max; }
 setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now > b.reset) buckets.delete(k); const cut = Math.floor(now / 60000) - 60; for (const k of health.reqs.keys()) if (k < cut) health.reqs.delete(k); }, 60000).unref();
 function flag(uid, r) { if (S.flags.some(f => f.uid === uid && f.r === r && Date.now() - f.t < 10 * 60e3)) return; S.flags.unshift({ t: Date.now(), uid, r }); S.flags = S.flags.slice(0, 2000); persist(); }
-const sharesNetwork = (a, b) => { const A = (S.meta[a] || {}).ips || [], B = (S.meta[b] || {}).ips || []; return A.some(ip => B.includes(ip)); };
+// same network = a home connection both accounts used. An address many players share (satellite internet like Starlink, mobile carriers,
+// schools: one public address for thousands of people) says nothing about who owns an account, so it doesn't count.
+let ipUseT = 0, ipUse = new Map();
+const ipUsers = ip => { if (Date.now() - ipUseT > 60e3) { ipUse = new Map(); for (const m of Object.values(S.meta)) for (const x of new Set((m && m.ips) || [])) ipUse.set(x, (ipUse.get(x) || 0) + 1); ipUseT = Date.now(); } return ipUse.get(ip) || 0; };
+const SHARED_IP = 4;
+const sharesNetwork = (a, b) => { const A = (S.meta[a] || {}).ips || [], B = (S.meta[b] || {}).ips || []; return A.some(ip => B.includes(ip) && ipUsers(ip) < SHARED_IP); };
 const isMuted = uid => (S.users[uid] && S.users[uid].mutedUntil || 0) > Date.now();
 const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid] || {}).name || 'Unknown';
 
@@ -1322,7 +1327,7 @@ async function handle(req, res) {
 
     if (p === '/api/signup' && req.method === 'POST') {
       if (!S.config.signups) return send(res, 403, { error: 'Sign-ups are closed right now.' });
-      if (limited('signup:' + ipOf(req), 5, 60 * 60e3)) return send(res, 429, { error: 'Too many sign-ups from your network. Try again later.' });
+      if (limited('signup:' + ipOf(req), 15, 60 * 60e3)) return send(res, 429, { error: 'Too many sign-ups from your network. Try again later.' });
       if (limited('signup:all', 60, 60 * 60e3)) { logErr('Sign-up limit reached: more than 60 new accounts in an hour.'); return send(res, 429, { error: 'Lots of new leaders are joining right now. Please try again in a few minutes.' }); }
       const b = await readBody(req, 4096);
       const email = String(b.email || '').trim().toLowerCase(), name = String(b.name || '').trim(), pw = String(b.password || '');
@@ -1344,7 +1349,7 @@ async function handle(req, res) {
     }
     if (p === '/api/guest' && req.method === 'POST') {
       if (!S.config.signups) return send(res, 403, { error: 'New players are not being accepted right now.' });
-      if (limited('guest:' + ipOf(req), 3, 60 * 60e3)) return send(res, 429, { error: 'Too many guest games from your network. Create an account instead.' });
+      if (limited('guest:' + ipOf(req), 8, 60 * 60e3)) return send(res, 429, { error: 'Too many guest games from your network. Create an account instead.' });
       if (limited('guest:all', 40, 60 * 60e3)) return send(res, 429, { error: 'Lots of new leaders are joining right now. Please try again in a few minutes.' });
       const b = await readBody(req, 1024);
       let name; do { name = 'Guest ' + (1000 + crypto.randomInt(9000)); } while (Object.values(S.users).some(u => u.name === name));
@@ -1357,7 +1362,7 @@ async function handle(req, res) {
       return send(res, 200, pub({ id, ...S.users[id] }), { 'Set-Cookie': sessionCookie(req, token, SESSION_DAYS * 86400) });
     }
     if (p === '/api/login' && req.method === 'POST') {
-      if (limited('login:' + ipOf(req), 15, 15 * 60e3)) return send(res, 429, { error: 'Too many sign-in attempts. Wait 15 minutes.' });
+      if (limited('login:' + ipOf(req), 60, 15 * 60e3)) return send(res, 429, { error: 'Too many sign-in attempts. Wait 15 minutes.' });
       const b = await readBody(req, 4096);
       const email = String(b.email || '').trim().toLowerCase();
       if (limited('loginE:' + email, 8, 15 * 60e3)) return send(res, 429, { error: 'Too many attempts for this account. Wait 15 minutes.' });
@@ -1458,7 +1463,8 @@ async function handle(req, res) {
       actLog(me.id, W, b, true, r.msg); pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
       commit(W);
-      return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok });
+      // your own nation comes back with the answer, so the screen updates the moment the action is done (no waiting on the live stream)
+      return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, me: S.docs['nations/' + me.id] || null });
     }
 
     // ---- mail ----

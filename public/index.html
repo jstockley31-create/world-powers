@@ -677,6 +677,8 @@ function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=
 let curES=null,lastMsg=0,lastDoc=0,lastOwn=0,expT=0,connT=0,connFails=0;
 function reconnect(why,force){if(!force&&Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
 WP.resync=reconnect;
+// an action's answer carries our own nation: show it right away
+WP.applyOwn=d=>{if(!d||!st.me)return;lastDoc=lastOwn=Date.now();if(!st.cols.nations)st.cols.nations={};st.cols.nations[st.me.id]=d;fire('nations')};
 // after an action, our own nation must update (not just anyone's): if it hasn't within 4 s, reconnect, which reloads everything
 WP.expect=()=>{const at=Date.now();clearTimeout(expT);expT=setTimeout(()=>{if(curES&&(st.me&&st.cols.nations&&st.cols.nations[st.me.id]?lastOwn<at:lastDoc<at))reconnect('no update to our own nation after an action')},4000)};
 setInterval(()=>{if(curES&&document.visibilityState==='visible'&&Date.now()-lastMsg>50000)reconnect('silent stream')},10000);
@@ -943,7 +945,7 @@ MQ.addEventListener('change',()=>{renderSide();if(loaded)render()});
 // ================= server commands =================
 let lastBtn=null;
 async function cmd(body,okMsg,url='/api/cmd'){if(busy)return null;busy=true;const btn=lastBtn;if(btn&&btn.classList.contains('btn'))btn.classList.add('loading');document.body.style.cursor='progress';
- try{const r=await WP.api('POST',url,body);if(WP.expect)WP.expect();if(r.msg&&okMsg!==false)toast(r.msg);SND.play(body.c==='act'&&body.k==='tax'?'coin':'ok');if(r.promoted)setTimeout(()=>promo(r.promoted),700);if(r.selHex!=null)selHex=r.selHex;return r}
+ try{const r=await WP.api('POST',url,body);if(r&&r.me&&WP.applyOwn)WP.applyOwn(r.me);else if(WP.expect)WP.expect();if(r.msg&&okMsg!==false)toast(r.msg);SND.play(body.c==='act'&&body.k==='tax'?'coin':'ok');if(r.promoted)setTimeout(()=>promo(r.promoted),700);if(r.selHex!=null)selHex=r.selHex;return r}
  catch(e){toast(e.message||'Something went wrong.');SND.play('err');return null}
  finally{busy=false;document.body.style.cursor='';if(btn)btn.classList.remove('loading')}}
 const doAct=(k,arg)=>cmd({c:'act',k,arg:arg!=null?+arg:undefined});
@@ -953,10 +955,11 @@ let runningAll=false;const opSkip={};
 let OB={w:null,t:0,m:{}};const opBlock=k=>{if(!me||left(k))return'';const now=Date.now();if(OB.w!==W||now-OB.t>3000)OB={w:W,t:now,m:{}};if(!(k in OB.m)){W.now=now;OB.m[k]=C.actCheck(W,uid,k)}return OB.m[k]};
 const readyOps=()=>me?opsActs().filter(a=>!left(a.k)&&!opBlock(a.k)&&!((opSkip[a.k]||0)>Date.now())):[];
 async function runAllOps(){if(runningAll||busy)return;const list=readyOps();if(!list.length)return toast('Nothing is ready yet.');runningAll=true;updTimers();const done=[],skipped=[];let promoted=null;
- for(const a of list){try{const r=await WP.api('POST','/api/cmd',{c:'act',k:a.k});done.push(a.n);if(r&&r.promoted)promoted=r.promoted;if(r&&r.selHex!=null)selHex=r.selHex}catch(e){skipped.push(`${a.n}: ${e.message||'failed'}`);opSkip[a.k]=Date.now()+2*60e3}await new Promise(r=>setTimeout(r,180))}
+ for(const a of list){try{const r=await WP.api('POST','/api/cmd',{c:'act',k:a.k});if(r&&r.me&&WP.applyOwn)WP.applyOwn(r.me);done.push(a.n);if(r&&r.promoted)promoted=r.promoted;if(r&&r.selHex!=null)selHex=r.selHex}catch(e){skipped.push(`${a.n}: ${e.message||'failed'}`);opSkip[a.k]=Date.now()+2*60e3}await new Promise(r=>setTimeout(r,180))}
  runningAll=false;if(WP.expect)WP.expect();SND.play(done.length?'coin':'err');if(promoted)setTimeout(()=>promo(promoted),700);
  toast(done.length?`Ran ${done.length} operation${done.length>1?'s':''}${skipped.length?` · skipped ${skipped.length} (${skipped.slice(0,2).join('; ')}${skipped.length>2?'…':''})`:''}.`:`Nothing ran: ${skipped.slice(0,2).join('; ')}`);updTimers();if(page==='ops')render()}
-const decide=(id,o)=>cmd({c:'decide',id,o});
+// a decision disappears the moment you pick an option; it comes back only if the server refuses it
+const decide=(id,o)=>{const i=(me.cards||[]).findIndex(c=>c.id===id);if(i<0)return;if(busy)return toast('One moment…');const card=me.cards.splice(i,1)[0];render();return cmd({c:'decide',id,o}).then(r=>{if(!r&&me&&!(me.cards||[]).some(c=>c.id===id)){me.cards.splice(Math.min(i,me.cards.length),0,card);render()}return r})};
 // after you attack: close the planner, take you to the battlefield on the globe, and show the result as a small card (full report one tap away)
 function goWatch(h,scale){if(!P[h])return;closeModal();const go=()=>GL.flyTo(P[h].c,Math.max(GL.st.scale,scale||2));if(page!=='world'){page='world';render();setTimeout(go,350)}else go()}
 function battleCard(b){const old=$('btCard');if(old)old.remove();const el=document.createElement('div');el.id='btCard';el.className='sknote bt '+(b.win?'win':'hit');
