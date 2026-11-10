@@ -120,7 +120,7 @@ module.exports = function makeBots(core, WP, rng) {
         if (pl.chance >= .55 && (!best || score > best.score)) best = { h, pl, score };
       }
     }
-    return best ? tryExec(W, u, { c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR }) : null;
+    return best ? tryExec(W, u, { c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR, vassal: rng() < .5 }) : null;
   }
   // ---------- the Rising Power: one AI superpower that keeps pace with the strongest player, goes nuclear and must be stopped together ----------
   const humans = W => Object.keys(W.A).filter(v => !isBot(v));
@@ -270,7 +270,7 @@ module.exports = function makeBots(core, WP, rng) {
     if (cfg.war && cfg.botWar !== 'no') {
       const front = []; for (const h of core.hexesOf(W, u)) for (const k of core.nbrs(h)) { const v = core.owner(W, k); if (v && v !== u) front.push([k, v]); }
       if (myWars.length) {
-        if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const rt = core.route(W, u, h); let X = Math.floor(n.troops * .7); const AIR = Math.floor(n.air * .7); if (rt === 'sea') X = Math.min(X, n.ships * 100); if (rt === 'air') X = Math.min(X, AIR * core.AIRBORNE.per); if (X < 50) continue; if ((X + AIR * 20) * core.atkMult(n) * (rt === 'sea' ? .8 : rt === 'air' ? core.AIRBORNE.str : 1) > core.defense(W, h, u) * (.9 + rng() * .25) && (rt !== 'sea' || n.ships * 25 > core.navalDefense(W, h))) return tryExec(W, u, { c: 'attack', h, x: X, air: AIR }); }
+        if (rng() < .6) for (const [h, v] of front) { if (!myWars.includes(v) || core.canAttack(W, u, h)) continue; const rt = core.route(W, u, h); let X = Math.floor(n.troops * .7); const AIR = Math.floor(n.air * .7); if (rt === 'sea') X = Math.min(X, n.ships * 100); if (rt === 'air') X = Math.min(X, AIR * core.AIRBORNE.per); if (X < 50) continue; if ((X + AIR * 20) * core.atkMult(n) * (rt === 'sea' ? .8 : rt === 'air' ? core.AIRBORNE.str : 1) > core.defense(W, h, u) * (.9 + rng() * .25) && (rt !== 'sea' || n.ships * 25 > core.navalDefense(W, h))) return tryExec(W, u, { c: 'attack', h, x: X, air: AIR, vassal: rng() < .5 }); }
         // no border to fight on (or nothing worth hitting there): use the war planner like a player would — by sea, overseas or a long march
         if (rng() < .35) { const r = farStrike(W, u, myWars); if (r) return r; }
         // hit back at whoever attacked us in the last day: missiles if we have the tech, otherwise the air force
@@ -306,6 +306,8 @@ module.exports = function makeBots(core, WP, rng) {
       }
     }
     // warlords sometimes bomb their enemies' armies from the air
+    // a vassal AI breaks free once it's strong enough (and its 48 hours are up)
+    if (n.overlord && W.A[n.overlord] && W.now - (n.vassalT || 0) > 48 * HOUR && core.power(W, u) > core.power(W, n.overlord) * .7 && rng() < .05) { const r = tryExec(W, u, { c: 'independence' }); if (r) return r; }
     // now and then an AI at war fires a ballistic missile or shells a coast (warlords most often)
     if (myWars.length && rng() < ({ warlord: .06, expansionist: .04, merchant: .015, isolationist: .01 }[n.ai.p] || .02)) { const v = pick(myWars), k = pick(['ballistic', 'bombard', 'drones', 'drones', 'raid']); if (!core.canHeavy(W, u, v, k)) { const r = tryExec(W, u, { c: 'heavy', v, k }); if (r) return r; } }
     if (myWars.length && (n.air || 0) >= 10 && rng() < ({ warlord: .18, expansionist: .1, merchant: .05, isolationist: .03 }[n.ai.p] || .05)) { const v = pick(myWars); if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: 'mil', n: Math.floor(n.air * .6) }); if (r) return r; } }
@@ -333,7 +335,7 @@ module.exports = function makeBots(core, WP, rng) {
         // nothing with good odds: take the best chance available
         let best = null; for (const h of core.hexesOf(W, v)) { if (core.canAttack(W, u, h)) continue; const pl = core.attackPlan(W, u, h, Math.floor(n.troops * .8), Math.floor((n.air || 0) * .8)); if (pl && !pl.why && pl.X >= 50 && (!best || pl.chance > best.pl.chance)) best = { h, pl }; }
         if (!best) { const h0 = core.hexesOf(W, v)[0]; throw new Error(h0 != null ? (core.canAttack(W, u, h0) || `None of ${d.name}'s provinces can be reached right now.`) : `${d.name} has no provinces.`); }
-        return ex({ c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR }); }
+        return ex({ c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR, vassal: rng() < .5 }); }
       case 'air': need(); return ex({ c: 'strike', v, kind: 'air', target: cmd.target || 'mil', n: Math.max(5, Math.floor((n.air || 0) * .7)) });
       case 'missile': need(); { const mx = core.maxMissiles(n); if (!mx) throw new Error('It needs tech level 8 for missiles.'); return ex({ c: 'strike', v, kind: 'missile', target: cmd.target || 'mil', n: mx }); }
       case 'dirty': need(); return ex({ c: 'dirty', v });

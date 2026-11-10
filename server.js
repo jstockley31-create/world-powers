@@ -37,6 +37,8 @@ fs.mkdirSync(BACKUP_DIR, { recursive: true });
 let S = { users: {}, sessions: {}, docs: {}, meta: {}, flags: [], audit: [], config: { ...WP.DEFCFG } };
 try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { if (e.code !== 'ENOENT') { console.error('Could not read', FILE, e.message); process.exit(1); } }
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
+// one-time 24-hour pause on overstretch penalties, starting when this update first boots
+if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1; }
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
@@ -239,7 +241,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 // ---------- what other players may see ----------
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, dev: n.dev || {}, prestige: n.prestige || 0, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, lvl: n.dome.lvl || 1, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
+    approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, dev: n.dev || {}, prestige: n.prestige || 0, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, overlord: n.overlord || null, vassalT: n.vassalT || 0, office: n.office || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, lvl: n.dome.lvl || 1, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea } : e) };
 }
@@ -301,6 +303,7 @@ function effCfg() {
   const c = { ...S.config }, now = Date.now(); const on = S.schedule.filter(x => BOOSTS[x.type] && x.start <= now && now < x.end);
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
+  c.overPause = S.overPause || 0;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
   return c;
 }
@@ -348,8 +351,10 @@ const humans = W => Object.keys(W.A).filter(u => !BOTS.isBot(u));
 // provinces that broke away become small AI nations (a few at most; beyond that the land is simply free to settle)
 function rebelSpawn(W) {
   const list = W.breakaways || []; W.breakaways = []; if (!list.length) return;
+  // provinces that went free are announced together (one message, not one per province)
+  const freed = list.filter(b => b.free); if (freed.length) systemMessage(freed.length === 1 ? `🏴 ${core.pname(freed[0].h)} broke away from ${freed[0].fromName}'s overstretched empire and is now free land anyone can settle.` : `🏴 ${freed.length} provinces broke away from overstretched empires and are now free land: ${freed.slice(0, 6).map(b => core.pname(b.h)).join(', ')}${freed.length > 6 ? ` and ${freed.length - 6} more` : ''}.`);
   for (const b of list) {
-    if (b.free) { systemMessage(`🏴 ${core.pname(b.h)} rebelled against ${b.fromName}'s overstretched empire and is now free land anyone can settle.`); continue; }
+    if (b.free) continue;
     const rebels = Object.values(W.A).filter(n => n.ai && n.ai.rebel).length; if (rebels >= WP.REBEL.maxNations) { systemMessage(`${core.pname(b.h)} broke away from ${b.fromName} and is now free land.`); continue; }
     const id = 'ai_' + crypto.randomBytes(5).toString('hex'), from = W.A[b.from]; const name = core.foundRebel(W, id, b.h, { color: BOTS.distinctColor(W), dev: b.dev, from: b.from, fromName: b.fromName, tech: from ? from.tech : 2 });
     if (name) { W.changed.add(id); systemMessage(`🏴 ${core.pname(b.h)} has declared independence from ${b.fromName} as ${name}. Its land is up for grabs.`); }

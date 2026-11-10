@@ -249,7 +249,17 @@ const BRIBE = { pct: .25, min: 50e6, rogueX: 2, windowD: 7 };
 // province limit: 8 + 3 per rank (Chieftain 8 ... Sovereign 29 ... World Power 38). Above it, every extra province costs heavy upkeep,
 // and after a 24-hour warning the farthest extra provinces rebel and become free land, a few an hour. Far-flung land (over 3,000 km
 // from the capital) also tends to break away. The Rising Power is exempt.
-const OVER = { base: 8, per: 3, cost: .00015, graceH: 24, rebelP: .05, rebelPer: .02, st: .3, farKm: 3000, farP: .003, farMin: 6 };
+const OVER = { base: 8, per: 3, cost: .00015, graceH: 24, rebelP: .05, rebelPer: .02, st: .3, farKm: 3000, farP: .0015, farMin: 6 };
+// ADMINISTRATION: every province costs administration points. Core land (held 7+ days) costs 1, a colony (newer) costs 2, and land more than
+// 3,000 km from the capital costs 1 more; the capital is free. Capacity = 10 + 3 per rank + 4 per level of Administrative offices (AI nations +6).
+// Over capacity: production and taxes fall 3% per point (up to −45%), stability drains and there is upkeep. Only when badly over (25%+) and
+// after a 24-hour warning do the farthest colonies break away and become free land. The Rising Power is exempt.
+const ADMIN = { base: 10, per: 3, ai: 6, coreD: 7, colony: 2, far: 1, farKm: 3000,
+  office: { max: 5, cap: 4, cash: 2e7, steel: 600, goods: 400, cdH: 6 },
+  over: { prod: .03, prodMax: .45, st: .1, stMax: 1.5, cost: .00004, severe: 1.25, graceH: 24, p: .01, pMax: .3 } };
+// VASSALS: win a capital siege choosing "make vassal" and the nation survives as your vassal: it keeps its land, pays tribute every 10 minutes
+// (half a tax collection and 10% of its production), and neither side can attack the other. After 48 hours it may declare independence (war).
+const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
 const WARHEAD = { tech: 22, rank: 7, cash: 500e6, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
@@ -410,7 +420,17 @@ function Core(PD, CARDS) {
   const hexesOf = (W, u) => Object.keys(W.OWN).filter(h => W.OWN[h].u === u).map(Number);
   const rankOf = xp => { let i = 0; for (let j = 0; j < RANKS.length; j++) if ((xp || 0) >= RANKS[j][0]) i = j; return i; };
   const rankName = n => RANKS[rankOf(n.xp)][1];
-  const maxHex = n => !n ? 0 : (n.ai && n.ai.boss) ? Infinity : OVER.base + OVER.per * rankOf(n.xp || 0);
+  const maxHex = n => !n ? 0 : (n.ai && n.ai.boss) ? Infinity : adminCap(n); // kept for older callers: now the administration capacity
+  const adminCap = n => !n ? 0 : (n.ai && n.ai.boss) ? Infinity : ADMIN.base + ADMIN.per * rankOf(n.xp || 0) + (n.ai ? ADMIN.ai : 0) + ADMIN.office.cap * (n.office || 0);
+  // what one province costs to administer
+  function provAdmin(W, u, h) { const n = W.A[u], o = W.OWN[h]; if (!n || !o || o.u !== u || o.cap || +h === +n.cap) return 0; const core = (W.now - o.ts) / 864e5 >= ADMIN.coreD; return (core ? 1 : ADMIN.colony) + (P[n.cap] && kmBetween(+h, +n.cap) > ADMIN.farKm ? ADMIN.far : 0); }
+  function adminState(W, u) { const n = W.A[u]; if (!n) return { cap: 0, used: 0, over: 0, prodF: 1 }; const cap = adminCap(n);
+    if (!isFinite(cap)) return { cap, used: 0, over: 0, prodF: 1, core: 0, colony: 0, far: 0, severe: false };
+    let used = 0, core = 0, colony = 0, far = 0; for (const h of hexesOf(W, u)) { const c = provAdmin(W, u, h); if (!c) continue; used += c; const o = W.OWN[h]; if ((W.now - o.ts) / 864e5 >= ADMIN.coreD) core++; else colony++; if (P[n.cap] && kmBetween(+h, +n.cap) > ADMIN.farKm) far++; }
+    const over = Math.max(0, used - cap), O = ADMIN.over; return { cap, used, over, core, colony, far, prodF: 1 - Math.min(O.prodMax, over * O.prod), severe: used > cap * O.severe, cost: over ? Math.round(Math.max(1e5, (n.gdp || 0) * O.cost) * over) : 0, st: over ? Math.min(O.stMax, over * O.st) : 0, since: n.admSince || 0, rebelAt: n.admSince ? n.admSince + O.graceH * HOUR : 0 }; }
+  const overPaused = W => W.now < ((W.cfg && W.cfg.overPause) || 0);
+  const adminF = (W, u) => { const n = W.A[u]; return !n || overPaused(W) || (n.ai && n.ai.boss) ? 1 : adminState(W, u).prodF; };
+  const officeCost = n => { const l = (n.office || 0) + 1, O = ADMIN.office; return { cash: Math.round(O.cash * Math.pow(l, 1.5)), steel: O.steel * l, goods: O.goods * l }; };
   const R = (W, a, b) => (W.A[a] && W.A[a].rel && W.A[a].rel[b]) || {};
   function atWar(W, a, b) { const x = R(W, a, b), y = R(W, b, a); const w = Math.max(x.war || 0, y.war || 0); if (!w) return false; return !((x.peace || 0) > w && (y.peace || 0) > w); }
   const warSince = (W, a, b) => Math.max(R(W, a, b).war || 0, R(W, b, a).war || 0);
@@ -480,7 +500,7 @@ function Core(PD, CARDS) {
     const top = W._top.v, me = score(W, u); if (!top || me >= top * .3 || rogue(W, W.A[u])) return 0;
     return Math.round(.5 * (1 - me / (top * .3)) * 100) / 100;
   }
-  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = (1 + tradeVal(W, u) * .05 * (sanctioned(n) ? 0 : 1)) * (1 + rankOf(n.xp) * RANK_TAX); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
+  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = (1 + tradeVal(W, u) * .05 * (sanctioned(n) ? 0 : 1)) * (1 + rankOf(n.xp) * RANK_TAX) * adminF(W, u); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
   const overAt = n => maxHex(n);
   const bribeRecent = (n, now) => (n.bribes || []).filter(t => now - t < BRIBE.windowD * 864e5);
@@ -500,7 +520,7 @@ function Core(PD, CARDS) {
       if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) dk *= .3; // a disaster zone produces little until it recovers
       for (const k in q) p[k] += q[k] * dk;
     }
-    const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income;
+    const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income * adminF(W, u);
     for (const k in p) p[k] = Math.round(p[k] * m * (k === 'food' ? W.m.food * (radOn(W, n) && n.rad.acc ? NUKEACC.crops : 1) : k === 'oil' ? W.m.oil : 1));
     return p;
   }
@@ -586,6 +606,7 @@ function Core(PD, CARDS) {
   function canAttack(W, u, h) {
     const me = W.A[u]; if (!me) return 'Found a nation first.'; if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     const v = owner(W, h); if (!v || v === u) return 'Not a foreign province.'; const n = W.A[v];
+    if (n.overlord === u || me.overlord === v) return n.overlord === u ? `${n.name} is your vassal. Release it first to fight it.` : `You are ${n.name}'s vassal. Declare independence first.`;
     if (rankOf(me.xp) < 2) return `You must reach the rank of Mayor (300 XP) to wage war. You have ${num(me.xp)} XP.`;
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, n); if (cf) return cf; }
@@ -742,7 +763,7 @@ function Core(PD, CARDS) {
     else if (k === 'navy') { if (measure(W, n, 'armsEmb')) fail('A World Council arms embargo is in force: you cannot build warships until it ends.'); if (!hasCoast(W, u)) fail('You need a coastal province to build warships.'); const b = navyBatch(n), c = Math.round(b * 6e4 * cheap(n)), s = b * 30, o = b * 10; if (n.cash < c || n.res.steel < s || n.res.oil < o) fail(`Requires ${money(c)}, ${s} steel and ${o} oil.`); n.cash -= c; n.res.steel -= s; n.res.oil -= o; n.ships += b; msg = `${b} warships commissioned.`; }
     else if (k === 'air') { if (measure(W, n, 'armsEmb')) fail('A World Council arms embargo is in force: you cannot build aircraft until it ends.'); if (n.tech < 2) fail('Reach tech level 2 to build aircraft.'); const b = airBatch(n), c = Math.round(b * 4.5e4 * cheap(n)), g = b * 15, s = b * 10, o = b * 10; if (n.cash < c || n.res.goods < g || n.res.steel < s || n.res.oil < o) fail(`Requires ${money(c)}, ${g} goods, ${s} steel and ${o} oil.`); n.cash -= c; n.res.goods -= g; n.res.steel -= s; n.res.oil -= o; n.air += b; msg = `${b} aircraft delivered.`; }
     else if (k === 'expand') {
-      if (hexesOf(W, u).length >= maxHex(n)) fail(`You've reached your province limit: ${maxHex(n)} provinces for a ${rankName(n)}. Rank up to hold more.`);
+      { const a = adminState(W, u); if (isFinite(a.cap) && a.used + ADMIN.colony > a.cap) fail(`Not enough administration to run another province (${a.used} of ${a.cap} used; a new colony needs ${ADMIN.colony}). Build Administrative offices, rank up, or wait for colonies to become core land after ${ADMIN.coreD} days.`); }
       // any unclaimed province can be settled: land next to yours at the normal price, anywhere else for more (see settleCost)
       let h = null;
       if (arg != null) { h = Number(arg); if (!Number.isInteger(h) || !P[h]) fail('Unknown province.'); if (W.OWN[h]) fail('That province is already claimed.'); }
@@ -810,7 +831,7 @@ function Core(PD, CARDS) {
     return { msg: msg + clear, ok, clear: !!clear };
   }
 
-  function attack(W, u, h, X, AIR, rng) {
+  function attack(W, u, h, X, AIR, rng, mkVassal) {
     const me = W.A[u]; h = Number(h); if (!Number.isInteger(h) || !P[h]) fail('Unknown province.'); const why = canAttack(W, u, h); if (why) fail(why);
     X = Math.floor(Number(X)); AIR = Math.max(0, Math.floor(Number(AIR) || 0));
     if (!(X >= 10) || X > me.troops) fail('Commit at least 10 troops, and no more than you have.');
@@ -852,8 +873,11 @@ function Core(PD, CARDS) {
     me.troops -= lossA; me.air -= airLostA; d.troops = Math.max(0, d.troops - lossD); d.air -= airLostD;
     let loot = 0;
     const isCap = !!(W.OWN[h] && W.OWN[h].cap);
-    if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
-    else if (win && hexesOf(W, u).length >= maxHex(me)) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; if (d.dev) delete d.dev[h]; if (d.conq) delete d.conq[h]; W.OWN = computeOwn(W.A); result.freed = true; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
+    if (win && isCap && mkVassal) { result.vassal = true; loot = Math.max(0, Math.round(d.cash * VASSAL.loot)); me.cash += loot; d.cash -= loot; endWar(W, u, v); for (const x of vassalsOf(W, v)) { delete W.A[x].overlord; delete W.A[x].vassalT; touch(W, x); } d.overlord = u; d.vassalT = W.now; delete d.lastStand; gainXP(W, u, 150);
+      log(me, `${d.name} surrendered and is now your vassal: it pays you tribute every 10 minutes. You took ${money(loot)} from its treasury.`, W); log(d, `${me.name} took your capital. You are now its vassal and pay it tribute. You may declare independence after ${VASSAL.freeH} hours.`, W);
+      note(W, v, 'attack', `👑 ${me.name} took your capital. You are now its vassal: you keep your land but pay tribute. You can declare independence in ${VASSAL.freeH} hours.`); news(W, u, `👑 ${d.name} has surrendered and become a vassal of ${me.name}.`); Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, vassal: 1, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0 }); touch(W, u, v); return { msg: `👑 ${d.name} surrendered and is now your vassal.`, battle: result }; }
+    else if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
+    else if (false) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; if (d.dev) delete d.dev[h]; if (d.conq) delete d.conq[h]; W.OWN = computeOwn(W.A); result.freed = true; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       log(me, `Your forces drove ${d.name} out of ${pname(h)}, but your empire is at its province limit (${maxHex(me)}), so the province is now free land.`, W); }
     else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, 1); me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
@@ -886,6 +910,7 @@ function Core(PD, CARDS) {
   // air and missile strikes: damage without invading
   function canStrike(W, u, v, noRearm) {
     const me = W.A[u], n = W.A[v]; if (!me) return 'Found a nation first.'; if (!n || v === u) return 'Unknown nation.';
+    if (n.overlord === u || me.overlord === v) return n.overlord === u ? `${n.name} is your vassal.` : `You are ${n.name}'s vassal.`;
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
@@ -1236,6 +1261,7 @@ function Core(PD, CARDS) {
     const t = W.now;
     if (kind === 'war') {
       if (!W.cfg.war) fail('Warfare is currently disabled by the administrators.');
+      if (them.overlord === u) fail(`${them.name} is your vassal. Release it first.`); if (me.overlord === v) fail(`You are ${them.name}'s vassal. Declare independence instead.`);
       if (rankOf(me.xp) < 2) fail('You must reach the rank of Mayor to declare war.');
       if (atWar(W, u, v)) fail('You are already at war.');
       if (W.m.truce) fail('A World Council truce is in force: no new wars may be declared until it ends.');
@@ -1484,7 +1510,7 @@ function Core(PD, CARDS) {
     if (n.chain && W.now >= n.chain.at && n.cards.length < 4) { n.cards.push({ id: rid(), i: 'ch:' + n.chain.k }); delete n.chain; changed = true; }
     if (k > 0 && n.conq) for (let i = 0; i < Math.min(k, 12); i++) if (rebels(W, u, rng)) changed = true;
     if (k > 0 && active) for (let i = 0; i < Math.min(k, 12); i++) if (neglect(W, u, rng)) changed = true;
-    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { if (overTick(W, u, rng)) changed = true; if (farLands(W, u, rng)) changed = true; }
+    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { if (overTick(W, u, rng)) changed = true; if (farLands(W, u, rng)) changed = true; if (tributeTick(W, u)) changed = true; }
     if (!n.ai && n.stability < REBEL.st && hexesOf(W, u).length >= REBEL.minProv && W.now - (n.rebWarn || 0) > 12 * HOUR) { n.rebWarn = W.now; note(W, u, 'attack', `⚠ Unrest is spreading: with stability below ${REBEL.st}, outlying provinces may declare independence. Raise stability (Address the Nation, budget, laws) and keep troops in your provinces.`); changed = true; }
     while (W.now >= n.nextCard) { if (n.cards.length < 3 && active) addCard(W, u, rng); n.nextCard += 40 * MIN; changed = true; }
     if (n.gov === 'dem' && n.nextElection && W.now >= n.nextElection) { election(W, u, rng); changed = true; }
@@ -1610,7 +1636,7 @@ function Core(PD, CARDS) {
     if (!list || !list.length) return null; const a = W.A[u], b = W.A[v];
     for (const h of list) { if (owner(W, h) !== u) return `${a.name} no longer owns ${pname(h)}.`; if (h == a.cap) return 'A capital can never be traded.'; if (a.ptrade && W.now - (a.ptrade[h] || 0) < PROV_LOCK) return `${pname(h)} changed hands less than 24 hours ago and can't be traded again yet.`; }
     if (hexesOf(W, u).length - list.length < 1) return `${a.name} can't give away all of its land.`;
-    if (hexesOf(W, v).length - (out || 0) + list.length > maxHex(b)) return `${b.name} would go over its province limit (${maxHex(b)}).`;
+    { const a = adminState(W, v); if (isFinite(a.cap) && a.used + list.length * ADMIN.colony > a.cap + (out || 0)) return `${b.name} doesn't have enough administration for that land (${a.used} of ${a.cap} used).`; }
 
     return null;
   }
@@ -1885,20 +1911,46 @@ function Core(PD, CARDS) {
   }
   // an empire above its province limit: upkeep and unrest every tick; after the warning period its farthest extra provinces rebel and go free
   function overTick(W, u, rng) {
-    const n = W.A[u]; if (!n || (n.ai && n.ai.boss)) return false; const o = overstretch(n), held = hexesOf(W, u);
-    if (!o.extra) { if (n.overSince) { delete n.overSince; touch(W, u); } return false; }
-    let ch = false;
-    if (!n.overSince) { n.overSince = W.now; ch = true; note(W, u, 'attack', `⚠ Imperial overstretch: you hold ${held.length} provinces but your limit as ${rankName(n)} is ${o.at}. Each extra province costs ${money(Math.max(2e5, (n.gdp || 0) * OVER.cost))} every 10 minutes, and in ${OVER.graceH} hours your farthest extra provinces will start to rebel and become free land. Release provinces or rank up to keep them.`); }
-    n.cash -= o.cost; n.stability = clamp(n.stability - o.st, 0, 100); ch = true;
-    if (W.now - n.overSince >= OVER.graceH * HOUR && rng() < Math.min(.6, OVER.rebelP + OVER.rebelPer * o.extra)) {
-      const far = held.filter(h => h != n.cap).sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0];
-      if (far != null) breakAway(W, u, far, 'rebelled against an overstretched empire and is now free land', true);
+    const n = W.A[u]; if (!n || (n.ai && n.ai.boss)) return false; if (n.overSince) { delete n.overSince; touch(W, u); } // from the old hard limit
+    if (overPaused(W)) { if (n.admSince) { delete n.admSince; touch(W, u); } return false; } // penalties paused: the warning clock starts fresh afterwards
+    const a = adminState(W, u);
+    if (!a.over) { if (n.admSince) { delete n.admSince; touch(W, u); } return false; }
+    n.cash -= a.cost; n.stability = clamp(n.stability - a.st, 0, 100); let ch = true;
+    if (!a.severe) { if (n.admSince) delete n.admSince; return ch; }
+    if (!n.admSince) { n.admSince = W.now; note(W, u, 'attack', `⚠ Your empire is badly over its administration capacity (${a.used} of ${a.cap}). Output is down ${Math.round((1 - a.prodF) * 100)}%, and in ${ADMIN.over.graceH} hours your farthest colonies will start to break away and become free land. Build Administrative offices, rank up, release land, or wait for colonies to become core land.`); return ch; }
+    if (W.now - n.admSince >= ADMIN.over.graceH * HOUR && rng() < Math.min(ADMIN.over.pMax, ADMIN.over.p * a.over)) {
+      const held = hexesOf(W, u).filter(h => h != n.cap), colonies = held.filter(h => (W.now - W.OWN[h].ts) / 864e5 < ADMIN.coreD), pool = colonies.length ? colonies : held;
+      const far = pool.sort((x, y) => kmBetween(y, n.cap) - kmBetween(x, n.cap))[0]; if (far != null) breakAway(W, u, far, 'broke away from an overstretched empire and is now free land', true);
     }
     return ch;
   }
+  // Administrative offices: +4 administration capacity per level (up to 5)
+  function buildOffice(W, u) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); const O = ADMIN.office; if ((n.office || 0) >= O.max) fail('Your administration is fully built.');
+    if (left(W, n, 'office')) fail(`Builders are still at work: ${fmtT(left(W, n, 'office'))}.`); const c = officeCost(n);
+    if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.goods || 0) < c.goods) fail(`Administrative offices level ${(n.office || 0) + 1} cost ${money(c.cash)}, ${num(c.steel)} steel and ${num(c.goods)} goods.`);
+    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.office = (n.office || 0) + 1; n.cd.office = W.now + O.cdH * HOUR; gainXP(W, u, 20);
+    log(n, `Administrative offices expanded to level ${n.office}: administration capacity +${O.cap}.`, W); touch(W, u); return { msg: `Administrative offices level ${n.office}: +${O.cap} administration capacity (now ${adminCap(n)}).` };
+  }
+  // vassals
+  const vassalsOf = (W, u) => Object.keys(W.A).filter(k => W.A[k].overlord === u);
+  function endWar(W, a, b) { const t = W.now + 1; setRel(W.A[a], b, 'peace', t); setRel(W.A[b], a, 'peace', t); }
+  function independence(W, u) {
+    const n = W.A[u]; if (!n || !n.overlord) fail('You are not a vassal.'); const o = W.A[n.overlord];
+    if (!o) { delete n.overlord; delete n.vassalT; touch(W, u); return { msg: 'Your overlord is gone: you are free.' }; }
+    const lf = (n.vassalT || 0) + VASSAL.freeH * HOUR - W.now; if (lf > 0) fail(`You can declare independence in ${fmtT(lf)}.`);
+    const ov = n.overlord; delete n.overlord; delete n.vassalT; setRel(n, ov, 'war', W.now); setRel(o, u, 'war', W.now); n.rel[ov].fair = 1; n.rel[ov].def = 1;
+    log(n, `You declared independence from ${o.name}. They will surely fight to keep you.`, W); note(W, ov, 'war', `⚔ Your vassal ${n.name} has declared independence! You are now at war with it.`); news(W, u, `${n.name} has declared independence from ${o.name}. War has broken out.`); touch(W, u, ov);
+    return { msg: `You are independent of ${o.name}, and at war with it.` };
+  }
+  function freeVassal(W, u, v) { const n = W.A[v]; if (!n || n.overlord !== u) fail('That nation is not your vassal.'); delete n.overlord; delete n.vassalT; log(n, `${W.A[u].name} has released you from vassalage. You are free.`, W); note(W, v, 'diplo', `${W.A[u].name} released you. You are no longer a vassal.`); news(W, u, `${W.A[u].name} released ${n.name} from vassalage.`); touch(W, u, v); return { msg: `${n.name} is free.` }; }
+  // tribute: half a tax collection and 10% of production every tick
+  function tributeTick(W, u) { const n = W.A[u]; if (!n || !n.overlord) return false; const o = W.A[n.overlord]; if (!o) { delete n.overlord; delete n.vassalT; return true; }
+    const cash = Math.max(0, Math.round(taxIncome(W, u) * VASSAL.tax)); n.cash -= cash; o.cash += cash; const p = production(W, u); for (const r in p) { const x = Math.floor(Math.max(0, p[r]) * VASSAL.res); if (x > 0) { n.res[r] -= x; o.res[r] = (o.res[r] || 0) + x; } }
+    o.tribute = (o.tribute || 0) + cash; touch(W, n.overlord); return true; }
   // far-flung provinces (over 3,000 km from the capital) slip away now and then, more often when stability is low
   function farLands(W, u, rng) {
-    const n = W.A[u]; if (!n || (n.ai && n.ai.boss) || !P[n.cap]) return false; const held = hexesOf(W, u); if (held.length < OVER.farMin) return false;
+    const n = W.A[u]; if (!n || (n.ai && n.ai.boss) || !P[n.cap]) return false; if (overPaused(W)) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; } const held = hexesOf(W, u); if (held.length < OVER.farMin) return false;
     const far = held.filter(h => h != n.cap && kmBetween(h, n.cap) > OVER.farKm); if (!far.length) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; }
     // a 24-hour warning first, like overstretch
     if (!n.farWarn) { n.farWarn = W.now; touch(W, u); note(W, u, 'attack', `⚠ ${far.length} of your provinces lie more than ${num(OVER.farKm)} km from your capital. In ${OVER.graceH} hours they may start to declare independence now and then, more often when stability is low. Release them, or keep stability high.`); return true; }
@@ -2029,7 +2081,7 @@ function Core(PD, CARDS) {
       case 'found': return found(W, u, c, rng);
       case 'act': return act(W, u, String(c.k), c.arg, rng);
       case 'decide': return decide(W, u, String(c.id), c.o, rng);
-      case 'attack': return attack(W, u, c.h, c.x, c.air, rng);
+      case 'attack': return attack(W, u, c.h, c.x, c.air, rng, !!c.vassal);
       case 'strike': return strike(W, u, String(c.v), String(c.kind), String(c.target), c.n, rng);
       case 'nuke': return buildNuke(W, u);
       case 'ntest': return nukeTest(W, u, rng, c.delay);
@@ -2046,6 +2098,9 @@ function Core(PD, CARDS) {
       case 'flag': return setFlag(W, u, c.flag, c.motto);
       case 'dirty': return dirtyBomb(W, u, c.v, rng);
       case 'heavy': return heavy(W, u, String(c.v), String(c.k), rng);
+      case 'office': return buildOffice(W, u);
+      case 'independence': return independence(W, u);
+      case 'freevassal': return freeVassal(W, u, String(c.v));
       case 'color': return setColor(W, u, c.color);
       case 'launch': return launchNuke(W, u, String(c.v), c.h, rng);
       case 'dome': return buildDome(W, u);
@@ -2085,7 +2140,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { ADMIN, VASSAL, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
