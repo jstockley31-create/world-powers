@@ -246,7 +246,10 @@ const DIRTY = { tech: 10, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300,
 // imperial overstretch: only the very biggest empires (28 provinces or more) pay upkeep for every province past 27 (rising steeply), lose stability and risk far-off provinces breaking away
 // paying off the World Council to lift sanctions or rogue status at once: 25% of the treasury (at least $50M), double for a rogue state, and doubling again for every payoff in the last 7 days
 const BRIBE = { pct: .25, min: 50e6, rogueX: 2, windowD: 7 };
-const OVER = { at: Infinity, cost: 0 }; // no size penalty of any kind: nations may hold as many provinces as they want
+// province limit: 8 + 3 per rank (Chieftain 8 ... Sovereign 29 ... World Power 38). Above it, every extra province costs heavy upkeep,
+// and after a 24-hour warning the farthest extra provinces rebel and become free land, a few an hour. Far-flung land (over 3,000 km
+// from the capital) also tends to break away. The Rising Power is exempt.
+const OVER = { base: 8, per: 3, cost: .00015, graceH: 24, rebelP: .05, rebelPer: .02, st: .3, farKm: 3000, farP: .003, farMin: 6 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
 const WARHEAD = { tech: 22, rank: 7, cash: 500e6, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
@@ -256,6 +259,11 @@ const HEAVY = {
   bombard: { n: 'Naval bombardment', ic: '⚓', tech: 5, rank: 2, ships: 10, oilPer: 5, cdH: 3, aggr: 7 },
   cyber: { n: 'Cyber attack', ic: '💻', tech: 9, rank: 2, cash: 2e7, goods: 300, cdH: 8, aggr: 5, h: 12, tax: .75, research: 1.5, trace: .35 },
   emp: { n: 'EMP strike', ic: '⚡', tech: 16, rank: 5, cash: 8e7, steel: 1500, oil: 1500, goods: 1000, cdH: 24, aggr: 25, h: 12, air: .3, gdp: .08, tax: .6 },
+  drones: { n: 'Drone swarm', ic: '🛸', tech: 7, rank: 2, cash: 5e6, oil: 200, goods: 300, cdH: 2, aggr: 6, troops: .06, air: .04 },
+  hypersonic: { n: 'Hypersonic missile', ic: '☄', tech: 18, rank: 5, cash: 6e7, steel: 1200, oil: 900, goods: 400, cdH: 12, aggr: 18, pop: .06, troops: .15, gdp: .07, infra: 2, st: 8 },
+  blockade: { n: 'Naval blockade', ic: '⛴', tech: 6, rank: 2, ships: 20, oilPer: 3, cdH: 12, aggr: 8, h: 12, tax: .7, gdp: .95 },
+  raid: { n: 'Special forces raid', ic: '🎯', tech: 10, rank: 3, cash: 1.5e7, cdH: 8, aggr: 10, steal: .04, stealMax: 1e8, res: .1 },
+  orbital: { n: 'Orbital strike', ic: '🛰', tech: 22, rank: 7, cash: 2.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
 };
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
@@ -402,7 +410,7 @@ function Core(PD, CARDS) {
   const hexesOf = (W, u) => Object.keys(W.OWN).filter(h => W.OWN[h].u === u).map(Number);
   const rankOf = xp => { let i = 0; for (let j = 0; j < RANKS.length; j++) if ((xp || 0) >= RANKS[j][0]) i = j; return i; };
   const rankName = n => RANKS[rankOf(n.xp)][1];
-  const maxHex = n => Infinity; // no cap on provinces: size is limited only by what a nation can afford (settling cost, size upkeep)
+  const maxHex = n => !n ? 0 : (n.ai && n.ai.boss) ? Infinity : OVER.base + OVER.per * rankOf(n.xp || 0);
   const R = (W, a, b) => (W.A[a] && W.A[a].rel && W.A[a].rel[b]) || {};
   function atWar(W, a, b) { const x = R(W, a, b), y = R(W, b, a); const w = Math.max(x.war || 0, y.war || 0); if (!w) return false; return !((x.peace || 0) > w && (y.peace || 0) > w); }
   const warSince = (W, a, b) => Math.max(R(W, a, b).war || 0, R(W, b, a).war || 0);
@@ -474,11 +482,11 @@ function Core(PD, CARDS) {
   }
   function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = (1 + tradeVal(W, u) * .05 * (sanctioned(n) ? 0 : 1)) * (1 + rankOf(n.xp) * RANK_TAX); return (n.gdp || gdpTarget(W, u)) * n.tax / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
-  const overAt = n => OVER.at;
+  const overAt = n => maxHex(n);
   const bribeRecent = (n, now) => (n.bribes || []).filter(t => now - t < BRIBE.windowD * 864e5);
   const bribeNeeded = (W, n) => !!n && (rogue(W, n) || sanctioned(n) || ['embargo', 'armsEmb', 'condemned'].some(k => (n[k] || 0) > W.now) || !!(n.frozen && n.frozen.until > W.now));
   const bribePrice = (W, n) => Math.round(Math.max(BRIBE.min, (n.cash || 0) * BRIBE.pct) * (rogue(W, n) ? BRIBE.rogueX : 1) * Math.pow(2, bribeRecent(n, W.now).length) / 1e5) * 1e5;
-  const overstretch = n => { const at = overAt(n), x = Math.max(0, hexN(n) - at); return { at, extra: x, cost: x ? (n.gdp || 0) * OVER.cost * Math.pow(x, 1.5) : 0, st: 0 }; };
+  const overstretch = n => { const at = overAt(n), x = isFinite(at) ? Math.max(0, hexN(n) - at) : 0; return { at, extra: x, cost: x ? Math.round(Math.max(2e5, (n.gdp || 0) * OVER.cost) * x) : 0, st: x ? OVER.st : 0, since: n.overSince || 0, rebelAt: n.overSince ? n.overSince + OVER.graceH * HOUR : 0 }; };
   const inspectFee = n => Math.round(Math.min(INSPECT.cap, INSPECT.base + (n.gdp || 0) * INSPECT.pct) * (n.warhead ? INSPECT.warhead : 1));
   const radOn = (W, n) => !!(n && n.rad && n.rad.until > W.now);
   const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + (n.dome && n.dome.ready <= W.now ? DOME.upkeep * (1 + .5 * (domeLvl(n) - 1)) : 0)) * W.m.upkeep;
@@ -538,9 +546,18 @@ function Core(PD, CARDS) {
   // ---------- territory ----------
   // settling: bordering land (or across a narrow sea with warships) at the normal price; anywhere else costs 1.5x plus 1x per 2,500 km
   function settleCost(W, u, h) { const base = expandCost(W, u); if (expandTargets(W, u).includes(h)) return { cash: base, far: false, km: 0 };
-    let km = Infinity; for (const k of hexesOf(W, u)) km = Math.min(km, kmBetween(k, h)); km = isFinite(km) ? Math.round(km) : 0; const x = 1.5 + km / 2500; return { cash: Math.round(base * x), far: true, km, x }; }
+    let km = Infinity; for (const k of hexesOf(W, u)) km = Math.min(km, kmBetween(k, h)); km = isFinite(km) ? Math.round(km) : 0; const x = 2 + km / 1000; /* far-away land is very expensive */ return { cash: Math.round(base * x), far: true, km, x }; }
   function expandTargets(W, u) { const n = W.A[u], ships = (n && n.ships) || 0; const t = new Set(); for (const h of hexesOf(W, u)) { for (const k of land(h)) if (!W.OWN[k]) t.add(k); if (ships > 0 && isCoastal(h)) for (const k of sea(h)) if (!W.OWN[k]) t.add(k); } return [...t]; }
-  function startOk(W, h) { if (!P[h] || W.OWN[h]) return false; const seen = new Set([h]); let fr = [h]; for (let d = 0; d < 2; d++) { const nx = []; for (const x of fr) for (const k of nbrs(x)) if (!seen.has(k)) { seen.add(k); nx.push(k); } fr = nx; } for (const k of seen) if (W.OWN[k]) return false; return true; }
+  // where a new nation may start: unclaimed land at least 2 provinces from any nation. When the map fills up, the rule relaxes
+  // (1 province away, then any unclaimed land), and when every province is taken the AI nation with the most land gives up an outer
+  // province, so a new player can always join.
+  function startClear(W, h, dist) { if (!P[h] || W.OWN[h]) return false; if (!dist) return true; const seen = new Set([h]); let fr = [h]; for (let d = 0; d < dist; d++) { const nx = []; for (const x of fr) for (const k of nbrs(x)) if (!seen.has(k)) { seen.add(k); nx.push(k); } fr = nx; } for (const k of seen) if (W.OWN[k]) return false; return true; }
+  const startStrict = (W, h) => startClear(W, h, 2);
+  function startDist(W) { if (W._sd != null && W._sdOwn === W.OWN) return W._sd; let sd = -1; for (const dist of [2, 1, 0]) { if (P.some((p, h) => startClear(W, h, dist))) { sd = dist; break; } } W._sd = sd; W._sdOwn = W.OWN; return sd; }
+  function cedeDonor(W) { let best = null, bx = 0; for (const [u, n] of Object.entries(W.A)) { if (n.ai && n.ai.boss) continue; const x = hexesOf(W, u).length - maxHex(n); if (x > bx) { bx = x; best = u; } } if (best) return best; let bn = 2; for (const [u, n] of Object.entries(W.A)) { if (!n.ai || n.ai.boss) continue; const c = hexesOf(W, u).length; if (c > bn) { bn = c; best = u; } } return best; }
+  function startOk(W, h) { const sd = startDist(W); if (sd >= 0) return startClear(W, h, sd); const d = cedeDonor(W); if (!d || !P[h]) return false; const o = W.OWN[h]; return !!o && o.u === d && +h !== +W.A[d].cap; }
+  // land you've held a long time and invested in is much harder to take: +5% per day held (up to +100% after 20 days), +15% per development level
+  const holdF = (W, n, h) => (1 + Math.min(1, hexAge(W, h) * .05)) * (1 + devLvl(n, h) * .15);
   function hexAge(W, h) { const o = W.OWN[h]; if (!o) return 0; const ts = o.cap ? W.A[o.u].created : o.ts; return (W.now - ts) / (24 * HOUR); }
   // ---------- reach: any enemy province can be attacked; distance makes it weaker and costlier ----------
   // landmasses: provinces joined by land borders. Same landmass = the army can march there; another one = it must go by ship.
@@ -617,7 +634,7 @@ function Core(PD, CARDS) {
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * (1 + Math.min(.5, hexAge(W, h) * .05)) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : 1) * genF(n, 'defense') * fxMul(n, 'def') * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
+    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : 1) * genF(n, 'defense') * fxMul(n, 'def') * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const bestGen = (n, type) => (n.gens || []).filter(g => g.type === type).reduce((b, g) => !b || g.stars > b.stars ? g : b, null);
@@ -698,7 +715,8 @@ function Core(PD, CARDS) {
     if (Object.values(W.A).some(n => n.name.toLowerCase() === name.toLowerCase())) fail('That name is already in use.');
     const color = COLORS.includes(o.color) ? o.color : COLORS[0];
     const gov = has(GOV, o.gov) ? o.gov : 'dem';
-    const h = Number(o.hex); if (!Number.isInteger(h) || !startOk(W, h)) fail('Select an unclaimed province at least two provinces away from any nation.');
+    const sd = startDist(W), h = Number(o.hex); if (!Number.isInteger(h) || !startOk(W, h)) fail(sd === 2 ? 'Select an unclaimed province at least two provinces away from any nation.' : sd === 1 ? 'The map is filling up: choose unclaimed land that does not border another nation.' : sd === 0 ? 'Choose any unclaimed province.' : 'Every province is taken: tap “Pick a good spot for me” to receive land ceded by an AI nation.');
+    if (sd < 0) { const d = W.OWN[h].u, dn = W.A[d]; delete dn.hexes[h]; delete dn.hexes[String(h)]; log(dn, `${pname(h)} was ceded to a newly founded nation.`, W); touch(W, d); W.OWN = computeOwn(W.A); }
     const now = W.now;
     const n = W.A[u] = normalize({ v: 4, name, color, gov, created: now, cap: h, hexes: {}, xp: 0, cash: 1e6, pop: 1e5, troops: 300, ships: isCoastal(h) ? 2 : 0, air: 0, spies: 0, tech: 0, train: 0, infra: 0, fort: 0, tax: 20, approval: 60, stability: 60, aggr: 0,
       res: { food: 400, oil: 150, steel: 150, goods: 80 }, cd: {}, cnt: {}, lastTick: now, nextCard: now + 5 * MIN, cards: [], seen: [], log: [], out: [], rel: {}, trades: [], exp: 0, imp: 0,
@@ -724,6 +742,7 @@ function Core(PD, CARDS) {
     else if (k === 'navy') { if (measure(W, n, 'armsEmb')) fail('A World Council arms embargo is in force: you cannot build warships until it ends.'); if (!hasCoast(W, u)) fail('You need a coastal province to build warships.'); const b = navyBatch(n), c = Math.round(b * 6e4 * cheap(n)), s = b * 30, o = b * 10; if (n.cash < c || n.res.steel < s || n.res.oil < o) fail(`Requires ${money(c)}, ${s} steel and ${o} oil.`); n.cash -= c; n.res.steel -= s; n.res.oil -= o; n.ships += b; msg = `${b} warships commissioned.`; }
     else if (k === 'air') { if (measure(W, n, 'armsEmb')) fail('A World Council arms embargo is in force: you cannot build aircraft until it ends.'); if (n.tech < 2) fail('Reach tech level 2 to build aircraft.'); const b = airBatch(n), c = Math.round(b * 4.5e4 * cheap(n)), g = b * 15, s = b * 10, o = b * 10; if (n.cash < c || n.res.goods < g || n.res.steel < s || n.res.oil < o) fail(`Requires ${money(c)}, ${g} goods, ${s} steel and ${o} oil.`); n.cash -= c; n.res.goods -= g; n.res.steel -= s; n.res.oil -= o; n.air += b; msg = `${b} aircraft delivered.`; }
     else if (k === 'expand') {
+      if (hexesOf(W, u).length >= maxHex(n)) fail(`You've reached your province limit: ${maxHex(n)} provinces for a ${rankName(n)}. Rank up to hold more.`);
       // any unclaimed province can be settled: land next to yours at the normal price, anywhere else for more (see settleCost)
       let h = null;
       if (arg != null) { h = Number(arg); if (!Number.isInteger(h) || !P[h]) fail('Unknown province.'); if (W.OWN[h]) fail('That province is already claimed.'); }
@@ -834,6 +853,8 @@ function Core(PD, CARDS) {
     let loot = 0;
     const isCap = !!(W.OWN[h] && W.OWN[h].cap);
     if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
+    else if (win && hexesOf(W, u).length >= maxHex(me)) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; if (d.dev) delete d.dev[h]; if (d.conq) delete d.conq[h]; W.OWN = computeOwn(W.A); result.freed = true; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
+      log(me, `Your forces drove ${d.name} out of ${pname(h)}, but your empire is at its province limit (${maxHex(me)}), so the province is now free land.`, W); }
     else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, 1); me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
@@ -844,7 +865,7 @@ function Core(PD, CARDS) {
       const dg = bestGen(d, 'defense'); if (dg && rng() < .15) { d.gens = d.gens.filter(x => x !== dg); log(d, `${dg.name}, your defense commander, was killed defending ${pname(h)}.`, W); note(W, v, 'attack', `General ${dg.name} was killed defending ${pname(h)}.`); } }
     else if (ag && rng() < .2) { me.gens = me.gens.filter(x => x !== ag); result.genLost = ag.name; log(me, `${ag.name}, your field marshal, was killed in the failed attack on ${pname(h)}.`, W); news(W, u, `General ${ag.name} of ${me.name} fell in battle at ${pname(h)}.`); }
     // newly conquered land may rebel unless it is garrisoned
-    if (win && !isCap) { me.conq = me.conq || {}; me.conq[h] = { t: W.now, from: v }; }
+    if (win && !isCap && !result.freed) { me.conq = me.conq || {}; me.conq[h] = { t: W.now, from: v }; }
     for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${me.name} ${win ? 'captured' : 'attacked'} ${pname(h)} from your ally ${d.name}.`);
     aggrHit(W, u, v, 'battle'); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0 });
     if (result.conquered) {
@@ -953,6 +974,7 @@ function Core(PD, CARDS) {
     if ((me.tech || 0) < H.tech) return `${H.n} requires tech level ${H.tech}.`;
     if (rankOf(me.xp) < H.rank) return `${H.n} requires the rank of ${RANKS[H.rank][1]}.`;
     if (left(W, me, 'hv_' + k)) return `Your next ${H.n.toLowerCase()} is ready in ${fmtT(left(W, me, 'hv_' + k))}.`;
+    if (k === 'blockade') { if (!coastOf(W, u).length) return 'You need a coastal province to send a fleet from.'; if (!coastOf(W, v).length) return `${d.name} has no coast to blockade.`; if ((me.ships || 0) < H.ships) return `A blockade needs at least ${H.ships} warships (you have ${me.ships || 0}).`; if ((me.res.oil || 0) < H.oilPer * me.ships) return `Needs ${num(H.oilPer * me.ships)} oil (${H.oilPer} per warship).`; return null; }
     if (k === 'bombard') { if (!coastOf(W, u).length) return 'You need a coastal province to bombard from.'; if (!coastOf(W, v).length) return `${d.name} has no coast to bombard.`; if ((me.ships || 0) < H.ships) return `A bombardment needs at least ${H.ships} warships (you have ${me.ships || 0}).`; if ((me.res.oil || 0) < H.oilPer * me.ships) return `Needs ${num(H.oilPer * me.ships)} oil (${H.oilPer} per warship).`; return null; }
     const c = heavyCost(k); if (me.cash < (c.cash || 0) || (me.res.steel || 0) < (c.steel || 0) || (me.res.oil || 0) < (c.oil || 0) || (me.res.goods || 0) < (c.goods || 0)) return `${H.n} costs ${heavyCostTxt(k)}.`;
     return null;
@@ -962,9 +984,9 @@ function Core(PD, CARDS) {
   const penalty = (W, n, b, h) => { const o = { t: W.now, until: W.now + h * HOUR, src: 'attack' }; for (const x of BOOST_KEYS) if (b[x] != null) o[x] = b[x]; n.boosts = (n.boosts || []).filter(q => q.until > W.now && !BOOST_KEYS.some(x => q[x] != null && o[x] != null)); n.boosts.push(o); n.boosts = n.boosts.slice(-8); };
   function heavy(W, u, v, k, rng) {
     const why = canHeavy(W, u, v, k); if (why) fail(why); const H = HEAVY[k], me = W.A[u], d = W.A[v], R = rng || Math.random;
-    if (k !== 'bombard') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
+    if (k !== 'bombard' && k !== 'blockade') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
     me.cd['hv_' + k] = W.now + H.cdH * HOUR;
-    const hs = k === 'bombard' ? coastOf(W, v) : hexesOf(W, v), h = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, place = pname(h), dmg = {};
+    const hs = k === 'bombard' || k === 'blockade' ? coastOf(W, v) : hexesOf(W, v), h0 = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, h = k === 'orbital' ? d.cap : k === 'raid' ? (hexesOf(W, v).filter(x => devLvl(d, x) > 0).sort((a, b) => devLvl(d, b) - devLvl(d, a))[0] ?? h0) : h0, place = pname(h), dmg = {};
     let sum = '', icept = 0, traced = true, fxKind = 'missile', from = me.cap, lost = 0;
     if (k === 'ballistic') {
       icept = domeOn(W, d) && R() < domeMis(d) * H.domeX ? 1 : 0;
@@ -979,6 +1001,22 @@ function Core(PD, CARDS) {
     } else if (k === 'cyber') {
       traced = R() < H.trace; fxKind = null; penalty(W, d, { tax: H.tax, research: H.research }, H.h); d.stability = clamp(d.stability - 3, 0, 100);
       sum = `tax revenue −${Math.round((1 - H.tax) * 100)}% and research costs +${Math.round((H.research - 1) * 100)}% for ${H.h} hours`;
+    } else if (k === 'hypersonic' || k === 'orbital') {
+      dmg.pop = Math.floor((d.pop || 0) * H.pop); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops); d.troops -= dmg.troops; dmg.infra = Math.min(d.infra || 0, H.infra); d.infra -= dmg.infra; d.gdp = (d.gdp || 0) * (1 - H.gdp); d.stability = clamp(d.stability - H.st, 0, 100); d.approval = clamp(d.approval - 5, 0, 100);
+      if (k === 'orbital' && devLvl(d, h) > 0) { d.dev[h]--; dmg.dev = 1; }
+      sum = `${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? `, infrastructure −${dmg.infra}` : ''}${dmg.dev ? `, ${place} lost a development level` : ''}, GDP −${Math.round(H.gdp * 100)}%. No shield could stop it`;
+    } else if (k === 'drones') {
+      const lostP = Math.min(.8, (d.air || 0) / ((d.air || 0) + 200)); lost = Math.round(100 * lostP); dmg.troops = Math.floor((d.troops || 0) * H.troops * (1 - lostP)); d.troops -= dmg.troops; dmg.air = Math.floor((d.air || 0) * H.air * (1 - lostP)); d.air -= dmg.air;
+      sum = `${num(dmg.troops)} troops${dmg.air ? ` and ${dmg.air} aircraft` : ''} destroyed${lost ? ` (their air force shot down ${lost}% of the swarm)` : ''}`; lost = 0;
+    } else if (k === 'blockade') {
+      const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .2)); me.ships -= lost; penalty(W, d, { tax: H.tax, gdp: H.gdp }, H.h); d.blockade = W.now + H.h * HOUR;
+      sum = `their tax revenue −${Math.round((1 - H.tax) * 100)}% and GDP −${Math.round((1 - H.gdp) * 100)}% for ${H.h} hours, and their market trade is cut off${lost ? ` (you lost ${lost} warship${lost > 1 ? 's' : ''})` : ''}`; fxKind = null;
+    } else if (k === 'raid') {
+      const p = clamp(.75 - (d.fort || 0) * .03 - (d.spies || 0) * .005 + ((me.tech || 0) - (d.tech || 0)) * .01, .3, .85);
+      if (R() < p) { dmg.cash = Math.round(Math.min(H.stealMax, Math.max(0, d.cash) * H.steal)); d.cash -= dmg.cash; me.cash += dmg.cash; const rk = Object.keys(RES).sort((a, b) => (d.res[b] || 0) - (d.res[a] || 0))[0]; dmg.res = Math.floor((d.res[rk] || 0) * H.res); d.res[rk] -= dmg.res; me.res[rk] = (me.res[rk] || 0) + dmg.res; if (devLvl(d, h) > 0) { d.dev[h]--; dmg.dev = 1; }
+        sum = `your commandos seized ${money(dmg.cash)} and ${num(dmg.res)} ${rk}${dmg.dev ? `, and wrecked a development level in ${place}` : ''}`; }
+      else { traced = true; d.cb = d.cb || {}; d.cb[u] = Math.max(d.cb[u] || 0, W.now + 24 * HOUR); me.troops = Math.max(0, (me.troops || 0) - 200); sum = `the raid on ${place} failed and your commandos were captured; ${d.name} has a 24-hour just cause against you`; dmg.failed = 1; }
+      fxKind = null;
     } else if (k === 'emp') {
       d.empT = W.now + H.h * HOUR; dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
       sum = `${num(dmg.air)} aircraft knocked out, GDP −${Math.round(H.gdp * 100)}%, tax revenue −${Math.round((1 - H.tax) * 100)}%${d.dome ? ' and the Golden Dome offline' : ''} for ${H.h} hours`;
@@ -991,7 +1029,7 @@ function Core(PD, CARDS) {
     note(W, v, 'attack', `${H.ic} ${who} ${k === 'cyber' ? 'launched a cyber attack on your nation' : `hit ${place} with a ${H.n.toLowerCase()}`}: ${sum}.`);
     if (traced) { news(W, u, icept ? `${H.ic} ${me.name} fired a ballistic missile at ${d.name}, but the Golden Dome shot it down.` : `${H.ic} ${me.name} ${k === 'cyber' ? `launched a cyber attack on ${d.name}` : `hit ${place}, ${d.name}, with a ${H.n.toLowerCase()}`}.`); for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${H.ic} ${me.name} used a ${H.n.toLowerCase()} on your ally ${d.name}.`); aggrHit(W, u, v, H.n.toLowerCase()); }
     gainXP(W, u, 12); touch(W, u, v);
-    if (fxKind) (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from, h, place, kind: fxKind, heavy: k, n: k === 'bombard' ? me.ships + lost : 1, lost, hits: icept ? 0 : 1, icept, target: k, t: W.now });
+    if (fxKind) (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from, h, place, kind: k === 'drones' ? 'air' : fxKind, heavy: k, n: k === 'bombard' ? me.ships + lost : k === 'drones' ? 12 : 1, lost, hits: icept ? 0 : 1, icept, target: k, t: W.now });
     return { msg: `${H.ic} ${H.n}: ${sum}.${k === 'cyber' ? traced ? ' They traced it back to you.' : ' They don\'t know it was you.' : ''}`, heavy: { k, h, icept, traced, dmg } };
   }
   // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.
@@ -1261,6 +1299,7 @@ function Core(PD, CARDS) {
   function market(W, u, r, q, buy) {
     const me = W.A[u]; if (!me) fail('Found a nation first.'); if (!has(RES, r)) fail('Unknown commodity.');
     if (embargoed(W, me)) fail('You are under a World Council embargo and cannot trade on the world market.');
+    if ((me.blockade || 0) > W.now) fail(`Enemy warships are blockading your ports: no market trade for ${fmtT(me.blockade - W.now)}.`);
     if (rogue(W, me)) fail('Your nation is a rogue state under a full international embargo. The world market is closed to you.');
     q = Math.floor(Number(q)); if (!(q > 0) || q > 1e6) fail('Enter a valid quantity.');
     const s = spreads(W, u), base = RES[r].p * (W.m.price[r] || 1); let msg;
@@ -1445,6 +1484,7 @@ function Core(PD, CARDS) {
     if (n.chain && W.now >= n.chain.at && n.cards.length < 4) { n.cards.push({ id: rid(), i: 'ch:' + n.chain.k }); delete n.chain; changed = true; }
     if (k > 0 && n.conq) for (let i = 0; i < Math.min(k, 12); i++) if (rebels(W, u, rng)) changed = true;
     if (k > 0 && active) for (let i = 0; i < Math.min(k, 12); i++) if (neglect(W, u, rng)) changed = true;
+    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { if (overTick(W, u, rng)) changed = true; if (farLands(W, u, rng)) changed = true; }
     if (!n.ai && n.stability < REBEL.st && hexesOf(W, u).length >= REBEL.minProv && W.now - (n.rebWarn || 0) > 12 * HOUR) { n.rebWarn = W.now; note(W, u, 'attack', `⚠ Unrest is spreading: with stability below ${REBEL.st}, outlying provinces may declare independence. Raise stability (Address the Nation, budget, laws) and keep troops in your provinces.`); changed = true; }
     while (W.now >= n.nextCard) { if (n.cards.length < 3 && active) addCard(W, u, rng); n.nextCard += 40 * MIN; changed = true; }
     if (n.gov === 'dem' && n.nextElection && W.now >= n.nextElection) { election(W, u, rng); changed = true; }
@@ -1570,6 +1610,7 @@ function Core(PD, CARDS) {
     if (!list || !list.length) return null; const a = W.A[u], b = W.A[v];
     for (const h of list) { if (owner(W, h) !== u) return `${a.name} no longer owns ${pname(h)}.`; if (h == a.cap) return 'A capital can never be traded.'; if (a.ptrade && W.now - (a.ptrade[h] || 0) < PROV_LOCK) return `${pname(h)} changed hands less than 24 hours ago and can't be traded again yet.`; }
     if (hexesOf(W, u).length - list.length < 1) return `${a.name} can't give away all of its land.`;
+    if (hexesOf(W, v).length - (out || 0) + list.length > maxHex(b)) return `${b.name} would go over its province limit (${maxHex(b)}).`;
 
     return null;
   }
@@ -1610,8 +1651,7 @@ function Core(PD, CARDS) {
   function releaseProv(W, u, h) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); h = Math.floor(Number(h)); if (!P[h] || owner(W, h) !== u) fail('That province is not yours.');
     if (h == n.cap) fail('You cannot release your capital.'); if (hexesOf(W, u).length <= 1) fail('You cannot release your last province.');
-    if (left(W, n, 'release')) fail(`Your government needs time before giving up more land: ${fmtT(left(W, n, 'release'))}.`);
-    delete n.hexes[h]; if (n.conq) delete n.conq[h]; W.OWN = computeOwn(W.A); n.cd.release = W.now + RELEASE.cdMin * MIN;
+    delete n.hexes[h]; if (n.conq) delete n.conq[h]; if (n.dev) delete n.dev[h]; W.OWN = computeOwn(W.A); // no waiting between releases
     n.stability = clamp(n.stability - RELEASE.st, 0, 100); n.approval = clamp(n.approval - RELEASE.ap, 0, 100);
     log(n, `You released ${pname(h)}. It is now free land anyone can settle. Your people are unhappy about giving up territory (−${RELEASE.st} stability, −${RELEASE.ap} approval).`, W);
     news(W, u, `🗺 ${n.name} gave up ${pname(h)}. The province is now free land.`); touch(W, u);
@@ -1837,12 +1877,35 @@ function Core(PD, CARDS) {
     touch(W, u); W.selHex = h; return { msg: `${pname(h)} is now ${DEV.names[lvl] === 'Farms' ? 'farmland' : DEV.names[lvl] === 'Industry' ? 'an industrial region' : 'a ' + DEV.names[lvl].toLowerCase()}: +${Math.round(DEV.prod * 100)}% output, more people and +${DEV.score} score.` };
   }
   // ---------- rebellions: provinces breaking away ----------
-  function breakAway(W, u, h, why) {
+  function breakAway(W, u, h, why, free) {
     const n = W.A[u]; if (!n || h == n.cap || owner(W, h) !== u) return false; const l = devLvl(n, h);
     delete n.hexes[h]; if (n.conq) delete n.conq[h]; if (n.unrest) delete n.unrest[h]; if (n.dev) delete n.dev[h]; W.OWN = computeOwn(W.A);
-    n.stability = clamp(n.stability - 3, 0, 100); (W.breakaways = W.breakaways || []).push({ from: u, h, dev: l, fromName: n.name });
+    n.stability = clamp(n.stability - 3, 0, 100); (W.breakaways = W.breakaways || []).push({ from: u, h, dev: l, fromName: n.name, free: !!free });
     log(n, `${pname(h)} ${why || 'declared independence'} and broke away from ${n.name}.`, W); note(W, u, 'attack', `⚠ ${pname(h)} has declared independence! Raise stability and garrison your provinces to keep the rest.`);
     news(W, u, `${pname(h)} has declared independence from ${n.name}.`); touch(W, u); return true;
+  }
+  // an empire above its province limit: upkeep and unrest every tick; after the warning period its farthest extra provinces rebel and go free
+  function overTick(W, u, rng) {
+    const n = W.A[u]; if (!n || (n.ai && n.ai.boss)) return false; const o = overstretch(n), held = hexesOf(W, u);
+    if (!o.extra) { if (n.overSince) { delete n.overSince; touch(W, u); } return false; }
+    let ch = false;
+    if (!n.overSince) { n.overSince = W.now; ch = true; note(W, u, 'attack', `⚠ Imperial overstretch: you hold ${held.length} provinces but your limit as ${rankName(n)} is ${o.at}. Each extra province costs ${money(Math.max(2e5, (n.gdp || 0) * OVER.cost))} every 10 minutes, and in ${OVER.graceH} hours your farthest extra provinces will start to rebel and become free land. Release provinces or rank up to keep them.`); }
+    n.cash -= o.cost; n.stability = clamp(n.stability - o.st, 0, 100); ch = true;
+    if (W.now - n.overSince >= OVER.graceH * HOUR && rng() < Math.min(.6, OVER.rebelP + OVER.rebelPer * o.extra)) {
+      const far = held.filter(h => h != n.cap).sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0];
+      if (far != null) breakAway(W, u, far, 'rebelled against an overstretched empire and is now free land', true);
+    }
+    return ch;
+  }
+  // far-flung provinces (over 3,000 km from the capital) slip away now and then, more often when stability is low
+  function farLands(W, u, rng) {
+    const n = W.A[u]; if (!n || (n.ai && n.ai.boss) || !P[n.cap]) return false; const held = hexesOf(W, u); if (held.length < OVER.farMin) return false;
+    const far = held.filter(h => h != n.cap && kmBetween(h, n.cap) > OVER.farKm); if (!far.length) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; }
+    // a 24-hour warning first, like overstretch
+    if (!n.farWarn) { n.farWarn = W.now; touch(W, u); note(W, u, 'attack', `⚠ ${far.length} of your provinces lie more than ${num(OVER.farKm)} km from your capital. In ${OVER.graceH} hours they may start to declare independence now and then, more often when stability is low. Release them, or keep stability high.`); return true; }
+    if (W.now - n.farWarn < OVER.graceH * HOUR) return false;
+    if (rng() < OVER.farP * far.length * (1.2 - (n.stability || 0) / 100)) { const h = far.sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0]; return breakAway(W, u, h, 'was too far from the capital to govern and declared independence'); }
+    return false;
   }
   function neglect(W, u, rng) {
     const n = W.A[u], held = hexesOf(W, u); let hit = false; const ratio = (n.troops || 0) / Math.max(1, held.length * GARRISON), g = ratio >= 1 ? .5 : 1;
@@ -2023,7 +2086,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

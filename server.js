@@ -349,6 +349,7 @@ const humans = W => Object.keys(W.A).filter(u => !BOTS.isBot(u));
 function rebelSpawn(W) {
   const list = W.breakaways || []; W.breakaways = []; if (!list.length) return;
   for (const b of list) {
+    if (b.free) { systemMessage(`🏴 ${core.pname(b.h)} rebelled against ${b.fromName}'s overstretched empire and is now free land anyone can settle.`); continue; }
     const rebels = Object.values(W.A).filter(n => n.ai && n.ai.rebel).length; if (rebels >= WP.REBEL.maxNations) { systemMessage(`${core.pname(b.h)} broke away from ${b.fromName} and is now free land.`); continue; }
     const id = 'ai_' + crypto.randomBytes(5).toString('hex'), from = W.A[b.from]; const name = core.foundRebel(W, id, b.h, { color: BOTS.distinctColor(W), dev: b.dev, from: b.from, fromName: b.fromName, tech: from ? from.tech : 2 });
     if (name) { W.changed.add(id); systemMessage(`🏴 ${core.pname(b.h)} has declared independence from ${b.fromName} as ${name}. Its land is up for grabs.`); }
@@ -1037,7 +1038,7 @@ async function adminRoute(p, req, res, me) {
   if (p === '/api/admin/boss-now' && req.method === 'POST') { // raise the Rising Power right away (skips the 48-hour breather after one falls)
     const W0 = mkWorld(), ids = Object.keys(W0.A), cur = ids.find(k => BOTS.isBot(k) && W0.A[k].ai && W0.A[k].ai.boss);
     if (cur) return send(res, 400, { error: `${W0.A[cur].name} is already the Rising Power.` });
-    if (!ids.some(k => BOTS.isBot(k))) return send(res, 400, { error: 'There are no AI nations to raise. Turn AI nations on first.' });
+    if (!ids.some(k => BOTS.isBot(k))) { const Ws = mkWorld(), sp = BOTS.spawn(Ws); if (!sp) return send(res, 400, { error: 'There are no AI nations to raise, and there is no land to start a new one.' }); Ws.welcome = null; commit(Ws); } // no AI left: start one, then raise it
     if (!ids.some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
     S.bossFell = 0; S.config.aiBoss = true;
     const W = mkWorld(), b = BOTS.raiseBoss(W, W.cfg); if (!b) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
