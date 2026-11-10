@@ -254,7 +254,7 @@ const OVER = { base: 8, per: 3, cost: .00015, graceH: 24, rebelP: .05, rebelPer:
 // 3,000 km from the capital costs 1 more; the capital is free. Capacity = 10 + 3 per rank + 4 per level of Administrative offices (AI nations +6).
 // Over capacity: production and taxes fall 3% per point (up to −45%), stability drains and there is upkeep. Only when badly over (25%+) and
 // after a 24-hour warning do the farthest colonies break away and become free land. The Rising Power is exempt.
-const ADMIN = { base: 10, per: 3, ai: 6, coreD: 7, colony: 2, far: 1, farKm: 3000,
+const ADMIN = { base: 20, per: 5, ai: 6, coreD: 7, colony: 2, far: 1, farKm: 3000,
   office: { max: 5, cap: 4, cash: 2e7, steel: 600, goods: 400, cdH: 6 },
   over: { prod: .03, prodMax: .45, st: .1, stMax: 1.5, cost: .00004, severe: 1.25, graceH: 24, p: .01, pMax: .08, stFloor: 30, costMax: .02 } };
 // VASSALS: win a capital siege choosing "make vassal" and the nation survives as your vassal: it keeps its land, pays tribute every 10 minutes
