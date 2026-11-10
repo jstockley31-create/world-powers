@@ -256,7 +256,7 @@ const OVER = { base: 8, per: 3, cost: .00015, graceH: 24, rebelP: .05, rebelPer:
 // after a 24-hour warning do the farthest colonies break away and become free land. The Rising Power is exempt.
 const ADMIN = { base: 10, per: 3, ai: 6, coreD: 7, colony: 2, far: 1, farKm: 3000,
   office: { max: 5, cap: 4, cash: 2e7, steel: 600, goods: 400, cdH: 6 },
-  over: { prod: .03, prodMax: .45, st: .1, stMax: 1.5, cost: .00004, severe: 1.25, graceH: 24, p: .01, pMax: .3 } };
+  over: { prod: .03, prodMax: .45, st: .1, stMax: 1.5, cost: .00004, severe: 1.25, graceH: 24, p: .01, pMax: .08, stFloor: 30, costMax: .02 } };
 // VASSALS: win a capital siege choosing "make vassal" and the nation survives as your vassal: it keeps its land, pays tribute every 10 minutes
 // (half a tax collection and 10% of its production), and neither side can attack the other. After 48 hours it may declare independence (war).
 const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
@@ -427,7 +427,7 @@ function Core(PD, CARDS) {
   function adminState(W, u) { const n = W.A[u]; if (!n) return { cap: 0, used: 0, over: 0, prodF: 1 }; const cap = adminCap(n);
     if (!isFinite(cap)) return { cap, used: 0, over: 0, prodF: 1, core: 0, colony: 0, far: 0, severe: false };
     let used = 0, core = 0, colony = 0, far = 0; for (const h of hexesOf(W, u)) { const c = provAdmin(W, u, h); if (!c) continue; used += c; const o = W.OWN[h]; if ((W.now - o.ts) / 864e5 >= ADMIN.coreD) core++; else colony++; if (P[n.cap] && kmBetween(+h, +n.cap) > ADMIN.farKm) far++; }
-    const over = Math.max(0, used - cap), O = ADMIN.over; return { cap, used, over, core, colony, far, prodF: 1 - Math.min(O.prodMax, over * O.prod), severe: used > cap * O.severe, cost: over ? Math.round(Math.max(1e5, (n.gdp || 0) * O.cost) * over) : 0, st: over ? Math.min(O.stMax, over * O.st) : 0, since: n.admSince || 0, rebelAt: n.admSince ? n.admSince + O.graceH * HOUR : 0 }; }
+    const over = Math.max(0, used - cap), O = ADMIN.over; return { cap, used, over, core, colony, far, prodF: 1 - Math.min(O.prodMax, over * O.prod), severe: used > cap * O.severe, cost: over ? Math.round(Math.min(Math.max(1e5, (n.gdp || 0) * O.cost) * over, Math.max(0, n.cash || 0) * O.costMax)) : 0, st: over ? Math.min(O.stMax, over * O.st) : 0, since: n.admSince || 0, rebelAt: n.admSince ? n.admSince + O.graceH * HOUR : 0 }; }
   const overPaused = W => W.now < ((W.cfg && W.cfg.overPause) || 0);
   const adminF = (W, u) => { const n = W.A[u]; return !n || overPaused(W) || (n.ai && n.ai.boss) ? 1 : adminState(W, u).prodF; };
   const officeCost = n => { const l = (n.office || 0) + 1, O = ADMIN.office; return { cash: Math.round(O.cash * Math.pow(l, 1.5)), steel: O.steel * l, goods: O.goods * l }; };
@@ -728,6 +728,15 @@ function Core(PD, CARDS) {
     return n;
   }
 
+  // a newcomer boxed in by big empires gets up to 2 neighbouring provinces from empires that are over their administration capacity
+  function starterRoom(W, u) {
+    const n = W.A[u]; if (!n) return 0; const free = land(n.cap).filter(k => !W.OWN[k]).length; let need = Math.max(0, 2 - free), got = 0; if (!need) return 0;
+    const cand = land(n.cap).map(k => [k, W.OWN[k]]).filter(([k, o]) => o && !o.cap && o.u !== u && W.A[o.u] && !(W.A[o.u].ai && W.A[o.u].ai.boss) && adminState(W, o.u).over > 0)
+      .sort((x, y) => (devLvl(W.A[x[1].u], x[0]) - devLvl(W.A[y[1].u], y[0])) || (adminState(W, y[1].u).over - adminState(W, x[1].u).over));
+    for (const [k, o] of cand) { if (got >= need) break; const d = W.A[o.u]; delete d.hexes[k]; delete d.hexes[String(k)]; if (d.dev) delete d.dev[k]; if (d.conq) delete d.conq[k]; n.hexes[k] = W.now; got++;
+      log(d, `${pname(k)} was handed to the newly founded ${n.name}: your empire was over its administration capacity, so this costs you nothing.`, W); note(W, o.u, 'diplo', `${pname(k)} was handed to the new nation ${n.name}. Your empire was over its administration capacity, so you lose no output.`); touch(W, o.u); }
+    if (got) { W.OWN = computeOwn(W.A); log(n, `Neighbouring empires handed you ${got} province${got > 1 ? 's' : ''} so you have room to grow.`, W); } return got;
+  }
   function found(W, u, o) {
     if (W.A[u]) fail('You already lead a nation.');
     if (typeof o.name !== 'string') fail('Choose a name for your nation.');
@@ -742,7 +751,7 @@ function Core(PD, CARDS) {
     const n = W.A[u] = normalize({ v: 4, name, color, gov, created: now, cap: h, hexes: {}, xp: 0, cash: 1e6, pop: 1e5, troops: 300, ships: isCoastal(h) ? 2 : 0, air: 0, spies: 0, tech: 0, train: 0, infra: 0, fort: 0, tax: 20, approval: 60, stability: 60, aggr: 0,
       res: { food: 400, oil: 150, steel: 150, goods: 80 }, cd: {}, cnt: {}, lastTick: now, nextCard: now + 5 * MIN, cards: [], seen: [], log: [], out: [], rel: {}, trades: [], exp: 0, imp: 0,
       budget: { ...DEFBUDGET }, debt: 0, unemp: 6, infl: 2, health: 50, edu: 50, iq: 50, morale: 70, nextElection: gov === 'dem' ? now + W.cfg.electionH * HOUR : 0 });
-    W.OWN = computeOwn(W.A); n.gdp = gdpTarget(W, u); n.gdpHist = [{ t: now, v: n.gdp }];
+    W.OWN = computeOwn(W.A); starterRoom(W, u); n.gdp = gdpTarget(W, u); n.gdpHist = [{ t: now, v: n.gdp }];
     news(W, u, `A new nation has been founded: ${name}, in ${pname(h)}.`); touch(W, u);
     W.welcome = `Welcome ${name}, a new nation founded in ${pname(h)}.`;
     return { msg: 'Your nation has been founded.' };
@@ -1905,9 +1914,9 @@ function Core(PD, CARDS) {
   function breakAway(W, u, h, why, free) {
     const n = W.A[u]; if (!n || h == n.cap || owner(W, h) !== u) return false; const l = devLvl(n, h);
     delete n.hexes[h]; if (n.conq) delete n.conq[h]; if (n.unrest) delete n.unrest[h]; if (n.dev) delete n.dev[h]; W.OWN = computeOwn(W.A);
-    n.stability = clamp(n.stability - 3, 0, 100); (W.breakaways = W.breakaways || []).push({ from: u, h, dev: l, fromName: n.name, free: !!free });
-    log(n, `${pname(h)} ${why || 'declared independence'} and broke away from ${n.name}.`, W); note(W, u, 'attack', `⚠ ${pname(h)} has declared independence! Raise stability and garrison your provinces to keep the rest.`);
-    news(W, u, `${pname(h)} has declared independence from ${n.name}.`); touch(W, u); return true;
+    if (!free) n.stability = clamp(n.stability - 3, 0, 100); (W.breakaways = W.breakaways || []).push({ from: u, h, dev: l, fromName: n.name, free: !!free });
+    note(W, u, 'attack', free ? `${pname(h)} broke away because your empire is over its administration capacity. Build Administrative offices, rank up or release land to stop it.` : `⚠ ${pname(h)} has declared independence! Raise stability and garrison your provinces to keep the rest.`);
+    news(W, u, `${pname(h)} ${(why || 'declared independence from {n}').replace('{n}', n.name)}.`); touch(W, u); return true;
   }
   // an empire above its province limit: upkeep and unrest every tick; after the warning period its farthest extra provinces rebel and go free
   function overTick(W, u, rng) {
@@ -1915,12 +1924,12 @@ function Core(PD, CARDS) {
     if (overPaused(W)) { if (n.admSince) { delete n.admSince; touch(W, u); } return false; } // penalties paused: the warning clock starts fresh afterwards
     const a = adminState(W, u);
     if (!a.over) { if (n.admSince) { delete n.admSince; touch(W, u); } return false; }
-    n.cash -= a.cost; n.stability = clamp(n.stability - a.st, 0, 100); let ch = true;
+    n.cash -= a.cost; if (n.stability > ADMIN.over.stFloor) n.stability = clamp(n.stability - a.st, ADMIN.over.stFloor, 100); let ch = true;
     if (!a.severe) { if (n.admSince) delete n.admSince; return ch; }
     if (!n.admSince) { n.admSince = W.now; note(W, u, 'attack', `⚠ Your empire is badly over its administration capacity (${a.used} of ${a.cap}). Output is down ${Math.round((1 - a.prodF) * 100)}%, and in ${ADMIN.over.graceH} hours your farthest colonies will start to break away and become free land. Build Administrative offices, rank up, release land, or wait for colonies to become core land.`); return ch; }
     if (W.now - n.admSince >= ADMIN.over.graceH * HOUR && rng() < Math.min(ADMIN.over.pMax, ADMIN.over.p * a.over)) {
       const held = hexesOf(W, u).filter(h => h != n.cap), colonies = held.filter(h => (W.now - W.OWN[h].ts) / 864e5 < ADMIN.coreD), pool = colonies.length ? colonies : held;
-      const far = pool.sort((x, y) => kmBetween(y, n.cap) - kmBetween(x, n.cap))[0]; if (far != null) breakAway(W, u, far, 'broke away from an overstretched empire and is now free land', true);
+      const far = pool.sort((x, y) => kmBetween(y, n.cap) - kmBetween(x, n.cap))[0]; if (far != null) breakAway(W, u, far, 'broke away from {n}, whose empire was overstretched, and is now free land', true);
     }
     return ch;
   }
@@ -1955,12 +1964,12 @@ function Core(PD, CARDS) {
     // a 24-hour warning first, like overstretch
     if (!n.farWarn) { n.farWarn = W.now; touch(W, u); note(W, u, 'attack', `⚠ ${far.length} of your provinces lie more than ${num(OVER.farKm)} km from your capital. In ${OVER.graceH} hours they may start to declare independence now and then, more often when stability is low. Release them, or keep stability high.`); return true; }
     if (W.now - n.farWarn < OVER.graceH * HOUR) return false;
-    if (rng() < OVER.farP * far.length * (1.2 - (n.stability || 0) / 100)) { const h = far.sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0]; return breakAway(W, u, h, 'was too far from the capital to govern and declared independence'); }
+    if (rng() < OVER.farP * far.length * (1.2 - (n.stability || 0) / 100)) { const h = far.sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0]; return breakAway(W, u, h, 'was too far from the capital of {n} to govern and declared independence'); }
     return false;
   }
   function neglect(W, u, rng) {
     const n = W.A[u], held = hexesOf(W, u); let hit = false; const ratio = (n.troops || 0) / Math.max(1, held.length * GARRISON), g = ratio >= 1 ? .5 : 1;
-    for (const [h, until] of Object.entries(n.unrest || {})) { if (until < W.now || owner(W, h) !== u) { delete n.unrest[h]; continue; } if (rng() < REBEL.spyP * (1 - n.stability / 100) * g) { breakAway(W, u, Number(h), 'rose up with foreign-armed separatists'); hit = true; } }
+    for (const [h, until] of Object.entries(n.unrest || {})) { if (until < W.now || owner(W, h) !== u) { delete n.unrest[h]; continue; } if (rng() < REBEL.spyP * (1 - n.stability / 100) * g) { breakAway(W, u, Number(h), 'rose up with foreign-armed separatists and broke away from {n}'); hit = true; } }
     if (held.length >= REBEL.minProv && n.stability < REBEL.st) {
       const p = REBEL.p * (REBEL.st - n.stability) / REBEL.st * (n.approval < 40 ? 1.5 : 1) * g;
       if (rng() < p) { const far = held.filter(h => h != n.cap).sort((a, b) => kmBetween(b, n.cap) - kmBetween(a, n.cap))[0]; if (far != null && breakAway(W, u, far, 'tired of neglect, declared independence')) hit = true; }

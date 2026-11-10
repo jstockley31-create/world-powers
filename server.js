@@ -352,10 +352,11 @@ const humans = W => Object.keys(W.A).filter(u => !BOTS.isBot(u));
 function rebelSpawn(W) {
   const list = W.breakaways || []; W.breakaways = []; if (!list.length) return;
   // provinces that went free are announced together (one message, not one per province)
-  const freed = list.filter(b => b.free); if (freed.length) systemMessage(freed.length === 1 ? `🏴 ${core.pname(freed[0].h)} broke away from ${freed[0].fromName}'s overstretched empire and is now free land anyone can settle.` : `🏴 ${freed.length} provinces broke away from overstretched empires and are now free land: ${freed.slice(0, 6).map(b => core.pname(b.h)).join(', ')}${freed.length > 6 ? ` and ${freed.length - 6} more` : ''}.`);
+  const freed = list.filter(b => b.free); if (freed.length) { S.freedQ = (S.freedQ || 0) + freed.length; S.freedLast = freed.slice(-3).map(b => core.pname(b.h)); }
+  if (S.freedQ && Date.now() - (S.freedAt || 0) > 6 * 36e5) { systemMessage(`🏴 ${S.freedQ === 1 ? `${S.freedLast[0]} broke away from its empire and is` : `${S.freedQ} provinces broke away from empires recently (${S.freedLast.join(', ')}…) and are`} now free land anyone can settle.`); S.freedQ = 0; S.freedAt = Date.now(); }
   for (const b of list) {
     if (b.free) continue;
-    const rebels = Object.values(W.A).filter(n => n.ai && n.ai.rebel).length; if (rebels >= WP.REBEL.maxNations) { systemMessage(`${core.pname(b.h)} broke away from ${b.fromName} and is now free land.`); continue; }
+    const rebels = Object.values(W.A).filter(n => n.ai && n.ai.rebel).length; if (rebels >= WP.REBEL.maxNations) { S.freedQ = (S.freedQ || 0) + 1; S.freedLast = [...(S.freedLast || []), core.pname(b.h)].slice(-3); continue; }
     const id = 'ai_' + crypto.randomBytes(5).toString('hex'), from = W.A[b.from]; const name = core.foundRebel(W, id, b.h, { color: BOTS.distinctColor(W), dev: b.dev, from: b.from, fromName: b.fromName, tech: from ? from.tech : 2 });
     if (name) { W.changed.add(id); systemMessage(`🏴 ${core.pname(b.h)} has declared independence from ${b.fromName} as ${name}. Its land is up for grabs.`); }
   }
