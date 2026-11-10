@@ -1652,10 +1652,9 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); h = Math.floor(Number(h)); if (!P[h] || owner(W, h) !== u) fail('That province is not yours.');
     if (h == n.cap) fail('You cannot release your capital.'); if (hexesOf(W, u).length <= 1) fail('You cannot release your last province.');
     delete n.hexes[h]; if (n.conq) delete n.conq[h]; if (n.dev) delete n.dev[h]; W.OWN = computeOwn(W.A); // no waiting between releases
-    n.stability = clamp(n.stability - RELEASE.st, 0, 100); n.approval = clamp(n.approval - RELEASE.ap, 0, 100);
-    log(n, `You released ${pname(h)}. It is now free land anyone can settle. Your people are unhappy about giving up territory (−${RELEASE.st} stability, −${RELEASE.ap} approval).`, W);
+    log(n, `You released ${pname(h)}. It is now free land anyone can settle.`, W); // no stability or approval penalty
     news(W, u, `🗺 ${n.name} gave up ${pname(h)}. The province is now free land.`); touch(W, u);
-    return { msg: `${pname(h)} released (−${RELEASE.st} stability, −${RELEASE.ap} approval).` };
+    return { msg: `${pname(h)} released. It is now free land.` };
   }
   function cancelOffer(W, u, id) { const me = W.A[u]; if (!me) fail('Found a nation first.'); const o = (me.offOut || []).find(x => x.id === id); if (!o) fail('That offer is no longer open.'); dropOffer(W, id, u, o.to, true); touch(W, u, o.to); return { msg: 'Offer withdrawn; your goods are back.' }; }
   function offersExpire(W, u) { const n = W.A[u]; let ch = false; for (const o of [...(n.offOut || [])]) if (W.now > o.exp || !W.A[o.to]) { dropOffer(W, o.id, u, o.to, true); note(W, u, 'diplo', `Your offer to ${W.A[o.to] ? W.A[o.to].name : 'a nation'} expired; your goods were returned.`); ch = true; }
