@@ -197,7 +197,7 @@ module.exports = function makeBots(core, WP, rng) {
     // the launch: only against a player it has been at war with for 6+ hours
     if (BC.nukes === 'yes' && core.warheadReady(W, n) && rng() < .05 * Math.max(AG, .2)) { const tg = foes.filter(v => W.now - core.warSince(W, u, v) > 6 * HOUR && !core.canLaunch(W, u, v)).sort((a, b) => core.score(W, b) - core.score(W, a))[0]; if (tg) { const r = tryExec(W, u, { c: 'launch', v: tg }); if (r) return r; } }
     // heavy weapons short of a nuke: ballistic missiles, naval bombardment and EMP strikes
-    for (const k of ['ballistic', 'bombard', 'emp', 'drones', 'hypersonic', 'blockade']) if (foes.length && rng() < .08 * Math.max(AG, .3)) { const tg = foes.find(v => !core.canHeavy(W, u, v, k)); if (tg) { const r = tryExec(W, u, { c: 'heavy', v: tg, k }); if (r) return r; } }
+    for (const k of ['ballistic', 'bombard', 'emp', 'drones', 'hypersonic', 'blockade', 'artillery', 'cruise', 'carpet', 'sub']) if (foes.length && rng() < .08 * Math.max(AG, .3)) { const tg = foes.find(v => !core.canHeavy(W, u, v, k)); if (tg) { const r = tryExec(W, u, { c: 'heavy', v: tg, k }); if (r) return r; } }
     // war on the strongest players it can reach (one or two wars at a time)
     if (cfg.war && cfg.botWar === 'yes' && foes.length < Math.max(1, Math.round(2 * AG)) && rng() < .035 * AG && core.rankOf(n.xp) >= 2) {
       if (tgt && !core.atWar(W, u, tgt)) { const r = tryExec(W, u, { c: 'dip', kind: 'war', v: tgt }); if (r) return r; }
@@ -309,10 +309,10 @@ module.exports = function makeBots(core, WP, rng) {
     // a vassal AI breaks free once it's strong enough (and its 48 hours are up)
     if (n.overlord && W.A[n.overlord] && W.now - (n.vassalT || 0) > 48 * HOUR && core.power(W, u) > core.power(W, n.overlord) * .7 && rng() < .05) { const r = tryExec(W, u, { c: 'independence' }); if (r) return r; }
     // now and then an AI at war fires a ballistic missile or shells a coast (warlords most often)
-    if (myWars.length && rng() < ({ warlord: .06, expansionist: .04, merchant: .015, isolationist: .01 }[n.ai.p] || .02)) { const v = pick(myWars), k = pick(['ballistic', 'bombard', 'drones', 'drones', 'raid']); if (!core.canHeavy(W, u, v, k)) { const r = tryExec(W, u, { c: 'heavy', v, k }); if (r) return r; } }
+    if (myWars.length && rng() < ({ warlord: .06, expansionist: .04, merchant: .015, isolationist: .01 }[n.ai.p] || .02)) { const v = pick(myWars), k = pick(['ballistic', 'bombard', 'drones', 'drones', 'raid', 'artillery', 'artillery', 'cruise', 'sub']); if (!core.canHeavy(W, u, v, k)) { const r = tryExec(W, u, { c: 'heavy', v, k }); if (r) return r; } }
     if (myWars.length && (n.air || 0) >= 10 && rng() < ({ warlord: .18, expansionist: .1, merchant: .05, isolationist: .03 }[n.ai.p] || .05)) { const v = pick(myWars); if (!core.canStrike(W, u, v)) { const r = tryExec(W, u, { c: 'strike', v, kind: 'air', target: 'mil', n: Math.floor(n.air * .6) }); if (r) return r; } }
     // covert operations against enemies (warlords and isolationists mostly)
-    if (myWars.length && n.spies >= 2 && !core.left(W, n, 'covert') && rng() < (n.ai.p === 'warlord' ? .25 : .08)) { const v = pick(myWars); const op = W.A[v].tech > n.tech && n.spies >= 3 ? 'steal' : pick(['sabotage', 'unrest']); const r = tryExec(W, u, { c: 'covert', op, v }); if (r) return r; }
+    if (myWars.length && n.spies >= 2 && !core.left(W, n, 'covert') && rng() < (n.ai.p === 'warlord' ? .25 : .08)) { const v = pick(myWars); const op = W.A[v].tech > n.tech && n.spies >= 3 ? 'steal' : pick(['sabotage', 'unrest', 'blackout', 'crash', 'poison', 'recon']); const r = tryExec(W, u, { c: 'covert', op, v }); if (r) return r; }
     // 6) development according to personality
     if (n.approval < 45 && !core.left(W, n, 'rally')) return tryExec(W, u, { c: 'act', k: 'rally' });
     for (const k of per.build) if (!core.left(W, n, k) && n.cash > 2.5e5) { const r = tryExec(W, u, { c: 'act', k }); if (r) return r; }
