@@ -2148,7 +2148,7 @@ function voteBonusAmt(){return me?Math.min(25e6,Math.max(1e6,Math.round((me.gdp|
 // vote buttons flash when this leader hasn't used them in 12 hours
 const VOTE_SITES={gt:'Gametoor',mm:'BrowserMMORPG'};
 function voteSeen(k){let t=0;try{t=+localStorage.getItem('wp_vote_'+k+'_'+uid)||0}catch(e){}return t}
-const voteFlash=k=>me&&Date.now()-voteSeen(k)>12*HOUR?' vflash':'';
+const voteFlash=k=>me&&Date.now()-voteSeen(k)>6*HOUR?' vflash':''; // blinks again 6 hours after you last tapped it
 document.addEventListener('click',e=>{const a=e.target.closest&&e.target.closest('[data-vote]');if(a&&uid){try{localStorage.setItem('wp_vote_'+a.dataset.vote+'_'+uid,Date.now())}catch(x){}setTimeout(()=>{renderSide();const m=document.getElementById('more');if(m)m.querySelectorAll('[data-vote]').forEach(x=>x.classList.remove('vflash'))},50)}},true);
 function voteSub(){if(!me)return'helps the game grow';const left=(X().voteAt||0)+24*HOUR-Date.now();return left>0?`bonus again in ${Math.floor(left/HOUR)}h ${Math.floor(left%HOUR/60000)}m`:`+${moneyS(voteBonusAmt())} daily bonus`}
 async function claimVote(){if(!me)return;try{const r=await WP.api('POST','/api/vote-bonus',{});if(r){if(r.next)X().voteAt=r.next-24*HOUR;toast(r.msg);if(r.ok)SND.play('win');render()}}catch(e){}}
