@@ -1021,7 +1021,7 @@ function Core(PD, CARDS) {
     const H = HEAVY[k]; if (!H) return 'Unknown weapon.'; const why = canStrike(W, u, v, true); if (why) return why; const me = W.A[u], d = W.A[v];
     if ((me.tech || 0) < H.tech) return `${H.n} requires tech level ${H.tech}.`;
     if (rankOf(me.xp) < H.rank) return `${H.n} requires the rank of ${RANKS[H.rank][1]}.`;
-    if (left(W, me, 'hv_' + k)) return `Your next ${H.n.toLowerCase()} is ready in ${fmtT(left(W, me, 'hv_' + k))}.`;
+    if (left(W, me, 'hv_' + k)) return `Your next ${hvN(H)} is ready in ${fmtT(left(W, me, 'hv_' + k))}.`;
     if (k === 'blockade') { if (!coastOf(W, u).length) return 'You need a coastal province to send a fleet from.'; if (!coastOf(W, v).length) return `${d.name} has no coast to blockade.`; if ((me.ships || 0) < H.ships) return `A blockade needs at least ${H.ships} warships (you have ${me.ships || 0}).`; if ((me.res.oil || 0) < H.oilPer * me.ships) return `Needs ${num(H.oilPer * me.ships)} oil (${H.oilPer} per warship).`; return null; }
     if (k === 'carpet') { if ((me.air || 0) < H.air) return `Carpet bombing needs at least ${H.air} aircraft (you have ${me.air || 0}).`; if ((me.res.oil || 0) < H.oilPer * Math.min(me.air, 200)) return `Needs ${num(H.oilPer * Math.min(me.air, 200))} oil to fuel the bombers.`; }
     if (k === 'sub') { if (!coastOf(W, u).length) return 'You need a coastal province to send submarines from.'; if (!coastOf(W, v).length) return `${d.name} has no coast.`; if ((me.ships || 0) < H.ships) return `A submarine strike needs at least ${H.ships} warships (you have ${me.ships || 0}).`; if (!(d.ships > 0)) return `${d.name} has no warships to sink.`; }
@@ -1032,6 +1032,9 @@ function Core(PD, CARDS) {
   const heavyCost = k => { const H = HEAVY[k]; return { cash: H.cash || 0, steel: H.steel || 0, oil: H.oil || 0, goods: H.goods || 0 }; };
   const heavyCostTxt = k => { const c = heavyCost(k); return [c.cash ? money(c.cash) : '', c.steel ? `${num(c.steel)} steel` : '', c.oil ? `${num(c.oil)} oil` : '', c.goods ? `${num(c.goods)} goods` : ''].filter(Boolean).join(', ') || (k === 'carpet' ? 'oil for the bombers' : 'oil for the fleet'); };
   const penalty = (W, n, b, h) => { const o = { t: W.now, until: W.now + h * HOUR, src: 'attack' }; for (const x of BOOST_KEYS) if (b[x] != null) o[x] = b[x]; n.boosts = (n.boosts || []).filter(q => q.until > W.now && !BOOST_KEYS.some(x => q[x] != null && o[x] != null)); n.boosts.push(o); n.boosts = n.boosts.slice(-8); };
+  // 'an artillery barrage', 'an EMP strike', 'a hypersonic missile'
+  const hvN = H => /^[A-Z]{2}/.test(H.n) ? H.n : H.n[0].toLowerCase() + H.n.slice(1);
+  const hvA = H => { const nm = hvN(H); return (/^[aeiou]/i.test(nm) ? 'an ' : 'a ') + nm; };
   function heavy(W, u, v, k, rng) {
     const why = canHeavy(W, u, v, k); if (why) fail(why); dropShield(W.A[u]); const H = HEAVY[k], me = W.A[u], d = W.A[v], R = rng || Math.random;
     if (k !== 'bombard' && k !== 'blockade' && k !== 'carpet') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
@@ -1089,10 +1092,10 @@ function Core(PD, CARDS) {
     const def = defending(W, u, v), add = !traced || rogue(W, d) || def ? 0 : Math.round(H.aggr * aggrScale(W, v)); me.aggr = addAggr(W, me, v, add); rogueCheck(W, u);
     if (traced) me.approval = clamp(me.approval - (k === 'emp' ? 5 : k === 'ballistic' ? 4 : 2), 0, 100);
     const who = traced ? me.name : 'Unknown hackers';
-    log(me, `Your ${H.n.toLowerCase()} on ${k === 'cyber' ? d.name : `${place}, ${d.name}`}: ${sum}.${k === 'cyber' ? traced ? ' The attack was traced back to you.' : ' It was not traced back to you.' : ''}`, W);
-    log(d, `${H.ic} ${who} ${k === 'cyber' ? 'broke into your government networks' : `hit ${place} with a ${H.n.toLowerCase()}`}: ${sum}.`, W);
-    note(W, v, 'attack', `${H.ic} ${who} ${k === 'cyber' ? 'launched a cyber attack on your nation' : `hit ${place} with a ${H.n.toLowerCase()}`}: ${sum}.`);
-    if (traced) { news(W, u, icept ? `${H.ic} ${me.name} fired a ballistic missile at ${d.name}, but the Golden Dome shot it down.` : `${H.ic} ${me.name} ${k === 'cyber' ? `launched a cyber attack on ${d.name}` : `hit ${place}, ${d.name}, with a ${H.n.toLowerCase()}`}.`); for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${H.ic} ${me.name} used a ${H.n.toLowerCase()} on your ally ${d.name}.`); aggrHit(W, u, v, H.n.toLowerCase()); }
+    log(me, `Your ${hvN(H)} on ${k === 'cyber' ? d.name : `${place}, ${d.name}`}: ${sum}.${k === 'cyber' ? traced ? ' The attack was traced back to you.' : ' It was not traced back to you.' : ''}`, W);
+    log(d, `${H.ic} ${who} ${k === 'cyber' ? 'broke into your government networks' : `hit ${place} with ${hvA(H)}`}: ${sum}.`, W);
+    note(W, v, 'attack', `${H.ic} ${who} ${k === 'cyber' ? 'launched a cyber attack on your nation' : `hit ${place} with ${hvA(H)}`}: ${sum}.`);
+    if (traced) { news(W, u, icept ? `${H.ic} ${me.name} fired ${hvA(H)} at ${d.name}, but the Golden Dome shot it down.` : `${H.ic} ${me.name} ${k === 'cyber' ? `launched a cyber attack on ${d.name}` : `hit ${place}, ${d.name}, with ${hvA(H)}`}.`); for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${H.ic} ${me.name} used ${hvA(H)} on your ally ${d.name}.`); aggrHit(W, u, v, hvN(H)); }
     gainXP(W, u, 12); touch(W, u, v);
     if (fxKind) (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from, h, place, kind: k === 'drones' ? 'air' : fxKind, heavy: k, n: k === 'bombard' ? me.ships + lost : k === 'drones' ? 12 : k === 'carpet' ? 7 : k === 'artillery' ? 3 : 1, lost, hits: icept ? 0 : 1, icept, target: k, t: W.now });
     return { msg: `${H.ic} ${H.n}: ${sum}.${k === 'cyber' ? traced ? ' They traced it back to you.' : ' They don\'t know it was you.' : ''}`, heavy: { k, h, icept, traced, dmg } };
@@ -2121,7 +2124,7 @@ function Core(PD, CARDS) {
     note(W, u, 'war', `${w[0]} Rapid redeployment! ${w[1]}: ${w[2]} Timers cleared: ${what.join(', ')}.`); touch(W, u); return true;
   }
   function tributeTick(W, u) { const n = W.A[u]; if (!n || !n.overlord) return false; const o = W.A[n.overlord]; if (!o) { delete n.overlord; delete n.vassalT; return true; }
-    const cash = Math.max(0, Math.round(taxIncome(W, u) * VASSAL.tax)); n.cash -= cash; o.cash += cash; const p = production(W, u); for (const r in p) { const x = Math.floor(Math.max(0, p[r]) * VASSAL.res); if (x > 0) { n.res[r] -= x; o.res[r] = (o.res[r] || 0) + x; } }
+    const cash = Math.max(0, Math.round(taxIncome(W, u) * VASSAL.tax)); n.cash -= cash; o.cash += cash; const p = production(W, u); for (const r in p) { const x = Math.min(Math.floor(Math.max(0, p[r]) * VASSAL.res), Math.floor(Math.max(0, n.res[r] || 0))); if (x > 0) { n.res[r] -= x; o.res[r] = (o.res[r] || 0) + x; } }
     o.tribute = (o.tribute || 0) + cash; touch(W, n.overlord); return true; }
   // far-flung provinces (over 3,000 km from the capital) slip away now and then, more often when stability is low
   function farLands(W, u, rng) {
