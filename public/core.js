@@ -1462,15 +1462,15 @@ function Core(PD, CARDS) {
   function dropOutpost(W, u, h) { const n = W.A[u]; if (!n || !n.outposts || !n.outposts[h]) fail('There is no outpost there.'); const o = { ...n.outposts }; delete o[h]; n.outposts = o; log(n, `Outpost at ${pname(h)} dismantled.`, W); touch(W, u); return { msg: `Outpost at ${pname(h)} dismantled. The province stays yours.` }; }
   function outpostTidy(W, u) { const n = W.A[u]; if (!n || !n.outposts) return false; let ch = false; const o = { ...n.outposts }; for (const h of Object.keys(o)) if (owner(W, +h) !== u) { delete o[h]; ch = true; log(n, `Your outpost at ${pname(+h)} was lost.`, W); } if (ch) { n.outposts = o; touch(W, u); } return ch; }
   // ---------- WORLD CASINO: games of chance with the nation's treasury (all randomness on the server) ----------
-  const CASINO = { min: 1e4, maxPct: .1, maxAbs: 25e6, floor: 1e5, perMin: 30,
-    slots: { sym: ['🍒', '🍋', '🔔', '⭐', '💎', '7️⃣'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { '🍒': 1.5 } },
+  const CASINO = { min: 1e4, maxAbs: 250e6, perMin: 30,
+    slots: { sym: ['cherry', 'bar', 'bell', 'star', 'diamond', 'seven'], name: ['Cherry', 'Bar', 'Bell', 'Star', 'Diamond', 'Seven'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { cherry: 1.5 } },
     dice: { hl: 2.25, seven: 5.6 }, reds: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36] };
-  const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.max(CASINO.floor, Math.floor(Math.max(0, n.cash || 0) * CASINO.maxPct))));
+  const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.floor(Math.max(0, n.cash || 0)))); // one table limit for every game: $250M, or what you have
   const cardOf = r => { const v = 1 + Math.floor(r() * 13), s = '♠♥♦♣'[Math.floor(r() * 4)]; return { v, s }; }; // an endless shoe: no deck to count, nothing hidden to peek at
   const bjVal = cs => { let t = 0, a = 0; for (const c of cs) { const x = c.v > 10 ? 10 : c.v; t += x; if (x === 1) a++; } while (a > 0 && t + 10 <= 21) { t += 10; a--; } return t; };
   function casinoBet(W, n, bet) {
     const b = Math.floor(Number(bet)); if (!Number.isFinite(b) || b < CASINO.min) fail(`The minimum bet is ${money(CASINO.min)}.`);
-    const mx = casinoMax(n); if (b > mx) fail(`The table limit for your nation is ${money(mx)} (10% of your treasury, up to ${money(CASINO.maxAbs)}).`);
+    const mx = casinoMax(n); if (b > mx) fail(`The table limit is ${money(mx)}${mx < CASINO.maxAbs ? ' (what you have in your treasury)' : ''}.`);
     if ((n.cash || 0) < b) fail('You do not have that much money.');
     const cs = n.casino = n.casino || { played: 0, wagered: 0, net: 0, best: 0, hist: [] }; cs.win = (cs.win || []).filter(t => W.now - t < 60e3);
     if (cs.win.length >= CASINO.perMin) fail('The croupier needs a moment. Try again in a few seconds.'); cs.win.push(W.now); return b;
@@ -1503,9 +1503,9 @@ function Core(PD, CARDS) {
     if (g === 'slots') {
       const bet = casinoBet(W, n, c.bet), S_ = CASINO.slots, tot = S_.w.reduce((a, b) => a + b, 0), spin = () => { let r = R() * tot; for (let i = 0; i < S_.sym.length; i++) { r -= S_.w[i]; if (r < 0) return i; } return 0; };
       const reels = [spin(), spin(), spin()], sy = reels.map(i => S_.sym[i]); let mult = 0;
-      if (reels[0] === reels[1] && reels[1] === reels[2]) mult = S_.three[reels[0]]; else { const cherries = sy.filter(x => x === '🍒').length; if (cherries === 2) mult = S_.two['🍒']; }
-      const pay = Math.floor(bet * mult), net = casinoSettle(W, u, 'slots', bet, pay, sy.join(''));
-      return { msg: mult ? `${sy.join(' ')} — you win ${moneyS(net)} (×${mult})!` : `${sy.join(' ')} — no luck this time.`, casino: { g: 'slots', reels: sy, mult, net } };
+      if (reels[0] === reels[1] && reels[1] === reels[2]) mult = S_.three[reels[0]]; else { const cherries = sy.filter(x => x === 'cherry').length; if (cherries === 2) mult = S_.two.cherry; }
+      const nm = reels.map(i => S_.name[i]), pay = Math.floor(bet * mult), net = casinoSettle(W, u, 'slots', bet, pay, nm.join(' · '));
+      return { msg: mult >= 5 ? `Three ${nm[0].toLowerCase()}s. You win ${moneyS(net)} (${mult}×).` : mult ? `Two cherries. ${moneyS(pay)} back.` : `${nm.join(', ')}. No win.`, casino: { g: 'slots', reels: sy, mult, net } };
     }
     if (g === 'dice') {
       const pick = String(c.pick); if (!['low', 'seven', 'high'].includes(pick)) fail('Choose low, seven or high.'); const bet = casinoBet(W, n, c.bet), d1 = 1 + Math.floor(R() * 6), d2 = 1 + Math.floor(R() * 6), t = d1 + d2;
