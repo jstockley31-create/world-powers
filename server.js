@@ -130,7 +130,7 @@ const STATIC = {};
 function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), br: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
-STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
+STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
 STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=604800');
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
@@ -241,7 +241,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 // ---------- what other players may see ----------
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
-    approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, dev: n.dev || {}, prestige: n.prestige || 0, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, overlord: n.overlord || null, vassalT: n.vassalT || 0, office: n.office || 0, outposts: n.outposts || null, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, lvl: n.dome.lvl || 1, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
+    approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, dev: n.dev || {}, prestige: n.prestige || 0, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, overlord: n.overlord || null, vassalT: n.vassalT || 0, office: n.office || 0, outposts: n.outposts || null, titles: n.titles || null, shield: n.shield || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, lvl: n.dome.lvl || 1, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
     gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea, vassal: e.vassal || 0 } : e) };
 }
@@ -304,6 +304,7 @@ function effCfg() {
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   c.overPause = S.overPause || 0;
+  c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
   return c;
 }
@@ -742,6 +743,70 @@ function botPresence(W) {
     if (awake && (!cur || now - (cur.t || 0) > 150e3)) setDoc('online', u, { t: now, ai: 1 });
   }
 }
+
+// ===================== SEASONS & HALL OF FAME =====================
+// A season ranks nations by what they achieve between its start and end. When it ends, the result is written to the Hall of Fame:
+// an append-only file (one line per season). Nothing in the game or the admin page can edit or delete those lines.
+const HOF_FILE = path.join(DATA_DIR, 'halloffame.jsonl'); let HOF = [];
+try { HOF = fs.readFileSync(HOF_FILE, 'utf8').split('\n').filter(Boolean).map(l => { try { return Object.freeze(JSON.parse(l)); } catch (e) { return null; } }).filter(Boolean); } catch (e) { HOF = []; }
+const SEASON_METRICS = { score: { n: 'Score gained', title: 'Grand Strategist', fmt: v => Math.round(v).toLocaleString('en-US') }, land: { n: 'Provinces gained', title: 'Conqueror', fmt: v => (v > 0 ? '+' : '') + Math.round(v) }, gdp: { n: 'GDP growth', title: 'Tycoon', fmt: v => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }, wins: { n: 'Battles won', title: 'Warlord', fmt: v => String(Math.round(v)) }, relief: { n: 'Relief sent', title: 'Philanthropist', fmt: v => '$' + Math.round(v).toLocaleString('en-US') } };
+S.seasons = S.seasons || { cur: null, n: HOF.length };
+if (S.seasons.n < HOF.length) S.seasons.n = HOF.length;
+function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = se.base[u] || { score: 0, prov: 0, gdp: n.gdp || 0 }; const ss = n.ss && n.ss.id === se.id ? n.ss : {};
+  if (m === 'score') return core.score(W, u) - b.score; if (m === 'land') return core.hexesOf(W, u).length - b.prov; if (m === 'gdp') return b.gdp > 0 ? (n.gdp || 0) / b.gdp - 1 : 0; if (m === 'wins') return ss.wins || 0; if (m === 'relief') return ss.relief || 0; return 0; }
+function seasonEligible(W, se, u) { const n = W.A[u]; if (!n) return false; if (n.ai && n.ai.boss) return false; return se.who === 'all' || !n.ai; }
+function seasonTable(W, se, m, max) { m = m || se.metric; return Object.keys(W.A).filter(u => seasonEligible(W, se, u)).map(u => ({ u, v: seasonVal(W, se, u, m) })).sort((a, b) => b.v - a.v).slice(0, max || 1e9); }
+function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, leader: (S.users[x.u] || {}).name || '', color: W.A[x.u].color, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
+  const mi = t.findIndex(x => x.u === uid);
+  return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
+function seasonBegin(W) { const se = S.seasons.cur; se.status = 'live'; se.start = Date.now(); se.base = {};
+  for (const u of Object.keys(W.A)) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 };
+  const t = `🏆 ${se.name} has begun! Nations are ranked by ${SEASON_METRICS[se.metric].n.toLowerCase()}${se.end ? ` until ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ''}.${se.prizes && se.prizes[0] ? ` The champion wins $${Math.round(se.prizes[0]).toLocaleString('en-US')}.` : ''} See Rankings for the live standings.`;
+  if (se.announce) { systemMessage(t); broadcast('announce', { text: t }); }
+  persist(); broadcast('config', effCfg()); }
+function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !== 'live') return null; const M = SEASON_METRICS[se.metric], table = seasonTable(W, se), now = Date.now();
+  const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
+  const ranked = table.filter(x => x.v > 0 || se.metric === 'gdp'), top = ranked.slice(0, 10);
+  const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
+  // prizes and titles
+  const place = ['Champion', '2nd place', '3rd place'];
+  top.slice(0, 3).forEach((x, i) => { const n = W.A[x.u]; if (!n) return; const cash = Math.max(0, +((se.prizes || [])[i]) || 0), xp = Math.max(0, +((se.xp || [])[i]) || 0); if (cash) n.cash += cash; if (xp) n.xp = (n.xp || 0) + xp;
+    if (se.titles !== false) n.titles = [...(n.titles || []), { s: se.n, t: `${se.name} ${place[i]}`, r: i + 1 }].slice(-30);
+    n.log = [{ t: now, x: `🏆 ${se.name} is over: you finished ${['1st', '2nd', '3rd'][i]}!${cash ? ` Prize: $${Math.round(cash).toLocaleString('en-US')}.` : ''}${xp ? ` +${xp} XP.` : ''}` }, ...(n.log || [])].slice(0, 120); W.changed.add(x.u); });
+  if (se.titles !== false) for (const c of cats) { const n = W.A[c.u]; if (n) { n.titles = [...(n.titles || []), { s: se.n, t: `${se.name} ${c.award}` }].slice(-30); W.changed.add(c.u); } }
+  const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, recorded: now };
+  try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); }
+  HOF.push(Object.freeze(entry)); S.seasons.cur = null; audit(by || 'System', 'Season ended', se.name);
+  const t = top[0] ? `🏆 ${se.name} is over! Champion: ${top[0] && W.A[top[0].u].name} (${M.fmt(top[0].v)}).${top[1] ? ` 2nd: ${W.A[top[1].u].name}.` : ''}${top[2] ? ` 3rd: ${W.A[top[2].u].name}.` : ''} They're now in the Hall of Fame forever.` : `${se.name} is over. No nation qualified this time.`;
+  if (se.announce) { systemMessage(t); broadcast('announce', { text: t }); }
+  persist(); broadcast('config', effCfg()); return entry; }
+let SW = null; const seasonW = () => { if (!SW || Date.now() - SW.t > 15e3) SW = { t: Date.now(), W: mkWorld() }; return SW.W; };
+function seasonTick(W) { const se = S.seasons.cur; if (!se) return; const now = Date.now();
+  if (se.status === 'scheduled' && now >= se.start) seasonBegin(W);
+  else if (se.status === 'live') { for (const u of Object.keys(W.A)) if (!se.base[u]) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 }; // nations founded mid-season start from zero
+    if (se.end && now >= se.end) seasonFinish(W); } }
+
+
+// casino bookkeeping for the admin page: totals by game and by day, biggest wins, recent plays
+S.casino = S.casino || { tot: {}, days: {}, recent: [], big: [] };
+const casinoTotals = () => Object.fromEntries(Object.entries((S.casino && S.casino.tot) || {}).map(([k, x]) => [k, { plays: x.plays, wag: x.wag, net: x.net, wins: x.wins, won: x.won || 0, lost: x.lost || 0 }])); // all-time table results, sums only
+function casinoRecord(W) { const C_ = S.casino; for (const e of W.casinoEv || []) { const n = W.A[e.u] || {}, day = new Date(e.t).toISOString().slice(0, 10);
+  const add = (o, k) => { const x = o[k] = o[k] || { plays: 0, wag: 0, net: 0, wins: 0 }; x.plays++; x.wag += e.bet; x.net += e.net; if (e.net > 0) { x.wins++; x.won = (x.won || 0) + e.net; } else if (e.net < 0) x.lost = (x.lost || 0) - e.net; };
+  add(C_.tot, e.g); add(C_.tot, 'all'); C_.days[day] = C_.days[day] || {}; add(C_.days[day], e.g); add(C_.days[day], 'all');
+  const row = { t: e.t, u: e.u, name: n.name || '?', leader: (S.users[e.u] || {}).name || '', g: e.g, bet: e.bet, net: e.net, d: e.d };
+  C_.recent = [row, ...C_.recent].slice(0, 200); if (e.net > 0) C_.big = [...C_.big, row].sort((a, b) => b.net - a.net).slice(0, 25); }
+  const keep = Object.keys(C_.days).sort().slice(-60); C_.days = Object.fromEntries(keep.map(k => [k, C_.days[k]])); W.casinoEv = null; }
+
+
+// PROVABLY FAIR CASINO. Each player has a secret server seed (only its SHA-256 hash is shown before betting), a client seed they can change,
+// and a bet counter (nonce). Every random number for a bet comes from HMAC-SHA256(server seed, "client seed:nonce:block"), 8 numbers per block.
+// Revealing the seed lets anyone recompute every result on the Fair play page.
+S.fair = S.fair || {};
+const sha256 = x => crypto.createHash('sha256').update(String(x)).digest('hex');
+function fairOf(uid) { let f = S.fair[uid]; if (!f) { f = S.fair[uid] = { seed: crypto.randomBytes(32).toString('hex'), client: crypto.randomBytes(8).toString('hex'), nonce: 0, from: 0, prev: [] }; } return f; }
+function fairRng(f) { let i = 0, buf = []; return () => { if (!buf.length) { const h = crypto.createHmac('sha256', f.seed).update(`${f.client}:${f.nonce}:${i++}`).digest(); for (let k = 0; k < 32; k += 4) buf.push(h.readUInt32BE(k) / 4294967296); } return buf.shift(); }; }
+const fairView = f => ({ hash: sha256(f.seed), client: f.client, nonce: f.nonce, prev: (f.prev || []).slice(0, 20) });
+
 function worldLoop() {
   const t0 = process.hrtime.bigint();
   try {
@@ -751,6 +816,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
+    try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);
     // world events
     if (S.event && now >= S.event.end) endEvent();
@@ -1054,6 +1120,30 @@ async function adminRoute(p, req, res, me) {
     commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
     audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
   }
+  if (p === '/api/admin/casino' && req.method === 'GET') { // Admin page → Casino
+    const W = mkWorld(), players = Object.entries(W.A).filter(([u, n]) => n.casino && n.casino.played).map(([u, n]) => ({ name: n.name, leader: (S.users[u] || {}).name || '', ai: !!n.ai, played: n.casino.played, wagered: n.casino.wagered, net: n.casino.net, best: n.casino.best || 0, cash: Math.round(n.cash || 0) }));
+    return send(res, 200, { ...S.casino, players, limits: { min: WP.CASINO ? WP.CASINO.min : 1e4, max: 250e6 } });
+  }
+  if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
+    const b = await readBody(req, 16384), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
+    if (op === 'list') return send(res, 200, { cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title }])) });
+    if (op === 'create') {
+      if (S.seasons.cur) return send(res, 400, { error: 'A season is already scheduled or running. End or cancel it first.' });
+      const metric = SEASON_METRICS[b.metric] ? b.metric : 'score', days = +b.days, startAt = b.startAt ? +new Date(b.startAt) : 0, start = startAt && startAt > Date.now() ? startAt : Date.now();
+      if (b.startAt && !Number.isFinite(startAt)) return send(res, 400, { error: 'That start time is not a valid date.' });
+      const n = S.seasons.n + 1, name = clean(b.name).slice(0, 60) || `Season ${n}`, num_ = v => Math.max(0, Math.min(1e12, Math.round(+v || 0)));
+      const se = { id: crypto.randomBytes(5).toString('hex'), n, name, msg: clean(b.msg).slice(0, 300), metric, who: b.who === 'all' ? 'all' : 'players', start, end: days > 0 ? start + Math.min(365, days) * 864e5 : 0, prizes: (Array.isArray(b.prizes) ? b.prizes : []).slice(0, 3).map(num_), xp: (Array.isArray(b.xp) ? b.xp : []).slice(0, 3).map(v => Math.min(1e6, num_(v))), cats: (Array.isArray(b.cats) ? b.cats : []).filter(k => SEASON_METRICS[k]).slice(0, 5), titles: b.titles !== false, announce: b.announce !== false, status: 'scheduled', base: {}, by: me.name, created: Date.now() };
+      S.seasons.cur = se; S.seasons.n = n; audit(me.name, start > Date.now() + 5000 ? 'Scheduled a season' : 'Started a season', name);
+      if (start <= Date.now() + 5000) seasonBegin(W); else { persist(); if (se.announce) { const t = `🏆 ${name} starts ${new Date(start).toUTCString().slice(0, 22)} UTC. Nations will be ranked by ${SEASON_METRICS[metric].n.toLowerCase()}.`; systemMessage(t); broadcast('announce', { text: t }); } }
+      return send(res, 200, { ok: true });
+    }
+    const se = S.seasons.cur; if (!se) return send(res, 404, { error: 'There is no season right now.' });
+    if (op === 'end') { if (se.status !== 'live') return send(res, 400, { error: 'This season has not started yet. Cancel it instead.' }); const e = seasonFinish(W, me.name); commit(W); return send(res, 200, { ok: true, entry: e }); }
+    if (op === 'cancel') { S.seasons.cur = null; if (se.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se.n - 1); persist(); broadcast('config', effCfg()); audit(me.name, 'Cancelled a season (nothing recorded)', se.name); if (se.announce && b.announce !== false) systemMessage(`${se.name} has been cancelled.`); return send(res, 200, { ok: true }); }
+    if (op === 'extend') { const d = +b.days; if (!(d > 0) || !se.end) return send(res, 400, { error: 'Only seasons with an end date can be extended.' }); se.end += Math.min(90, d) * 864e5; persist(); audit(me.name, 'Extended a season', `${se.name} by ${d} days`); if (se.announce) systemMessage(`⏳ ${se.name} has been extended. It now ends ${new Date(se.end).toUTCString().slice(0, 22)} UTC.`); return send(res, 200, { ok: true }); }
+    if (op === 'rename') { const nm = clean(b.name).slice(0, 60); if (!nm) return send(res, 400, { error: 'Give the season a name.' }); se.name = nm; se.msg = clean(b.msg).slice(0, 300); persist(); return send(res, 200, { ok: true }); }
+    return send(res, 400, { error: 'Unknown operation.' });
+  }
   if (p === '/api/admin/poll' && req.method === 'POST') { // Admin page → Polls: questions sent to every player
     const b = await readBody(req, 32768), op = String(b.op || ''), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim();
     const find = () => S.polls.find(x => x.id === b.id);
@@ -1329,6 +1419,7 @@ async function handle(req, res) {
         world: { nations: Object.keys(S.docs).filter(k => k.startsWith('nations/')).length, players: Object.keys(S.users).length } }, { 'Cache-Control': 'no-store' });
     }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
+    if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: HOF, cur }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
     if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!me || !me.admin) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
     if (req.method === 'GET' && p.startsWith('/n/')) return await nationPage(req, res, p.slice(3));
     if (!p.startsWith('/api/')) return notFound(req, res);
@@ -1390,6 +1481,17 @@ async function handle(req, res) {
 
     const me = auth(req);
     if (!me) return send(res, 401, { error: 'Not signed in.' });
+    if (p === '/api/casino/fair') { const f = fairOf(me.id);
+      if (req.method === 'GET') return send(res, 200, fairView(f));
+      const b = await readBody(req, 1024);
+      if (b.op === 'client') { const c = String(b.client || '').trim(); if (!/^[A-Za-z0-9_-]{1,64}$/.test(c)) return send(res, 400, { error: 'Use 1 to 64 letters, numbers, dashes or underscores.' }); const n = S.docs['nations/' + me.id]; if (n && n.bj) return send(res, 400, { error: 'Finish your blackjack hand first.' });
+        if (f.nonce > (f.from || 0)) { f.prev = [{ seed: f.seed, hash: sha256(f.seed), client: f.client, from: f.from || 0, to: f.nonce - 1, t: Date.now() }, ...(f.prev || [])].slice(0, 50); f.seed = crypto.randomBytes(32).toString('hex'); f.from = f.nonce; } // a new client seed always starts a new server seed, so every revealed period checks out
+        f.client = c; persist(); return send(res, 200, fairView(f)); }
+      if (b.op === 'rotate') { const n = S.docs['nations/' + me.id]; if (n && n.bj) return send(res, 400, { error: 'Finish your blackjack hand first.' });
+        f.prev = [{ seed: f.seed, hash: sha256(f.seed), client: f.client, from: f.from || 0, to: f.nonce - 1, t: Date.now() }, ...(f.prev || [])].slice(0, 50); f.seed = crypto.randomBytes(32).toString('hex'); f.from = f.nonce; persist(); return send(res, 200, fairView(f)); }
+      return send(res, 400, { error: 'Unknown operation.' }); }
+    if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
+    if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: HOF });
     if (p === '/api/me' && req.method === 'GET') { touch(me.id, req); return send(res, 200, pub(me)); }
     if (p === '/api/account/save' && req.method === 'POST') {
       const u = S.users[me.id]; if (!u.guest) return send(res, 400, { error: 'Your account is already saved.' });
@@ -1471,13 +1573,16 @@ async function handle(req, res) {
       if (b.c === 'movecap' && typeof b.name === 'string' && MOD.isProfane(b.name)) return send(res, 400, { error: 'Please choose a different name for your nation.' });
       if (b.c === 'offer' && b.v && S.users[b.v] && sharesNetwork(me.id, b.v)) flag(me.id, `Sent a trade offer to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       let r;
-      try { r = core.exec(W, me.id, b, rng); }
+      let fair = null, useRng = rng; if (b.c === 'casino') { fair = fairOf(me.id); W.fairNonce = fair.nonce; W.fairHash = sha256(fair.seed); useRng = fairRng(fair); }
+      try { r = core.exec(W, me.id, b, useRng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
+      if (fair) { if (r.casino) r.casino.fair = { nonce: fair.nonce, hash: W.fairHash }; fair.nonce++; }
       actLog(me.id, W, b, true, r.msg); pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
+      if (W.casinoEv) casinoRecord(W);
       commit(W);
       // your own nation comes back with the answer, so the screen updates the moment the action is done (no waiting on the live stream)
-      return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino || undefined, me: S.docs['nations/' + me.id] || null });
+      return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });
     }
 
     // ---- mail ----
@@ -1489,6 +1594,7 @@ async function handle(req, res) {
     if ((p === '/api/mail/read' || p === '/api/mail/delete') && req.method === 'POST') {
       const b = await readBody(req, 1024); const list = S.mail[me.id] || [];
       if (p.endsWith('read')) { for (const m of list) if (b.all || m.id === b.id) if (m.box === 'in') m.read = true; }
+      else if (b.all) { const box = b.box === 'out' ? 'out' : b.box === 'in' ? 'in' : null; S.mail[me.id] = box ? list.filter(m => m.box !== box) : []; } // delete all (one box, or everything)
       else S.mail[me.id] = list.filter(m => m.id !== b.id);
       persist(); sendTo(me.id, 'mail', { unread: (S.mail[me.id] || []).filter(m => m.box === 'in' && !m.read).length }); return send(res, 200, { ok: true });
     }

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hall of Fame — World Powers</title><link rel="icon" href="/icon.svg">
+<meta name="description" content="The World Powers Hall of Fame: every season's champions, recorded permanently.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#06090d;color:#e6edf3;font:16px/1.6 Inter,system-ui,sans-serif}
+.w{max-width:900px;margin:0 auto;padding:34px 20px 90px}a{color:#d4a64a}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.top{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.22em;font-size:14px;color:#e6edf3;text-decoration:none}
+.top img{width:28px;height:28px}
+.play{background:#d4a64a;color:#111;padding:9px 18px;border-radius:8px;font-weight:600;text-decoration:none;font-size:14px}
+h1{font-family:Cinzel,Georgia,serif;font-size:40px;letter-spacing:.03em;margin:34px 0 4px}
+.lede{color:#8b98a5;max-width:62ch;margin:0 0 28px}
+.mu{color:#8b98a5}
+.live{border:1px solid #2a3746;border-radius:14px;background:#0c1218;padding:16px 18px;margin:0 0 30px}
+.live h2{margin:0 0 4px;font-size:18px}
+.season{position:relative;border:1px solid rgba(201,162,74,.35);border-radius:16px;background:linear-gradient(180deg,#0f151c,#0b1015);padding:22px 22px 18px;margin:0 0 22px}
+.season .no{font-family:Cinzel,Georgia,serif;color:#c9a24a;font-size:14px;letter-spacing:.06em}
+.season h2{margin:2px 0 2px;font-size:22px}
+.season .when{color:#8b98a5;font-size:14px}
+.champ{display:flex;align-items:center;gap:16px;margin:16px 0 14px;padding:14px 16px;border-radius:12px;background:rgba(201,162,74,.08);border:1px solid rgba(201,162,74,.3)}
+.crown{width:46px;height:46px;flex:none}
+.champ b{font-size:20px;display:block}.champ small{color:#c5ced8;font-size:14px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:7px;vertical-align:0}
+table{border-collapse:collapse;width:100%;font-size:14.5px}td{border-bottom:1px solid #1a232d;padding:7px 6px}td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}td.n{width:34px;color:#8b98a5}
+.aw{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.aw span{font-size:13px;border:1px solid #2a3746;border-radius:20px;padding:3px 11px;color:#c5ced8}.aw b{color:#e9d29a;font-weight:600}
+.seal{font-size:12.5px;color:#6f7d8a;margin-top:10px}
+.empty{border:1px dashed #2a3746;border-radius:14px;padding:30px;text-align:center;color:#8b98a5}
+</style></head><body><div class="w">
+<div class="bar"><a class="top" href="/"><img src="/icon.svg" alt="">WORLD POWERS</a><a class="play" href="/play">Play now</a></div>
+<h1>Hall of Fame</h1>
+<p class="lede">Every season ends with a champion. Their names are written here permanently: once a season is recorded, nobody can change or remove it, not even the game's administrators.</p>
+<div id="live"></div><div id="list"><p class="mu">Loading…</p></div>
+</div>
+<script>
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+const d=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+const crown='<svg class="crown" viewBox="0 0 48 48" aria-hidden="true"><path d="M6 36 4 14l11 9 9-15 9 15 11-9-2 22z" fill="#c9a24a" stroke="#8a6a24" stroke-width="1.5" stroke-linejoin="round"/><rect x="6" y="37" width="36" height="5" rx="1.5" fill="#a8842f"/><circle cx="24" cy="8" r="3" fill="#e9d29a"/><circle cx="4" cy="14" r="2.5" fill="#e9d29a"/><circle cx="44" cy="14" r="2.5" fill="#e9d29a"/></svg>';
+fetch('/api/public/hof').then(r=>r.json()).then(j=>{
+ const c=j.cur;if(c){const left=c.end?Math.max(0,c.end-Date.now()):0;document.getElementById('live').innerHTML=`<div class="live"><h2>${esc(c.name)} ${c.status==='live'?'is underway':'starts soon'}</h2><div class="mu">${c.status==='live'?`Ranked by ${esc(c.metricName.toLowerCase())}${c.end?` · ends ${d(c.end)} (${Math.floor(left/864e5)}d ${Math.floor(left%864e5/36e5)}h left)`:''}`:`Starts ${d(c.start)}`}</div>${c.top&&c.top.length?`<table style="margin-top:10px">${c.top.map(x=>`<tr><td class="n">${x.r}</td><td><span class="sw" style="background:${esc(x.color)}"></span>${esc(x.name)} <span class="mu">${esc(x.leader)}</span></td><td class="r">${esc(x.f)}</td></tr>`).join('')}</table>`:''}</div>`}
+ const L=(j.hof||[]).slice().reverse();
+ document.getElementById('list').innerHTML=L.length?L.map(s=>`<section class="season"><div class="no">Season ${s.season}</div><h2>${esc(s.name)}</h2><div class="when">${d(s.start)} – ${d(s.end)} · ranked by ${esc(s.metricName.toLowerCase())} · ${s.players} nation${s.players===1?'':'s'} took part</div>
+  ${s.champion?`<div class="champ">${crown}<div><b><span class="sw" style="background:${esc(s.champion.color)}"></span>${esc(s.champion.name)}</b><small>Champion${s.champion.leader?`, led by ${esc(s.champion.leader)}`:''} · ${esc(s.champion.shown)}</small></div></div>`:'<p class="mu">No nation qualified.</p>'}
+  ${s.top.length>1?`<table>${s.top.slice(1).map(x=>`<tr><td class="n">${x.r}</td><td><span class="sw" style="background:${esc(x.color)}"></span>${esc(x.name)} <span class="mu">${esc(x.leader)}</span></td><td class="r">${esc(x.shown)}</td></tr>`).join('')}</table>`:''}
+  ${s.awards&&s.awards.length?`<div class="aw">${s.awards.map(a=>`<span><b>${esc(a.award)}</b> · ${esc(a.name)} (${esc(a.shown)})</span>`).join('')}</div>`:''}
+  <div class="seal">Recorded ${new Date(s.recorded).toUTCString().slice(0,22)} UTC · permanent</div></section>`).join(''):'<div class="empty">No season has finished yet. The first champion will appear here.</div>';
+}).catch(()=>{document.getElementById('list').innerHTML='<p class="mu">The Hall of Fame could not be loaded. Try again in a moment.</p>'});
+</script></body></html>

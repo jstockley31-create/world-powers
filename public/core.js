@@ -625,6 +625,7 @@ function Core(PD, CARDS) {
     const theyHitMe = hitRecently(W, u, v);
     // AI nations get none of the protections meant for real players
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
+    if (shieldOn(W, n)) return `${n.name} is rebuilding under international protection for another ${fmtT(n.shield - W.now)}.`;
     const fairWar = (R(W, u, v).fair || 0) === 1;
     if (W.cfg.weakRule && !theyHitMe && !fairWar && !n.ai && score(W, v) < score(W, u) * .4) return `${n.name} is far weaker than you. Attacking them is not permitted.`;
     if (W.OWN[h].cap) {
@@ -852,7 +853,7 @@ function Core(PD, CARDS) {
     return { msg: msg + clear, ok, clear: !!clear };
   }
 
-  function attack(W, u, h, X, AIR, rng, mkVassal) {
+  function attack(W, u, h, X, AIR, rng, mkVassal) { dropShield(W.A[u]);
     const me = W.A[u]; h = Number(h); if (!Number.isInteger(h) || !P[h]) fail('Unknown province.'); const why = canAttack(W, u, h); if (why) fail(why);
     X = Math.floor(Number(X)); AIR = Math.max(0, Math.floor(Number(AIR) || 0));
     if (!(X >= 10) || X > me.troops) fail('Commit at least 10 troops, and no more than you have.');
@@ -896,14 +897,14 @@ function Core(PD, CARDS) {
     const isCap = !!(W.OWN[h] && W.OWN[h].cap);
     if (win && isCap && mkVassal) { result.vassal = true; loot = Math.max(0, Math.round(d.cash * VASSAL.loot)); me.cash += loot; d.cash -= loot; endWar(W, u, v); for (const x of vassalsOf(W, v)) { delete W.A[x].overlord; delete W.A[x].vassalT; touch(W, x); } d.overlord = u; d.vassalT = W.now; delete d.lastStand; gainXP(W, u, 150);
       log(me, `${d.name} surrendered and is now your vassal: it pays you tribute every 10 minutes. You took ${money(loot)} from its treasury.`, W); log(d, `${me.name} took your capital. You are now its vassal and pay it tribute. You may declare independence after ${VASSAL.freeH} hours.`, W);
-      note(W, v, 'attack', `👑 ${me.name} took your capital. You are now its vassal: you keep your land but pay tribute. You can declare independence in ${VASSAL.freeH} hours.`); news(W, u, `👑 ${d.name} has surrendered and become a vassal of ${me.name}.`); Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, vassal: 1, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0 }); touch(W, u, v); return { msg: `👑 ${d.name} surrendered and is now your vassal.`, battle: result }; }
+      note(W, v, 'attack', `👑 ${me.name} took your capital. You are now its vassal: you keep your land but pay tribute. You can declare independence in ${VASSAL.freeH} hours.`); news(W, u, `👑 ${d.name} has surrendered and become a vassal of ${me.name}.`); Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); seasonBump(W, me, 'wins'); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, vassal: 1, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0 }); touch(W, u, v); return { msg: `👑 ${d.name} surrendered and is now your vassal.`, battle: result }; }
     else if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
     else if (false) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; if (d.dev) delete d.dev[h]; if (d.conq) delete d.conq[h]; W.OWN = computeOwn(W.A); result.freed = true; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       log(me, `Your forces drove ${d.name} out of ${pname(h)}, but your empire is at its province limit (${maxHex(me)}), so the province is now free land.`, W); }
     else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, 1); me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
-    Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) });
+    Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); if (win) seasonBump(W, me, 'wins');
     // generals: victories can produce a new general and promote the commander; defeats can cost a general's life
     const ag = bestGen(me, 'attack');
     if (win) { if (ag) { ag.wins++; if (ag.wins % 3 === 0 && ag.stars < 5) { ag.stars++; result.genUp = ag.name; } } if (rng() < .25) { const g = newGeneral(W, u, rng); if (g) { result.newGen = g; log(me, `${g.name} distinguished themselves in battle and was appointed ${GEN_TYPES[g.type].n}.`, W); note(W, u, 'rank', `New general: ${g.name}, ${GEN_TYPES[g.type].n}.`); } }
@@ -939,13 +940,14 @@ function Core(PD, CARDS) {
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     const theyHitMe = hitRecently(W, u, v);
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
+    if (shieldOn(W, n)) return `${n.name} is rebuilding under international protection for another ${fmtT(n.shield - W.now)}.`;
     if (!noRearm && left(W, me, 'strike')) return `Your strike forces are rearming: ${fmtT(left(W, me, 'strike'))}.`;
     return null;
   }
   const MISSILE = { tech: 8, cash: 4e5, steel: 40, oil: 40 };
   // missiles per strike: 5 at tech 8, +1 for every 2 tech levels above that, +1 each at Senator, President and Emperor (up to 10), then +1 for every 4 provinces (up to 10 more)
   const maxMissiles = n => { if (!n || (n.tech || 0) < MISSILE.tech) return 0; const r = rankOf(n.xp); return Math.min(10, 5 + Math.floor(((n.tech || 0) - MISSILE.tech) / 2) + (r >= 4 ? 1 : 0) + (r >= 6 ? 1 : 0) + (r >= 8 ? 1 : 0)) + Math.min(10, Math.floor(hexN(n) / 4)); };
-  function strike(W, u, v, kind, target, count, rng) {
+  function strike(W, u, v, kind, target, count, rng) { dropShield(W.A[u]);
     const why = canStrike(W, u, v); if (why) fail(why);
     const me = W.A[u], d = W.A[v]; if (!['stock', 'infra', 'mil'].includes(target)) fail('Choose a target.');
     count = Math.floor(Number(count)); let P = 0, lost = 0, hits = 0, icept = 0;
@@ -1031,7 +1033,7 @@ function Core(PD, CARDS) {
   const heavyCostTxt = k => { const c = heavyCost(k); return [c.cash ? money(c.cash) : '', c.steel ? `${num(c.steel)} steel` : '', c.oil ? `${num(c.oil)} oil` : '', c.goods ? `${num(c.goods)} goods` : ''].filter(Boolean).join(', ') || (k === 'carpet' ? 'oil for the bombers' : 'oil for the fleet'); };
   const penalty = (W, n, b, h) => { const o = { t: W.now, until: W.now + h * HOUR, src: 'attack' }; for (const x of BOOST_KEYS) if (b[x] != null) o[x] = b[x]; n.boosts = (n.boosts || []).filter(q => q.until > W.now && !BOOST_KEYS.some(x => q[x] != null && o[x] != null)); n.boosts.push(o); n.boosts = n.boosts.slice(-8); };
   function heavy(W, u, v, k, rng) {
-    const why = canHeavy(W, u, v, k); if (why) fail(why); const H = HEAVY[k], me = W.A[u], d = W.A[v], R = rng || Math.random;
+    const why = canHeavy(W, u, v, k); if (why) fail(why); dropShield(W.A[u]); const H = HEAVY[k], me = W.A[u], d = W.A[v], R = rng || Math.random;
     if (k !== 'bombard' && k !== 'blockade' && k !== 'carpet') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
     me.cd['hv_' + k] = W.now + H.cdH * HOUR;
     const hs = k === 'bombard' || k === 'blockade' ? coastOf(W, v) : hexesOf(W, v), h0 = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, h = k === 'orbital' ? d.cap : k === 'raid' || k === 'cruise' ? (hexesOf(W, v).filter(x => devLvl(d, x) > 0).sort((a, b) => devLvl(d, b) - devLvl(d, a))[0] ?? h0) : h0, place = pname(h), dmg = {};
@@ -1219,6 +1221,7 @@ function Core(PD, CARDS) {
     { const cf = ceasefireMsg(W, me, d); if (cf) return cf; }
     const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     if (!d.ai && W.now - d.created < W.cfg.protectH * HOUR) return `${d.name} is under new-nation protection.`;
+    if (shieldOn(W, d)) return `${d.name} is rebuilding under international protection for another ${fmtT(d.shield - W.now)}.`;
     // a last resort: only after a full day of war, unless they have already nuked you
     if (!W.cfg.nukeTest && !struckBy(W, me, v) && W.now - warSince(W, u, v) < WARHEAD.warH * HOUR) return `A nuclear strike is a last resort: you must be at war with ${d.name} for ${WARHEAD.warH} hours first (${fmtT(WARHEAD.warH * HOUR - (W.now - warSince(W, u, v)))} left).`;
     // several nations may strike the same country, one after another (each strike adds its own damage)
@@ -1276,7 +1279,7 @@ function Core(PD, CARDS) {
     aggrHit(W, u, v, 'nuclear strike'); (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, intercepted: true, t: W.now });
     touch(W, u, v);
   }
-  function launchNuke(W, u, v, h, rng) {
+  function launchNuke(W, u, v, h, rng) { dropShield(W.A[u]);
     const why = canLaunch(W, u, v); if (why) fail(why); const d = W.A[v]; const R = rng || Math.random;
     h = h == null || h === '' ? d.cap : Number(h); if (owner(W, h) !== v) fail(`That province does not belong to ${d.name}.`);
     if (domeOn(W, d) && R() < domeNuke(d)) { interceptNuke(W, u, v, h, false); return { msg: `☢ Launch confirmed, but ${d.name}'s Golden Dome intercepted your missile before it could detonate. Your warhead is spent.`, intercepted: true }; }
@@ -1475,9 +1478,9 @@ function Core(PD, CARDS) {
     const cs = n.casino = n.casino || { played: 0, wagered: 0, net: 0, best: 0, hist: [] }; cs.win = (cs.win || []).filter(t => W.now - t < 60e3);
     if (cs.win.length >= CASINO.perMin) fail('The croupier needs a moment. Try again in a few seconds.'); cs.win.push(W.now); return b;
   }
-  function casinoSettle(W, u, game, bet, pay, detail) { // pay = total returned to the player (0 = lost the bet)
-    const n = W.A[u], cs = n.casino, net = pay - bet; n.cash += net; cs.played++; cs.wagered += bet; cs.net += net; if (net > cs.best) cs.best = net;
-    cs.hist = [{ t: W.now, g: game, bet, net, d: detail }, ...(cs.hist || [])].slice(0, 12);
+  function casinoSettle(W, u, game, bet, pay, detail, nz) { // pay = total returned to the player (0 = lost the bet)
+    const n = W.A[u], cs = n.casino, net = pay - bet; nz = nz || (W.fairNonce != null ? [W.fairNonce] : null); n.cash += net; cs.played++; cs.wagered += bet; cs.net += net; if (net > cs.best) cs.best = net; (W.casinoEv = W.casinoEv || []).push({ u, g: game, bet, net, d: detail, t: W.now });
+    cs.hist = [{ t: W.now, g: game, bet, net, d: detail, nz: nz || undefined, fh: W.fairHash ? W.fairHash.slice(0, 16) : undefined }, ...(cs.hist || [])].slice(0, 12);
     if (net >= 5e6 && (game === 'slots' || net >= 2e7)) news(W, u, `🎰 ${n.name} just won ${moneyS(net)} at the World Casino (${({ bj: 'blackjack', roulette: 'roulette', slots: 'slots', dice: 'high-low dice' })[game]}).`);
     touch(W, u); return net;
   }
@@ -1485,9 +1488,9 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); const R = rng || Math.random, g = String(c.g || '');
     if (g === 'bj') {
       const a = String(c.a || 'deal');
-      if (a === 'deal') { if (n.bj) fail('Finish your current hand first.'); const bet = casinoBet(W, n, c.bet); n.cash -= bet; n.bj = { bet, p: [cardOf(R), cardOf(R)], d: [cardOf(R)], t: W.now };
+      if (a === 'deal') { if (n.bj) fail('Finish your current hand first.'); const bet = casinoBet(W, n, c.bet); n.cash -= bet; n.bj = { bet, p: [cardOf(R), cardOf(R)], d: [cardOf(R)], t: W.now, nz: W.fairNonce != null ? [W.fairNonce] : undefined };
         if (bjVal(n.bj.p) === 21) return bjEnd(W, u, R, true); touch(W, u); return { msg: 'Cards dealt.', casino: { g: 'bj', bj: n.bj, pv: bjVal(n.bj.p) } }; }
-      const h = n.bj; if (!h) fail('Deal a new hand first.');
+      const h = n.bj; if (!h) fail('Deal a new hand first.'); if (W.fairNonce != null && ['hit', 'double', 'stand'].includes(a)) h.nz = [...(h.nz || []), W.fairNonce];
       if (a === 'hit') { h.p.push(cardOf(R)); if (bjVal(h.p) > 21) return bjEnd(W, u, R); if (bjVal(h.p) === 21) return bjEnd(W, u, R); touch(W, u); return { msg: 'Hit.', casino: { g: 'bj', bj: h, pv: bjVal(h.p) } }; }
       if (a === 'double') { if (h.p.length !== 2) fail('You can only double down on your first two cards.'); if (n.cash < h.bet) fail('You do not have enough money to double.'); n.cash -= h.bet; h.bet *= 2; h.dbl = 1; h.p.push(cardOf(R)); return bjEnd(W, u, R); }
       if (a === 'stand') return bjEnd(W, u, R);
@@ -1521,7 +1524,7 @@ function Core(PD, CARDS) {
     else if (natural || (h.p.length === 2 && pv === 21)) { if (dNat) { res = 'push'; pay = h.bet; } else { res = 'blackjack'; pay = Math.floor(h.bet * 2.5); } }
     else { while (bjVal(h.d) < 17) h.d.push(cardOf(R)); const dv = bjVal(h.d); if (dNat) res = 'lose'; else if (dv > 21 || pv > dv) { res = 'win'; pay = h.bet * 2; } else if (pv === dv) { res = 'push'; pay = h.bet; } else res = 'lose'; }
     n.cash += h.bet; // the stake was held aside during the hand; settle it as a normal bet
-    const net = casinoSettle(W, u, 'bj', h.bet, pay, `${pv} vs ${bjVal(h.d)}`), dv = bjVal(h.d);
+    const net = casinoSettle(W, u, 'bj', h.bet, pay, `${pv} vs ${bjVal(h.d)}`, h.nz), dv = bjVal(h.d);
     const msg = res === 'blackjack' ? `Blackjack! You win ${moneyS(net)}.` : res === 'win' ? `You win ${moneyS(net)} (${pv} vs ${dv > 21 ? 'dealer bust' : dv}).` : res === 'push' ? `Push: ${pv} each. Your bet is returned.` : res === 'bust' ? `Bust with ${pv}. You lose ${moneyS(h.bet)}.` : `Dealer has ${dv}. You lose ${moneyS(h.bet)}.`;
     return { msg, casino: { g: 'bj', bj: { ...h, done: 1 }, pv, dv, res, net } };
   }
@@ -1643,7 +1646,7 @@ function Core(PD, CARDS) {
     if (n.chain && W.now >= n.chain.at && n.cards.length < 4) { n.cards.push({ id: rid(), i: 'ch:' + n.chain.k }); delete n.chain; changed = true; }
     if (k > 0 && n.conq) for (let i = 0; i < Math.min(k, 12); i++) if (rebels(W, u, rng)) changed = true;
     if (k > 0 && active) for (let i = 0; i < Math.min(k, 12); i++) if (neglect(W, u, rng)) changed = true;
-    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { if (overTick(W, u, rng)) changed = true; if (farLands(W, u, rng)) changed = true; if (tributeTick(W, u)) changed = true; if (active && rushTick(W, u, rng)) changed = true; } if (outpostTidy(W, u)) changed = true;
+    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { if (overTick(W, u, rng)) changed = true; if (farLands(W, u, rng)) changed = true; if (tributeTick(W, u)) changed = true; if (active && rushTick(W, u, rng)) changed = true; } if (outpostTidy(W, u)) changed = true; if (k > 0 && comebackTick(W, u)) changed = true;
     if (!n.ai && n.stability < REBEL.st && hexesOf(W, u).length >= REBEL.minProv && W.now - (n.rebWarn || 0) > 12 * HOUR) { n.rebWarn = W.now; note(W, u, 'attack', `⚠ Unrest is spreading: with stability below ${REBEL.st}, outlying provinces may declare independence. Raise stability (Address the Nation, budget, laws) and keep troops in your provinces.`); changed = true; }
     while (W.now >= n.nextCard) { if (n.cards.length < 3 && active) addCard(W, u, rng); n.nextCard += 40 * MIN; changed = true; }
     if (n.gov === 'dem' && n.nextElection && W.now >= n.nextElection) { election(W, u, rng); changed = true; }
@@ -1811,6 +1814,7 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); h = Math.floor(Number(h)); if (!P[h] || owner(W, h) !== u) fail('That province is not yours.');
     if (h == n.cap) fail('You cannot release your capital.'); if (hexesOf(W, u).length <= 1) fail('You cannot release your last province.');
     delete n.hexes[h]; if (n.conq) delete n.conq[h]; if (n.dev) delete n.dev[h]; W.OWN = computeOwn(W.A); // no waiting between releases
+    if (n.lh) n.lh = n.lh.map(x => [x[0], Math.max(0, x[1] - 1)]); // a released province never counts as land lost
     log(n, `You released ${pname(h)}. It is now free land anyone can settle.`, W); // no stability or approval penalty
     news(W, u, `🗺 ${n.name} gave up ${pname(h)}. The province is now free land.`); touch(W, u);
     return { msg: `${pname(h)} released. It is now free land.` };
@@ -2065,6 +2069,8 @@ function Core(PD, CARDS) {
     n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.office = (n.office || 0) + 1; n.cd.office = W.now + O.cdH * HOUR; gainXP(W, u, 20);
     log(n, `Administrative offices expanded to level ${n.office}: administration capacity +${O.cap}.`, W); touch(W, u); return { msg: `Administrative offices level ${n.office}: +${O.cap} administration capacity (now ${adminCap(n)}).` };
   }
+  // season counters: battles won and relief sent while a season is running
+  const seasonBump = (W, n, k, v = 1) => { const id = W.cfg && W.cfg.season; if (!id || !n) return; if (!n.ss || n.ss.id !== id) n.ss = { id, wins: 0, relief: 0 }; n.ss[k] = (n.ss[k] || 0) + v; };
   // vassals
   const vassalsOf = (W, u) => Object.keys(W.A).filter(k => W.A[k].overlord === u);
   function endWar(W, a, b) { const t = W.now + 1; setRel(W.A[a], b, 'peace', t); setRel(W.A[b], a, 'peace', t); }
@@ -2078,6 +2084,22 @@ function Core(PD, CARDS) {
   }
   function freeVassal(W, u, v) { const n = W.A[v]; if (!n || n.overlord !== u) fail('That nation is not your vassal.'); delete n.overlord; delete n.vassalT; log(n, `${W.A[u].name} has released you from vassalage. You are free.`, W); note(W, v, 'diplo', `${W.A[u].name} released you. You are no longer a vassal.`); news(W, u, `${W.A[u].name} released ${n.name} from vassalage.`); touch(W, u, v); return { msg: `${n.name} is free.` }; }
   // tribute: half a tax collection and 10% of production every tick
+
+  // COMEBACK SUPPORT: a player who loses more than half their land within a day (not by releasing it) gets help to rebuild
+  const COMEBACK = { min: 6, frac: .5, gapH: 72, shieldH: 24, cash: 5e7, perProv: 1.5e7, cashMax: 1e9, troopsF: .3 };
+  const shieldOn = (W, n) => !!(n && n.shield && n.shield > W.now);
+  const dropShield = n => { if (n && n.shield) delete n.shield; };
+  function comebackTick(W, u) {
+    const n = W.A[u]; if (!n || n.ai) return false; const cnt = hexesOf(W, u).length; let lh = (n.lh || []).filter(x => W.now - x[0] <= 25 * HOUR);
+    if (!lh.length || W.now - lh[lh.length - 1][0] >= HOUR) lh.push([W.now, cnt]); n.lh = lh;
+    const peak = Math.max(...lh.filter(x => W.now - x[0] <= 24 * HOUR).map(x => x[1]), cnt);
+    if (peak < COMEBACK.min || cnt > peak * COMEBACK.frac || W.now - ((n.cbk && n.cbk.t) || 0) < COMEBACK.gapH * HOUR) return false;
+    const lost = peak - cnt, cash = Math.min(COMEBACK.cashMax, COMEBACK.cash + lost * COMEBACK.perProv), room = Math.max(0, troopCap(n) - (n.troops || 0)), tr = Math.min(room, Math.round(troopCap(n) * COMEBACK.troopsF));
+    n.cash += cash; n.troops = (n.troops || 0) + tr; n.stability = clamp((n.stability || 0) + 15, 0, 100); n.approval = clamp((n.approval || 0) + 10, 0, 100); n.shield = W.now + COMEBACK.shieldH * HOUR;
+    n.cbk = { t: W.now, cash, troops: tr, lost, until: n.shield }; n.lh = [[W.now, cnt]];
+    note(W, u, 'war', `🛡 Comeback support: you lost ${lost} provinces in a day, so allies sent ${moneyS(cash)} and ${num(tr)} troops, and the world placed you under protection for ${COMEBACK.shieldH} hours. Attacking anyone ends the protection early.`);
+    log(n, `Comeback support arrived: ${money(cash)}, ${num(tr)} troops, +15 stability, +10 approval, and ${COMEBACK.shieldH} hours of protection.`, W); news(W, u, `🛡 ${n.name} is rebuilding under international protection.`); touch(W, u); return true;
+  }
   // Rapid redeployment: now and then a stroke of luck clears a player's attack timers
   const RUSH = { p: .016, gapH: 12, maxHv: 12, why: [
     ['🎖', 'A defecting enemy general', 'handed your staff their entire supply schedule. Every unit is rearmed and ready to strike again.'],
@@ -2165,7 +2187,7 @@ function Core(PD, CARDS) {
     if (d.u === u) fail('You cannot send relief to yourself.'); const v = W.A[d.u]; if (!v) fail('That nation no longer exists.'); if (atWar(W, u, d.u)) fail(`You are at war with ${v.name}.`);
     const a = Math.floor(Number(amt)); if (!(a >= DISASTER.minGive)) fail(`Send at least ${money(DISASTER.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
     const before = d.aid[u] || 0, pr0 = Math.min(3, Math.floor(before / d.need * 8) / 2), pr1 = Math.min(3, Math.floor((before + a) / d.need * 8) / 2);
-    n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
+    n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; seasonBump(W, n, 'relief', a); if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
     // every 20% of the appeal you fund lowers your aggression by 1 (up to −5 for funding all of it)
     const ag0 = Math.min(5, Math.floor(before / d.need * 5 + 1e-9)), ag1 = Math.min(5, Math.floor((before + a) / d.need * 5 + 1e-9)), agD = ag1 - ag0; if (agD > 0) n.aggr = Math.max(0, (n.aggr || 0) - agD);
     if (!before) n.approval = clamp(n.approval + 1, 0, 100); gainXP(W, u, Math.min(30, 3 + Math.round(a / 1e7)));
@@ -2298,7 +2320,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { ADMIN, VASSAL, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

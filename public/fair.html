@@ -29,6 +29,19 @@ details summary{cursor:pointer;color:#8b98a5;font-size:14px}ul{padding-left:20px
 <h1>Fair play record</h1>
 <p class="mu">Proof of what's running and a public record of every admin action that touched the game. This page updates live and anyone can see it, signed in or not.</p>
 <div id="app"><p class="mu">Loading…</p></div>
+<h2 id="casino">Casino fairness: check any bet</h2>
+<div class="card">
+<p style="margin-top:0">The World Casino is <b>provably fair</b>. Before you bet, the casino page shows a fingerprint (a SHA-256 hash) of a secret <b>server seed</b>. Every card, spin and roll comes from that secret plus your own <b>client seed</b> and the <b>bet number</b>, so the result is fixed before you choose your bet and nobody can change it afterwards. When you reveal a seed (World Casino page → Provably fair), check that its fingerprint matches the one you saw, then put it here to recompute any of your bets.</p>
+<p class="mu" style="font-size:14px">Method: number <i>k</i> of a bet is the 4-byte chunk <i>k</i> mod 8 of HMAC-SHA256(server seed, "client seed:bet number:<i>k</i> div 8"), divided by 2<sup>32</sup>. Roulette uses ⌊n·37⌋; dice use 1+⌊n·6⌋ for each die; slots pick symbols by weight (cherry 34, bar 26, bell 18, star 12, diamond 7, seven 3 out of 100); blackjack cards use two numbers each, rank 1+⌊n·13⌋ then suit ⌊n·4⌋.</p>
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+<label class="kv"><span>Server seed (revealed)</span><input id="vf_seed" style="width:100%;box-sizing:border-box;background:#06090d;border:1px solid #2a3746;color:#e6edf3;border-radius:6px;padding:6px 8px;font:13px ui-monospace,Menlo,monospace" autocomplete="off"></label>
+<label class="kv"><span>Client seed</span><input id="vf_client" style="width:100%;box-sizing:border-box;background:#06090d;border:1px solid #2a3746;color:#e6edf3;border-radius:6px;padding:6px 8px;font:13px ui-monospace,Menlo,monospace" autocomplete="off"></label>
+<label class="kv"><span>Bet number</span><input id="vf_nonce" type="number" min="0" style="width:100%;box-sizing:border-box;background:#06090d;border:1px solid #2a3746;color:#e6edf3;border-radius:6px;padding:6px 8px;font:14px Inter,sans-serif"></label>
+<label class="kv"><span>Game</span><select id="vf_game" style="width:100%;background:#06090d;border:1px solid #2a3746;color:#e6edf3;border-radius:6px;padding:6px 8px"><option value="roulette">Roulette</option><option value="dice">Dice</option><option value="slots">Slots</option><option value="bj">Blackjack</option></select></label>
+</div>
+<p><button id="vf_go" class="play" style="border:0;cursor:pointer">Check this bet</button></p>
+<div id="vf_out"></div>
+</div>
 
 <h2>What this page proves — and what it can't</h2>
 <div class="card"><ul>
@@ -90,5 +103,20 @@ function render(){if(!D)return;const changed=Object.keys(D.settings).filter(k=>D
 document.addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(b){filter=b.dataset.f;render()}if(e.target.closest('[data-fin]')){finAll=!finAll;render()}});
 async function load(){try{D=await (await fetch('/api/fairplay',{cache:'no-store'})).json();render()}catch(e){document.getElementById('app').innerHTML='<p class="mu">Could not load the record. Try refreshing.</p>'}}
 load();setInterval(load,60000);
+
+// ---- casino verifier (mirrors the server exactly) ----
+(()=>{const $v=id=>document.getElementById(id),enc=new TextEncoder(),hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const REDS=[1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36],SYM=['Cherry','Bar','Bell','Star','Diamond','Seven'],W=[34,26,18,12,7,3],SU='♠♥♦♣';
+ async function stream(seed,client,nonce,count){const key=await crypto.subtle.importKey('raw',enc.encode(seed),{name:'HMAC',hash:'SHA-256'},false,['sign']);const out=[];for(let i=0;out.length<count;i++){const h=new DataView(await crypto.subtle.sign('HMAC',key,enc.encode(`${client}:${nonce}:${i}`)));for(let k=0;k<32;k+=4)out.push(h.getUint32(k)/4294967296)}return out}
+ async function run(){const seed=$v('vf_seed').value.trim(),client=$v('vf_client').value.trim(),nonce=$v('vf_nonce').value.trim(),g=$v('vf_game').value,o=$v('vf_out');if(!seed||!client||nonce===''){o.innerHTML='<p class="mu">Fill in the server seed, client seed and bet number.</p>';return}
+  const fp=hex(await crypto.subtle.digest('SHA-256',enc.encode(seed))),n=await stream(seed,client,nonce,24);let res='';
+  if(g==='roulette'){const x=Math.floor(n[0]*37);res=`The ball lands on <b>${x} ${x===0?'green':REDS.includes(x)?'red':'black'}</b>.`}
+  else if(g==='dice'){const a=1+Math.floor(n[0]*6),b=1+Math.floor(n[1]*6);res=`Dice: <b>${a} + ${b} = ${a+b}</b>.`}
+  else if(g==='slots'){const r=[0,1,2].map(i=>{let v=n[i]*100;for(let k=0;k<6;k++){v-=W[k];if(v<0)return SYM[k]}return SYM[0]});res=`Reels: <b>${r.join(' · ')}</b>.`}
+  else{const cs=[];for(let i=0;i<10;i++){const v=1+Math.floor(n[i*2]*13),s=SU[Math.floor(n[i*2+1]*4)];cs.push(({1:'A',11:'J',12:'Q',13:'K'})[v]||v)+s}
+   res=`Cards drawn in this move, in order: <b>${cs.join('  ')}</b>.<br><span class="mu" style="font-size:14px">On a deal, the first two are yours and the third is the dealer's face-up card. On a hit or double, the first is your new card. When the hand ends in that move, the next cards are the dealer's hidden card and any cards the dealer draws.</span>`}
+  o.innerHTML=`<div class="card" style="background:#0d1a12;border-color:#245a35;margin:0"><div style="font-size:17px">${res}</div><div class="mu" style="font-size:13px;margin-top:8px">Fingerprint of this server seed: <span class="fp">${fp}</span><br>It must match the fingerprint the casino showed before you placed the bet.</div></div>`}
+ $v('vf_go').onclick=()=>run().catch(e=>{$v('vf_out').innerHTML='<p class="mu">Could not check: '+String(e.message||e)+'</p>'});
+ const q=new URLSearchParams(location.search);if(q.get('seed')){$v('vf_seed').value=q.get('seed');$v('vf_client').value=q.get('client')||'';$v('vf_nonce').value=q.get('nonce')||'';if(q.get('game'))$v('vf_game').value=q.get('game');run();setTimeout(()=>{const c=$v('casino');c&&c.scrollIntoView()},300)}})();
 </script>
 </body></html>
