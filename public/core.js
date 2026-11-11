@@ -33,7 +33,7 @@ const ACTS = [
   { k: 'campaign', s: 'Campaign', n: 'Election Campaign', i: 'vote', cd: 30, xp: 5, dem: true },
   { k: 'daily', s: 'Aid', n: 'International Aid', i: 'gift', cd: 1440, xp: 50 }
 ];
-const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, councilAuto: true, nukeTest: false, aiBoss: true, donateUrl: 'https://paypal.me/striphesstockgame' };
+const DEFCFG = { cd: 1, income: 1, xp: 1, protectH: 48, war: true, signups: true, motd: '', bots: 12, botWar: 'yes', botRetire: true, electionH: 72, eventsOn: true, conquest: true, lastStandH: 24, weakRule: false, councilAuto: false, nukeTest: false, aiBoss: true, donateUrl: 'https://paypal.me/striphesstockgame' };
 // Chain events: a crisis that unfolds over several decisions. An option's third element names the next step.
 const CHAINS = {
   strike1: { t: 'General strike', d: 'The national federation of unions has called a general strike over wages and rising prices. Ports and factories are shutting down.', o: [['Open wage negotiations', { tr: -1, ap: 3 }, 'strike2a'], ['Declare the strike illegal', { st: -4, ap: -6 }, 'strike2b'], ['Wait it out', { gdp: -1, ap: -2 }, 'strike2c']] },

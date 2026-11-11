@@ -37,6 +37,7 @@ fs.mkdirSync(BACKUP_DIR, { recursive: true });
 let S = { users: {}, sessions: {}, docs: {}, meta: {}, flags: [], audit: [], config: { ...WP.DEFCFG } };
 try { S = { ...S, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) }; } catch (e) { if (e.code !== 'ENOENT') { console.error('Could not read', FILE, e.message); process.exit(1); } }
 S.config = { ...WP.DEFCFG, ...(S.config || {}) };
+if (!S.councilAutoOffV1) { S.config.councilAuto = false; S.councilAutoOffV1 = 1; } // automatic World Council resolutions are off; only players propose
 // one-time 24-hour pause on overstretch penalties, starting when this update first boots
 if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1; }
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
@@ -265,7 +266,8 @@ function sendNation(id) {
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
 const playerVotes = v => Object.fromEntries(Object.entries(v || {}).filter(([u]) => !BOTS.isBot(u)));
-const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => ({ ...p, votes: playerVotes(p.votes) })), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
+const anonVotes = p => { const v = { ...(p.votes || {}) }; if (v[p.by] != null) { v['anon:' + p.id] = v[p.by]; delete v[p.by]; } return v; }; // the secret proposer's vote still counts, without their name
+const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => (p.anon ? { ...p, by: null, votes: playerVotes(anonVotes(p)) } : { ...p, votes: playerVotes(p.votes) })), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
 // alliances: everyone sees names, flags, members, projects and treasuries; only members read their own message board
 function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [] }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
@@ -552,13 +554,14 @@ function councilPropose(uid, b) {
     if (MOD.isProfane(text)) throw Object.assign(new Error('Please reword your resolution.'), { status: 400 });
     hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
   }
-  if (!plea) { if (n.cash < 1e5) throw Object.assign(new Error('Submitting a resolution costs $100,000.'), { status: 400 }); n.cash -= 1e5; W.changed.add(uid); commit(W); }
+  if (!plea) { const cost = b.anon ? 1e7 : 1e6; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' };
+  if (b.anon && !plea) p.anon = true; // proposer stays secret: never sent to players (kept only in the saved game data)
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
   if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
   S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); broadcast('council', councilView());
-  const txt = plea ? `${n.name} petitions the World Council to lift its sanctions and welcome it back. Vote now.` : `${n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
+  const txt = plea ? `${n.name} petitions the World Council to lift its sanctions and welcome it back. Vote now.` : `${p.anon ? 'An anonymous nation' : n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
   systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ` Voting closes in ${COUNCIL_H} hours.`);
   return p;
 }
@@ -640,7 +643,7 @@ function enactResolution(W, p, tn, until) {
       for (const u of members) if (S.users[u]) addNote(u, 'council', `You are a member of the Collective Defense Pact (${PACT_SCOPE[p.scope]}) for 72 hours. If anyone attacks a member, you will automatically be at war with them.`);
       return `Members: ${members.map(u => W.A[u].name).join(', ')}.`;
     }
-    case 'custom': (S.council.decl = S.council.decl || []).push({ id: p.id, text: p.text, by: p.by, yes: Object.keys(p.votes).filter(u => p.votes[u] === 'y'), until, t: now }); return 'It is now in force.';
+    case 'custom': (S.council.decl = S.council.decl || []).push({ id: p.id, text: p.text, by: p.anon ? null : p.by, anon: !!p.anon, yes: Object.keys(p.votes).filter(u => p.votes[u] === 'y' && !(p.anon && u === p.by)), until, t: now }); return 'It is now in force.';
     default: S.council.active[p.type] = until; return '';
   }
 }
