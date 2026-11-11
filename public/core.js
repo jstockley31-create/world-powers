@@ -1468,10 +1468,10 @@ function Core(PD, CARDS) {
   function dropOutpost(W, u, h) { const n = W.A[u]; if (!n || !n.outposts || !n.outposts[h]) fail('There is no outpost there.'); const o = { ...n.outposts }; delete o[h]; n.outposts = o; log(n, `Outpost at ${pname(h)} dismantled.`, W); touch(W, u); return { msg: `Outpost at ${pname(h)} dismantled. The province stays yours.` }; }
   function outpostTidy(W, u) { const n = W.A[u]; if (!n || !n.outposts) return false; let ch = false; const o = { ...n.outposts }; for (const h of Object.keys(o)) if (owner(W, +h) !== u) { delete o[h]; ch = true; log(n, `Your outpost at ${pname(+h)} was lost.`, W); } if (ch) { n.outposts = o; touch(W, u); } return ch; }
   // ---------- WORLD CASINO: games of chance with the nation's treasury (all randomness on the server) ----------
-  const CASINO = { min: 1e4, maxAbs: 250e6, perMin: 30,
+  const CASINO = { min: 1e4, maxAbs: 1e9, perMin: 30,
     slots: { sym: ['cherry', 'bar', 'bell', 'star', 'diamond', 'seven'], name: ['Cherry', 'Bar', 'Bell', 'Star', 'Diamond', 'Seven'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { cherry: 1.5 } },
     dice: { hl: 2.25, seven: 5.6 }, reds: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36] };
-  const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.floor(Math.max(0, n.cash || 0)))); // one table limit for every game: $250M, or what you have
+  const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.floor(Math.max(0, n.cash || 0)))); // one table limit for every game: $1B, or what you have
   const cardOf = r => { const v = 1 + Math.floor(r() * 13), s = '♠♥♦♣'[Math.floor(r() * 4)]; return { v, s }; }; // an endless shoe: no deck to count, nothing hidden to peek at
   const bjVal = cs => { let t = 0, a = 0; for (const c of cs) { const x = c.v > 10 ? 10 : c.v; t += x; if (x === 1) a++; } while (a > 0 && t + 10 <= 21) { t += 10; a--; } return t; };
   function casinoBet(W, n, bet) {

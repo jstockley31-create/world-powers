@@ -1125,7 +1125,7 @@ async function adminRoute(p, req, res, me) {
   }
   if (p === '/api/admin/casino' && req.method === 'GET') { // Admin page → Casino
     const W = mkWorld(), players = Object.entries(W.A).filter(([u, n]) => n.casino && n.casino.played).map(([u, n]) => ({ name: n.name, leader: (S.users[u] || {}).name || '', ai: !!n.ai, played: n.casino.played, wagered: n.casino.wagered, net: n.casino.net, best: n.casino.best || 0, cash: Math.round(n.cash || 0) }));
-    return send(res, 200, { ...S.casino, players, limits: { min: WP.CASINO ? WP.CASINO.min : 1e4, max: 250e6 } });
+    return send(res, 200, { ...S.casino, players, limits: { min: WP.CASINO ? WP.CASINO.min : 1e4, max: WP.CASINO ? WP.CASINO.maxAbs : 1e9 } });
   }
   if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
     const b = await readBody(req, 16384), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();

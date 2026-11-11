@@ -2516,7 +2516,7 @@ function czFair(){czfLoad();const F=CZF;if(!F)return'';
   ${(F.prev||[]).length?`<details style="margin-top:12px"${F.prev.length?' open':''}><summary class="mu" style="cursor:pointer">Revealed seeds (${F.prev.length})</summary><div class="czfprev">${F.prev.map(x=>`<div><div class="czmono" style="word-break:break-all"><span class="mu">Seed</span> ${esc(x.seed)}</div><div class="czmono mu" style="word-break:break-all">Fingerprint ${esc(x.hash)}</div><div class="mu">Client seed ${esc(x.client)} · bets #${x.from}${x.to>x.from?`–#${x.to}`:''}${x.to<x.from?' (no bets)':''} · <a href="/fair?seed=${encodeURIComponent(x.seed)}&client=${encodeURIComponent(x.client)}&nonce=${x.from}#casino" target="_blank" rel="noopener">check bets</a></div></div>`).join('')}</div></details>`:''}</div>`}
 function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,best:0,hist:[],wagered:0};csBet=Math.max(C.CASINO.min,Math.min(csBet,mx));
  const tabs=CSG.map(([k,t])=>`<button class="${csGame===k?'on':''}" data-act="csgame" data-a="${k}">${t}</button>`).join('');
- const CH=[[1e4,'10K','c1'],[1e5,'100K','c2'],[1e6,'1M','c3'],[1e7,'10M','c4'],[1e8,'100M','c5'],[25e7,'250M','c6']];
+ const CH=[[1e4,'10K','c1'],[1e5,'100K','c2'],[1e6,'1M','c3'],[1e7,'10M','c4'],[1e8,'100M','c5'],[1e9,'1B','c6']];
  const chips=CH.map(([v,l,c])=>`<button class="czchip ${c}${csBet===v?' on':''}" data-act="csbet" data-a="${v}" ${v>mx?'disabled':''} aria-label="Bet ${l}"><span>${l}</span></button>`).join('');
  const inHand=!!n.bj,L=csLast[csGame],busy=csBusy||!!csAnim;let game='';
  const res=(cls,txt)=>`<div class="czres ${cls}">${txt}</div>`;
