@@ -314,6 +314,7 @@ function effCfg() {
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
+  c.noAdmin = !!S.fresh; // no province limit inside a fresh-start season world
   { const se = S.seasons && S.seasons.cur; c.fresh = S.fresh && se && se.fresh ? { name: se.name, end: se.end || 0, n: se.n } : S.fresh ? { name: 'Season', end: 0 } : null; }
   c.countdown = S.countdown && S.countdown.at + 2 * HOUR > now ? { id: S.countdown.id, text: S.countdown.text, at: S.countdown.at } : null;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
