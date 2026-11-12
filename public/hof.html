@@ -3,6 +3,7 @@
 <meta name="description" content="The World Powers Hall of Fame: every season's champions, recorded permanently.">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
 <style>
+.bigflag svg{width:72px;height:48px;display:block;border-radius:3px;box-shadow:0 4px 14px #0008}.podium{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 12px}.pd{display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:12px;border-radius:12px;border:1px solid #2a3746;background:#0c1218}.pd.p2{border-color:rgba(200,210,222,.4)}.pd.p3{border-color:rgba(176,122,74,.45)}.pd .md{font-size:22px}.pd svg{width:48px;height:32px;border-radius:2px}.pd b{font-size:15px}.pd small{color:#8b98a5;font-size:12.5px}table svg.flag,.aw svg.flag{width:24px;height:16px;vertical-align:middle;border-radius:2px}.aw{display:flex;flex-wrap:wrap;gap:8px 16px}.aw span{display:inline-flex;align-items:center;gap:6px}
 body{margin:0;background:#06090d;color:#e6edf3;font:16px/1.6 Inter,system-ui,sans-serif}
 .w{max-width:900px;margin:0 auto;padding:34px 20px 90px}a{color:#d4a64a}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
@@ -32,7 +33,9 @@ table{border-collapse:collapse;width:100%;font-size:14.5px}td{border-bottom:1px 
 <p class="lede">Every season ends with a champion. Their names are written here permanently: once a season is recorded, nobody can change or remove it, not even the game's administrators.</p>
 <div id="live"></div><div id="list"><p class="mu">Loading…</p></div>
 </div>
+<script src="/core.js"></script>
 <script>
+const FL=x=>x&&x.flag&&window.WPCore?WPCore.flagSVG(x.flag,30,20):`<span class="sw" style="background:${esc(x&&x.color||'#555')}"></span>`;
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 const d=t=>new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
 const crown='<svg class="crown" viewBox="0 0 48 48" aria-hidden="true"><path d="M6 36 4 14l11 9 9-15 9 15 11-9-2 22z" fill="#c9a24a" stroke="#8a6a24" stroke-width="1.5" stroke-linejoin="round"/><rect x="6" y="37" width="36" height="5" rx="1.5" fill="#a8842f"/><circle cx="24" cy="8" r="3" fill="#e9d29a"/><circle cx="4" cy="14" r="2.5" fill="#e9d29a"/><circle cx="44" cy="14" r="2.5" fill="#e9d29a"/></svg>';
@@ -40,9 +43,9 @@ fetch('/api/public/hof').then(r=>r.json()).then(j=>{
  const c=j.cur;if(c){const left=c.end?Math.max(0,c.end-Date.now()):0;document.getElementById('live').innerHTML=`<div class="live"><h2>${esc(c.name)} ${c.status==='live'?'is underway':'starts soon'}</h2><div class="mu">${c.status==='live'?`Ranked by ${esc(c.metricName.toLowerCase())}${c.end?` · ends ${d(c.end)} (${Math.floor(left/864e5)}d ${Math.floor(left%864e5/36e5)}h left)`:''}`:`Starts ${d(c.start)}`}</div>${c.top&&c.top.length?`<table style="margin-top:10px">${c.top.map(x=>`<tr><td class="n">${x.r}</td><td><span class="sw" style="background:${esc(x.color)}"></span>${esc(x.name)} <span class="mu">${esc(x.leader)}</span></td><td class="r">${esc(x.f)}</td></tr>`).join('')}</table>`:''}</div>`}
  const L=(j.hof||[]).slice().reverse();
  document.getElementById('list').innerHTML=L.length?L.map(s=>`<section class="season"><div class="no">Season ${s.season}</div><h2>${esc(s.name)}</h2><div class="when">${d(s.start)} – ${d(s.end)} · ranked by ${esc(s.metricName.toLowerCase())} · ${s.players} nation${s.players===1?'':'s'} took part</div>
-  ${s.champion?`<div class="champ">${crown}<div><b><span class="sw" style="background:${esc(s.champion.color)}"></span>${esc(s.champion.name)}</b><small>Champion${s.champion.leader?`, led by ${esc(s.champion.leader)}`:''} · ${esc(s.champion.shown)}</small></div></div>`:'<p class="mu">No nation qualified.</p>'}
-  ${s.top.length>1?`<table>${s.top.slice(1).map(x=>`<tr><td class="n">${x.r}</td><td><span class="sw" style="background:${esc(x.color)}"></span>${esc(x.name)} <span class="mu">${esc(x.leader)}</span></td><td class="r">${esc(x.shown)}</td></tr>`).join('')}</table>`:''}
-  ${s.awards&&s.awards.length?`<div class="aw">${s.awards.map(a=>`<span><b>${esc(a.award)}</b> · ${esc(a.name)} (${esc(a.shown)})</span>`).join('')}</div>`:''}
+  ${s.champion?`<div class="champ">${crown}<div class="bigflag">${FL(s.champion)}</div><div><b>${esc(s.champion.name)}</b><small>Champion${s.champion.leader?`, led by ${esc(s.champion.leader)}`:''} · ${esc(s.champion.shown)}</small></div></div>`:'<p class="mu">No nation qualified.</p>'}
+  ${s.top.length>1?`<div class="podium">${s.top.slice(1,3).map(x=>`<div class="pd p${x.r}"><span class="md">${x.r===2?'🥈':'🥉'}</span>${FL(x)}<b>${esc(x.name)}</b><small>${esc(x.leader||'')}${x.leader?' · ':''}${esc(x.shown)}</small></div>`).join('')}</div>`:''}${s.top.length>3?`<table>${s.top.slice(3).map(x=>`<tr><td class="n">${x.r}</td><td>${FL(x)} ${esc(x.name)} <span class="mu">${esc(x.leader)}</span></td><td class="r">${esc(x.shown)}</td></tr>`).join('')}</table>`:''}
+  ${s.awards&&s.awards.length?`<div class="aw">${s.awards.map(a=>`<span>🏅 <b>${esc(a.award)}</b> ${FL(a)} ${esc(a.name)} <span class="mu">(${esc(a.shown)})</span></span>`).join('')}</div>`:''}${s.veterans?`<div class="mu" style="font-size:13px;margin-top:8px">🎗 ${s.veterans} nation${s.veterans===1?'':'s'} earned the participation badge</div>`:''}
   <div class="seal">Recorded ${new Date(s.recorded).toUTCString().slice(0,22)} UTC · permanent</div></section>`).join(''):'<div class="empty">No season has finished yet. The first champion will appear here.</div>';
 }).catch(()=>{document.getElementById('list').innerHTML='<p class="mu">The Hall of Fame could not be loaded. Try again in a moment.</p>'});
 </script></body></html>

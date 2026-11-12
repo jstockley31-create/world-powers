@@ -16,6 +16,9 @@ const GOV = {
   dic: { n: 'Dictatorship', ap: -8, st: 6, inc: .95, mil: 1.15, res: .9, d: '+15% military strength; war barely dents approval. Lower approval and income. No elections.' },
   com: { n: 'Communist State', ap: -3, st: 6, inc: 1, mil: 1.05, res: 1, cheap: .75, d: 'Recruiting and construction cost 25% less. Lower approval. No elections.' }
 };
+// map colours only past season champions may use
+const CHAMP_COLORS = ['#ffc93c', '#e3ebf5'], CHAMP_COLOR_NAMES = { '#ffc93c': 'Champion gold', '#e3ebf5': 'Platinum' };
+const isChampion = n => !!n && ((n.badges || []).some(b => b.k === 'champion') || (n.titles || []).some(t => t.r === 1));
 const COLORS = ['#c8553d', '#3f88c5', '#44af69', '#d4a64a', '#8e6fd8', '#e07a9c', '#2ab7a9', '#e88d3f', '#6c8ead', '#b5c44a', '#a23b72', '#5b6ee1', '#d65f5f', '#4f9d8f', '#c69c6d', '#7fb3d5'];
 const ACTS = [
   { k: 'tax', s: 'Taxes', n: 'Collect Taxes', i: 'coins', cd: 3, xp: 5 },
@@ -235,7 +238,7 @@ function flagSVG(f, w, h, ns) {
     flame: () => Pth(`M${fx(x)} ${fx(y - r)} Q${fx(x + r * .2)} ${fx(y - r * .4)} ${fx(x + r * .55)} ${fx(y - r * .15)} Q${fx(x + r * .85)} ${fx(y + r * .3)} ${fx(x + r * .45)} ${fx(y + r * .75)} Q${fx(x)} ${fx(y + r * 1.05)} ${fx(x - r * .45)} ${fx(y + r * .75)} Q${fx(x - r * .85)} ${fx(y + r * .3)} ${fx(x - r * .4)} ${fx(y - r * .25)} Q${fx(x - r * .2)} ${fx(y)} ${fx(x - r * .1)} ${fx(y + r * .1)} Q${fx(x - r * .25)} ${fx(y - r * .6)} ${fx(x)} ${fx(y - r)} Z`, e),
     heart: () => Pth(`M${fx(x)} ${fx(y + r * .85)} C${fx(x - r * 1.3)} ${fx(y)} ${fx(x - r * .7)} ${fx(y - r * 1.05)} ${fx(x)} ${fx(y - r * .35)} C${fx(x + r * .7)} ${fx(y - r * 1.05)} ${fx(x + r * 1.3)} ${fx(y)} ${fx(x)} ${fx(y + r * .85)} Z`, e)
   }[FLAG_EMBLEMS.includes(f.e) ? f.e : 'none'];
-  return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g><rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/></svg>`;
+  return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g>${f.fr ? '<rect x=".9" y=".9" width="28.2" height="18.2" fill="none" stroke="#ffd25e" stroke-width="1.8"/><rect x=".2" y=".2" width="29.6" height="19.6" fill="none" stroke="#7a5612" stroke-width=".45"/><rect x="2" y="2" width="26" height="16" fill="none" stroke="rgba(255,240,190,.55)" stroke-width=".35"/>' : '<rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/>'}</svg>`;
 }
 const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
 const NUKE = { tech: 18, rank: 6, cash: 150e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
@@ -1835,12 +1838,13 @@ function Core(PD, CARDS) {
     const fl = { l, c, e }, int = (v, a, b) => { v = Math.round(+v); return v >= a && v <= b ? v : 0; };
     if (['stripes', 'vstripes', 'starsstripes'].includes(l) && int(f.sn, 3, 15)) fl.sn = int(f.sn, 3, 15);
     if (e !== 'none') { if (['c', 'k', 'h'].includes(f.ep)) fl.ep = f.ep; if (int(f.es, 1, 3)) fl.es = int(f.es, 1, 3); if (FLAG_HEX.test(f.ec)) fl.ec = String(f.ec).toLowerCase(); if (['stars', 'starring'].includes(e) && int(f.en, 1, 15)) fl.en = int(f.en, 1, 15); }
+    if (f.fr && isChampion(n)) fl.fr = 1; // the champion's gold frame
     n.flag = fl; if (motto != null) { const m = String(motto).replace(/\s+/g, ' ').trim().slice(0, 60); n.motto = m; }
     touch(W, u); return { msg: 'Flag and motto saved.' };
   }
   // map colour: change once a day
   function setColor(W, u, col) {
-    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!COLORS.includes(col)) fail('Pick a colour from the list.');
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (CHAMP_COLORS.includes(col)) { if (!isChampion(n)) fail('Only past season champions can use this colour.'); } else if (!COLORS.includes(col)) fail('Pick a colour from the list.');
     if (col === n.color) fail('That is already your map colour.'); n.cd = n.cd || {}; const now = W.now || Date.now();
     if (n.cd.color && now < n.cd.color) fail('You can change your map colour again in ' + Math.ceil((n.cd.color - now) / 36e5) + 'h.');
     n.color = col; n.cd.color = now + 864e5; touch(W, u); return { msg: 'Map colour changed.' };
@@ -2329,5 +2333,5 @@ function Core(PD, CARDS) {
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });
