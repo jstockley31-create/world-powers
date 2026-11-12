@@ -268,6 +268,9 @@ function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) d
 const playerVotes = v => Object.fromEntries(Object.entries(v || {}).filter(([u]) => !BOTS.isBot(u)));
 const anonVotes = p => { const v = { ...(p.votes || {}) }; if (v[p.by] != null) { v['anon:' + p.id] = v[p.by]; delete v[p.by]; } return v; }; // the secret proposer's vote still counts, without their name
 const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, net, ...p }) => (p.anon ? { ...p, by: null, votes: playerVotes(anonVotes(p)) } : { ...p, votes: playerVotes(p.votes) })), active: S.council.active, pacts: (S.council.pacts || []).filter(x => x.until > Date.now()), decl: (S.council.decl || []).filter(x => x.until > Date.now()) });
+// the secret proposer of an anonymous resolution still has to see their own vote: they alone get a copy with their vote under their own name
+const councilViewFor = uid => { const v = councilView(); S.council.props.slice(0, 40).forEach((p, i) => { if (p.anon && p.by === uid && v.props[i]) { const k = 'anon:' + p.id, x = v.props[i]; if (x.votes[k] != null) { x.votes = { ...x.votes, [uid]: x.votes[k] }; delete x.votes[k]; } x.mine = true; } }); return v; };
+function councilCast() { if (!clients.size) return; const own = new Set(S.council.props.slice(0, 40).filter(p => p.anon).map(p => p.by)), pub = `event: council\ndata: ${JSON.stringify(councilView())}\n\n`; for (const c of clients) { if (own.has(c.uid)) write(c, 'council', councilViewFor(c.uid)); else writeRaw(c, pub); } }
 // alliances: everyone sees names, flags, members, projects and treasuries; only members read their own message board
 function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [] }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
@@ -277,7 +280,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilView(), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -486,7 +489,7 @@ function councilDaily(W) {
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
   const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)];
   S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
-  systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); broadcast('council', councilView());
+  systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); councilCast();
 }
 // ---------- world events ----------
 function startEvent(key, W) {
@@ -561,7 +564,7 @@ function councilPropose(uid, b) {
   if (b.anon && !plea) p.anon = true; // proposer stays secret: never sent to players (kept only in the saved game data)
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
   if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
-  S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); broadcast('council', councilView());
+  S.council.props.unshift(p); S.council.props = S.council.props.slice(0, 60); persist(); councilCast();
   const txt = plea ? `${n.name} petitions the World Council to lift its sanctions and welcome it back. Vote now.` : `${p.anon ? 'An anonymous nation' : n.name} proposes to the World Council: ${resLabel(type, target && W.A[target].name, p)}.`;
   systemMessage(txt); for (const u of Object.keys(S.users)) if (u !== uid) addNote(u, 'council', txt + ` Voting closes in ${COUNCIL_H} hours.`);
   return p;
@@ -571,7 +574,7 @@ function councilVote(uid, b) {
   const p = S.council.props.find(x => x.id === b.id && x.status === 'open'); if (!p || Date.now() >= p.end) throw Object.assign(new Error('That vote has closed.'), { status: 400 });
   if (!['y', 'n'].includes(b.vote)) throw Object.assign(new Error('Vote yes or no.'), { status: 400 });
   if (!p.votes[uid]) { const twins = Object.keys(p.votes).filter(o => o !== uid && S.users[o] && sharesNetwork(uid, o)); if (twins.length) { flag(uid, `Voted on the same World Council resolution as ${twins.map(o => S.users[o].name).join(', ')}, from the same network (possible second account)`); (p.net = p.net || []).push(uid); } }
-  p.votes[uid] = b.vote; { const W = mkWorld(); if (decideEarly(W, p)) { councilResolve(W); commit(W); } } persist(); broadcast('council', councilView()); return p;
+  p.votes[uid] = b.vote; { const W = mkWorld(); if (decideEarly(W, p)) { councilResolve(W); commit(W); } } persist(); councilCast(); return p;
 }
 // who could still vote: players active in the last 3 days who have a nation (AI nations don't vote)
 function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of Object.keys(W.A)) { if (p.votes[u] || BOTS.isBot(u)) continue; if (S.users[u] && now - ((S.meta[u] || {}).lastSeen || 0) < 72 * HOUR) n++; } return n; }
@@ -602,7 +605,7 @@ function councilResolve(W) {
   }
   for (const [k, until] of Object.entries(S.council.active)) if (until < now) { delete S.council.active[k]; changed = true; }
   for (const k of ['pacts', 'decl']) if ((S.council[k] || []).some(x => x.until < now)) { S.council[k] = S.council[k].filter(x => x.until >= now); changed = true; }
-  if (changed) { persist(); broadcast('council', councilView()); }
+  if (changed) { persist(); councilCast(); }
 }
 // what a passed resolution actually does. Returns a short note for the announcement.
 function enactResolution(W, p, tn, until) {
@@ -690,7 +693,7 @@ function councilWatch(W) {
       systemMessage('🏛 ' + txt); const hit = new Set(battles.map(e => e.to)), nuclear = /nuclear/.test(why);
       for (const v of Object.keys(S.users)) if (v !== u && (nuclear || hit.has(v))) addNote(v, 'council', txt + ` Voting closes in ${COUNCIL_H} hours.`);
       if (S.users[u]) addNote(u, 'council', R.kind === 'protect' ? `The World Council is voting on "${R.n}" for your nation because it ${why}.` : `The World Council is voting on "${R.n}" against your nation because it ${why}. You have 6 hours to make your case in chat.`);
-      persist(); broadcast('council', councilView());
+      persist(); councilCast();
       if (open().filter(p => p.auto).length >= 3) return;
       break; // at most one new resolution per nation at a time
     }
@@ -1359,7 +1362,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/clear-chat': { for (const k of Object.keys(S.docs)) if (k.startsWith('chat/')) setDoc('chat', k.slice(5), null); audit(me.name, 'Cleared chat'); return send(res, 200, { ok: true }); }
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
-    case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); broadcast('council', councilView()); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
     case '/api/admin/timeline': { if (!u) return send(res, 404, { error: 'Unknown player.' }); return send(res, 200, timeline(b.id)); }
     case '/api/admin/restore-nation': {
       if (!u) return send(res, 404, { error: 'Unknown player.' }); if (b.confirm !== 'RESTORE') return send(res, 400, { error: 'Type RESTORE to confirm.' });
@@ -1375,7 +1378,7 @@ async function adminRoute(p, req, res, me) {
       if (b.confirm !== 'WIPE') return send(res, 400, { error: 'Type WIPE to confirm.' });
       const backup = path.join(BACKUP_DIR, `backup-before-wipe-${Date.now()}.json`); fs.writeFileSync(backup, JSON.stringify(S)); S.burn = {}; S.strikes = [];
       for (const k of Object.keys(S.docs)) { const [c, id] = k.split('/'); if (COLS.includes(c)) setDoc(c, id, null); }
-      S.flags = []; S.council = { props: [], active: {} }; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.event = null; RH = []; rhGz = null; try { fs.unlinkSync(RANK_FILE); } catch (e) {} broadcast('council', councilView()); broadcast('event', null);
+      S.flags = []; S.council = { props: [], active: {} }; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.event = null; RH = []; rhGz = null; try { fs.unlinkSync(RANK_FILE); } catch (e) {} councilCast(); broadcast('event', null);
       systemMessage('A new era begins: the world has been reset. Found your nation again!');
       audit(me.name, 'Wiped the world', null, 'Backup saved as ' + path.basename(backup)); return send(res, 200, { ok: true });
     }
