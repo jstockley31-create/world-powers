@@ -935,7 +935,8 @@ const getRef=()=>{try{return localStorage.getItem('wp_ref')||''}catch(e){return'
 const st={me:null,users:{},cols:{nations:{},chat:{},online:{}},ready:false,subs:[]};
 let resolveAuth;const authed=new Promise(r=>resolveAuth=r);
 function snap(col){const m=st.cols[col]||{};const docs=Object.keys(m).map(id=>({id,exists:true,data:()=>m[id],metadata:{fromCache:false,hasPendingWrites:false}}));return{docs,size:docs.length,empty:!docs.length,metadata:{fromCache:false,hasPendingWrites:false},docChanges:()=>[]}}
-const fireT={};function fire(col){clearTimeout(fireT[col]);fireT[col]=setTimeout(()=>{const s=snap(col);for(const x of st.subs.slice())if(x.col===col){try{x.cb(s)}catch(e){console.error(e)}}},50)}
+// updates are batched (50 ms after the last one), but never held back longer than 150 ms, so a busy world can't keep delaying your own screen
+const fireT={},fireFirst={};function fire(col){const run=()=>{clearTimeout(fireT[col]);fireT[col]=0;fireFirst[col]=0;const s=snap(col);for(const x of st.subs.slice())if(x.col===col){try{x.cb(s)}catch(e){console.error(e)}}};const now=Date.now();if(!fireFirst[col])fireFirst[col]=now;clearTimeout(fireT[col]);fireT[col]=setTimeout(run,now-fireFirst[col]>=100?0:50)}
 function mkErr(status,msg){const code=status===401?'revoked':status===429?'unavailable':(status>=400&&status<500)?'invalid_argument':'unavailable';return Object.assign(new Error(msg),{code,status})}
 async function api(method,url,body){if(st.me&&st.me.viewAs&&method!=='GET')throw mkErr(403,'Read-only view: you are viewing the game as '+st.me.name+'.');let r;try{r=await fetch(url,{method,credentials:'same-origin',headers:body!==undefined?{'Content-Type':'application/json'}:{},body:body!==undefined?JSON.stringify(body):undefined})}catch(e){throw mkErr(0,'Network error — check your connection.')}let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw mkErr(r.status,j.error||('Error '+r.status));return j}
 const db={
@@ -1074,7 +1075,7 @@ let found_={hex:null,color:null,gov:'dem',name:''};
 const X=()=>WP.extra||{};
 // BrowserMMORPG vote link: carries the player id so its vote reward (incentive callback) can find the voter
 const voteUrl=()=>'https://browsermmorpg.com/vote.php?id=1957'+(uid?'&amp;userid='+encodeURIComponent(uid):'');
-function refreshW(){A={};for(const[k,v]of Object.entries(N))if(v&&v.cap!=null)A[k]=C.normalize(JSON.parse(JSON.stringify(v)));me=uid&&A[uid]?A[uid]:null;W=C.world(A,CFG,Date.now(),X().event,X().council,X().blocs||{},X().crisis||null,{games:X().games||null,dis:X().dis||[]})}
+function refreshW(){A={};for(const[k,v]of Object.entries(N))if(v&&v.cap!=null)A[k]=C.normalize(JSON.parse(JSON.stringify(v)));me=uid&&A[uid]?A[uid]:null;if(me&&decPend.size)me.cards=(me.cards||[]).filter(c=>!decPend.has(c.id));W=C.world(A,CFG,Date.now(),X().event,X().council,X().blocs||{},X().crisis||null,{games:X().games||null,dis:X().dis||[]})}
 const owner=h=>C.owner(W,h),hexesOf=u=>C.hexesOf(W,u),myHexes=()=>hexesOf(uid);
 const rankOf=C.rankOf,rankName=C.rankName,maxHex=C.maxHex;
 const R=(a,b)=>C.R(W,a,b),atWar=(a,b)=>C.atWar(W,a,b),warSince=(a,b)=>C.warSince(W,a,b),pact=(a,b,k)=>C.pact(W,a,b,k),offered=(a,b,k)=>C.offered(W,a,b,k);
@@ -1221,7 +1222,7 @@ $('more').addEventListener('click',e=>{if(e.target.id==='more')toggleMore(false)
 MQ.addEventListener('change',()=>{renderSide();if(loaded)render()});
 // ================= server commands =================
 let lastBtn=null;
-async function cmd(body,okMsg,url='/api/cmd'){if(busy)return null;busy=true;const btn=lastBtn;if(btn&&btn.classList.contains('btn'))btn.classList.add('loading');document.body.style.cursor='progress';
+async function cmd(body,okMsg,url='/api/cmd'){if(busy){toast('One moment…');return null}busy=true;const btn=lastBtn;if(btn&&btn.classList.contains('btn'))btn.classList.add('loading');document.body.style.cursor='progress';
  try{const r=await WP.api('POST',url,body);if(r&&r.me&&WP.applyOwn)WP.applyOwn(r.me);else if(WP.expect)WP.expect();if(r.msg&&okMsg!==false)toast(r.msg);SND.play(body.c==='act'&&body.k==='tax'?'coin':'ok');if(r.promoted)setTimeout(()=>promo(r.promoted),700);if(r.selHex!=null)selHex=r.selHex;return r}
  catch(e){toast(e.message||'Something went wrong.');SND.play('err');return null}
  finally{busy=false;document.body.style.cursor='';if(btn)btn.classList.remove('loading')}}
@@ -1236,7 +1237,12 @@ async function runAllOps(){if(runningAll||busy)return;const list=readyOps();if(!
  runningAll=false;if(WP.expect)WP.expect();SND.play(done.length?'coin':'err');if(promoted)setTimeout(()=>promo(promoted),700);
  toast(done.length?`Ran ${done.length} operation${done.length>1?'s':''}${skipped.length?` · skipped ${skipped.length} (${skipped.slice(0,2).join('; ')}${skipped.length>2?'…':''})`:''}.`:`Nothing ran: ${skipped.slice(0,2).join('; ')}`);updTimers();if(page==='ops')render()}
 // a decision disappears the moment you pick an option; it comes back only if the server refuses it
-const decide=(id,o)=>{const i=(me.cards||[]).findIndex(c=>c.id===id);if(i<0)return;if(busy)return toast('One moment…');const card=me.cards.splice(i,1)[0];render();return cmd({c:'decide',id,o}).then(r=>{if(!r&&me&&!(me.cards||[]).some(c=>c.id===id)){me.cards.splice(Math.min(i,me.cards.length),0,card);render()}return r})};
+// decisions: every click counts at once. The card disappears straight away and the choices are sent to the server one after another,
+// so tapping through several decisions quickly never loses one (and a card can't flash back while its answer is on the way)
+const decPend=new Set(),decQ=[];let decBusy=false;
+const decide=(id,o)=>{if(!me||!(me.cards||[]).some(c=>c.id===id)||decPend.has(id))return;decPend.add(id);me.cards=me.cards.filter(c=>c.id!==id);decQ.push({id,o});render();decRun()};
+async function decRun(){if(decBusy)return;decBusy=true;while(decQ.length){const {id,o}=decQ.shift();try{const r=await WP.api('POST','/api/cmd',{c:'decide',id,o});if(r&&r.me&&WP.applyOwn)WP.applyOwn(r.me);if(r&&r.msg)toast(r.msg);SND.play('ok');if(r&&r.promoted)setTimeout(()=>promo(r.promoted),700)}catch(e){toast(e.message||'Something went wrong.');SND.play('err')}
+ setTimeout(()=>{decPend.delete(id);refreshSoon()},(decQ.length?0:400))}decBusy=false}
 // after you attack: close the planner, take you to the battlefield on the globe, and show the result as a small card (full report one tap away)
 function goWatch(h,scale){if(!P[h])return;closeModal();const go=()=>GL.flyTo(P[h].c,Math.max(GL.st.scale,scale||2));if(page!=='world'){page='world';render();setTimeout(go,350)}else go()}
 function battleCard(b){const old=$('btCard');if(old)old.remove();const el=document.createElement('div');el.id='btCard';el.className='sknote bt '+(b.win?'win':'hit');
@@ -1738,7 +1744,7 @@ const GL=(()=>{
     for(let k=0;k<11;k++){const a=k/11*Math.PI*2+t/7000;blit('smokeM',G_SMOKEM,cx+Math.cos(a)*R*.6,cy+Math.sin(a)*R*.25-R*.14,R*.55,.8*fade)}
     blit('smoke',G_SMOKE,cx-R*.2,cy-R*.32,R*.6,.55*fade);
     if(heat>0){blit('fire',G_FIRE,cx,cy+R*.05,R*.8,heat*.9);blit('flash',G_FLASH,cx,cy,R*.45,heat*.6)}}}}
- return{fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
+ return{xy:c=>{try{return proj(c)}catch(e){return null}},fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
 function globeSlot(mode,h,extra){const full=gFull&&mode==='world';return`<div class="gwrap${full?' gfull':''}" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl">${mode==='world'?`<button data-act="gfull" title="${full?'Exit full screen (Esc)':'Full screen'}">${I(full?'unfull':'full')}</button>`:''}<button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${(full||(mode==='world'&&isMob()))&&extra?extra:''}${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
