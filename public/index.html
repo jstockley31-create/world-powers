@@ -801,6 +801,36 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .czfprev{display:flex;flex-direction:column;gap:10px;margin-top:8px;font-size:12.5px}.czfprev>div{border-top:1px solid var(--bd);padding-top:8px}
 .czbn{font-size:11px;margin-left:4px}.czbn a{color:#a8f0c6}
 @media (max-width:760px){.czfdl{grid-template-columns:1fr}.czpf{top:auto;bottom:auto;right:12px;top:14px;font-size:11px;padding:3px 8px}}
+
+/* ---- upgraded panels and menus ---- */
+:root{--s1:#0e151d;--s2:#131c26;--s3:#1b2633;--bd:#223041;--bd2:#2e3f52;--r:12px}
+body{background:radial-gradient(1200px 700px at 70% -10%,#12202f 0,#090d12 60%) fixed}
+@media(min-width:821px){#top{height:60px;background:linear-gradient(180deg,#131c27,#0d141b);border-bottom:1px solid #263547;box-shadow:0 6px 24px #0008;position:relative;z-index:3}}
+@media(min-width:821px){.kpi{border-left:0;margin:0 3px;padding:6px 14px;border-radius:10px;background:linear-gradient(180deg,#18232f,#111a24);box-shadow:inset 0 1px 0 #ffffff0d,inset 0 0 0 1px #26364a}}
+#side{background:linear-gradient(180deg,#0f1720,#0b1118);border-right:1px solid #223041}
+.ncard{border-radius:14px;background:linear-gradient(160deg,#1a2634,#121b25);border:1px solid #2c3d51;box-shadow:inset 0 1px 0 #ffffff12,0 8px 20px #0006}
+.nv{min-height:27px!important;border-radius:9px;padding:0 9px;transition:background .15s,color .15s}
+.nv .tl{width:21px!important;height:21px!important;border-radius:7px;background:#172230;box-shadow:inset 0 0 0 1px #26364a}
+.nv:hover{background:#16212d}
+.nv.on{background:linear-gradient(90deg,rgba(212,166,74,.2),rgba(212,166,74,.04) 70%);border-color:rgba(212,166,74,.38);color:#fff;box-shadow:inset 3px 0 0 #d4a64a}
+.nv.on .tl{background:#d4a64a;color:#17120a;box-shadow:0 0 12px rgba(212,166,74,.45)}
+#main{padding:24px 28px 34px}
+h1.pg{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.panel{background:linear-gradient(180deg,#131c27,#0e151d);border:1px solid #243345;border-radius:14px;box-shadow:inset 0 1px 0 #ffffff0d,0 10px 28px #0007;overflow:hidden}
+.panel>header{padding:13px 18px;background:linear-gradient(180deg,#18232f,#131c27);border-bottom:1px solid #243345;position:relative}
+.panel>header:before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:#d4a64a}
+.panel>header h2{color:#e9eef4;letter-spacing:.06em}
+.btn{border-radius:9px;background:linear-gradient(180deg,#223040,#19242f);border-color:#34475c;box-shadow:inset 0 1px 0 #ffffff14,0 2px 6px #0005}
+.btn:hover{filter:brightness(1.12)}
+.btn.pri{background:linear-gradient(180deg,#eac36b,#c9983a);border-color:#f0cf85;color:#17120a;box-shadow:inset 0 1px 0 #fff6,0 4px 14px rgba(212,166,74,.28)}
+.btn.dng{box-shadow:inset 0 1px 0 #ffffff14,0 4px 14px rgba(200,60,50,.22)}
+.motd{border-radius:12px;background:linear-gradient(90deg,#2a2110,#19150c);box-shadow:inset 0 1px 0 #ffffff0d,0 6px 18px #0006}
+.kv{border-radius:10px}
+#dock{background:linear-gradient(180deg,#101821,#0b1118);border-top:1px solid #263547;box-shadow:0 -8px 24px #0007}
+input,select,textarea{border-radius:9px!important}
+table thead th{letter-spacing:.06em}
+@media(max-width:820px){#main{padding:16px 14px 26px}h1.pg{font-size:23px}}
+
 </style>
 <script src="/vendor/d3.min.js"></script>
 <script src="/core.js"></script>
