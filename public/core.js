@@ -727,6 +727,8 @@ function Core(PD, CARDS) {
     if (since && (mine.war || 0) === since && (mine.war || 0) > (theirs.war || 0)) return false; // you started this war: you stay the aggressor
     return (since && (theirs.war || 0) === since) || hitRecently(W, u, v);
   }
+  // XP for repeatable actions with no cooldown (trades, donations): only once per window per kind, so spamming tiny amounts can't buy rank
+  const xpOnce = (W, u, key, ms, x) => { const n = W.A[u]; if (!n) return; n.xpT = n.xpT || {}; if (n.xpT[key] > W.now - ms) return; for (const k in n.xpT) if (n.xpT[k] <= W.now - 6 * HOUR) delete n.xpT[k]; n.xpT[key] = W.now; gainXP(W, u, x); };
   function gainXP(W, u, x) { const n = W.A[u]; const b = rankOf(n.xp); n.xp = (n.xp || 0) + Math.round(x * W.cfg.xp * fxMul(n, 'xp')); const a = rankOf(n.xp);
     if (a > b) { let cash = 0; if (!n.ai) { for (let r = b + 1; r <= a; r++) cash += promoCash(r); n.cash += cash; n.approval = clamp(n.approval + 5, 0, 100); n.stability = clamp(n.stability + 5, 0, 100); }
       news(W, u, `${n.name} has risen to the rank of ${RANKS[a][1]}.`); W.promoted = RANKS[a][1]; note(W, u, 'rank', `You have been promoted to ${RANKS[a][1]}.${cash ? ` Promotion reward: ${money(cash)}, approval +5, stability +5.` : ''}`); } }
@@ -1399,7 +1401,9 @@ function Core(PD, CARDS) {
     if (a.cash > me.cash) fail('Insufficient funds.'); for (const r in RES) if (a[r] > me.res[r]) fail('Not enough ' + r + '.');
     me.cash -= a.cash; them.cash += a.cash; for (const r in RES) { me.res[r] -= a[r]; them.res[r] += a[r]; }
     const txt = [a.cash ? money(a.cash) : '', ...Object.keys(RES).filter(r => a[r]).map(r => `${num(a[r])} ${rName(r)}`)].filter(Boolean).join(', ');
-    pushOut(W, u, { type: 'aid', to: v, ...a }); log(them, `${me.name} sent you aid: ${txt}.`, W); note(W, v, 'diplo', `${me.name} sent you aid: ${txt}.`); news(W, u, `${me.name} sent aid to ${them.name}.`); gainXP(W, u, 5);
+    pushOut(W, u, { type: 'aid', to: v, ...a }); log(them, `${me.name} sent you aid: ${txt}.`, W); note(W, v, 'diplo', `${me.name} sent you aid: ${txt}.`); news(W, u, `${me.name} sent aid to ${them.name}.`);
+    // XP only for real help: aid worth at least $1M, and once per receiving nation per hour (so $1 gifts can't be spammed for rank)
+    { const val = a.cash + Object.keys(RES).reduce((t, r) => t + a[r] * RES[r].p, 0); if (val >= 1e6) xpOnce(W, u, 'aid_' + v, HOUR, 5); }
     touch(W, u, v); return { msg: `Aid sent: ${txt}.`, amount: a };
   }
 
@@ -1413,7 +1417,7 @@ function Core(PD, CARDS) {
     if (buy && r === 'mun' && q > munRoom(me)) fail(munRoom(me) ? `Your depots only have room for ${num(munRoom(me))} more munitions.` : `Your depots are full (${num(MUN.cap(me))} munitions).`);
     if (buy) { const cost = Math.round(base * orderMult(W, u, r, q) * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; me.trades = [{ t: W.now, r, q }, ...(me.trades || [])].slice(0, 40); msg = `Imported ${num(q)} ${rName(r)} for ${money(cost)}.`; }
     else { if (q > me.res[r]) fail('You do not have that much.'); const got = Math.round(base * orderMult(W, u, r, -q) * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; me.trades = [{ t: W.now, r, q: -q }, ...(me.trades || [])].slice(0, 40); msg = `Exported ${num(q)} ${rName(r)} for ${money(got)}.`; }
-    log(me, msg, W); gainXP(W, u, 2); touch(W, u); return { msg };
+    log(me, msg, W); if (base * q >= 1e5) xpOnce(W, u, 'mkt', 5 * MIN, 2); touch(W, u); return { msg };
   }
 
   // AUTO-BUY ORDERS: "when my food falls below X, buy Y on the world market", checked every 10 minutes, online or not.
@@ -2265,7 +2269,7 @@ function Core(PD, CARDS) {
     n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; seasonBump(W, n, 'relief', a); if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
     // every 20% of the appeal you fund lowers your aggression by 1 (up to −5 for funding all of it)
     const ag0 = Math.min(5, Math.floor(before / d.need * 5 + 1e-9)), ag1 = Math.min(5, Math.floor((before + a) / d.need * 5 + 1e-9)), agD = ag1 - ag0; if (agD > 0) n.aggr = Math.max(0, (n.aggr || 0) - agD);
-    if (!before) n.approval = clamp(n.approval + 1, 0, 100); gainXP(W, u, Math.min(30, 3 + Math.round(a / 1e7)));
+    if (!before) n.approval = clamp(n.approval + 1, 0, 100); xpOnce(W, u, 'rel_' + d.id, 30 * MIN, Math.min(30, 3 + Math.round(a / 1e7)));
     note(W, d.u, 'diplo', `${n.name} sent ${moneyS(a)} in disaster relief for ${d.place}.`); log(v, `${n.name} sent ${money(a)} in disaster relief.`, W); touch(W, d.u);
     if (!d.done && d.got >= d.need) { d.done = W.now; v.pop += Math.round(d.lost * .5); v.stability = clamp(v.stability + 5, 0, 100); news(W, d.u, `The world rallied behind ${v.name}: relief for ${d.place} is fully funded.`); for (const x of Object.keys(d.aid)) if (W.A[x]) note(W, x, 'diplo', `Relief for ${d.place} is fully funded. Thank you!`); }
     touch(W, u); return { msg: `${moneyS(a)} of relief sent to ${v.name}.${pr1 > pr0 ? ` +${pr1 - pr0} prestige.` : ''}${agD > 0 ? ` Aggression −${agD}.` : ''}` };
@@ -2293,7 +2297,7 @@ function Core(PD, CARDS) {
       if (!ch) { cr.choice[u] = 'coop'; W.crch = true; news(W, u, `${n.name} joined the world effort against ${K.n}.`); gainXP(W, u, 10); }
       if (op === 'coop' && amt == null) { touch(W, u); return { msg: 'You joined the world effort. Every contribution counts.' }; }
       const a = Math.floor(Number(amt)); if (!(a >= CRISIS.minGive)) fail(`Contribute at least ${money(CRISIS.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
-      n.cash -= a; crisisGive(W, u, a); gainXP(W, u, Math.min(40, 2 + Math.round(a / 2e7))); log(n, `Contributed ${money(a)} to the world effort against ${K.n}.`, W); touch(W, u);
+      n.cash -= a; crisisGive(W, u, a); xpOnce(W, u, 'crisis', 30 * MIN, Math.min(40, 2 + Math.round(a / 2e7))); log(n, `Contributed ${money(a)} to the world effort against ${K.n}.`, W); touch(W, u);
       return { msg: `${moneyS(a)} contributed. ${cr.key === 'boss' ? 'The coalition thanks you.' : `The world effort is at ${Math.min(100, Math.floor((cr.pool || 0) / cr.goal * 100))}%.`}` };
     }
     fail('Unknown action.');
