@@ -89,12 +89,26 @@ fetch('/api/public/stats').then(r=>r.json()).then(s=>{
  function size(){const r=cv.getBoundingClientRect();dpr=Math.min(2,devicePixelRatio||1);w=r.width;h=r.height;cv.width=w*dpr;cv.height=h*dpr}size();addEventListener('resize',size);
  const proj=d3.geoOrthographic().clipAngle(90),path=d3.geoPath(proj,ctx),grat=d3.geoGraticule10();let rot=-20;
  const dots=[];for(let i=0;i<900;i++){const u=Math.random(),v=Math.random();dots.push([360*u-180,Math.acos(2*v-1)*180/Math.PI-90])}
- function draw(){const r=Math.min(w,h)*.46;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);proj.rotate([rot,-18]).scale(r).translate([w/2,h/2]);
-  const g=ctx.createRadialGradient(w/2,h/2,r*.96,w/2,h/2,r*1.15);g.addColorStop(0,'rgba(76,154,255,.25)');g.addColorStop(1,'rgba(76,154,255,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(w/2,h/2,r*1.15,0,7);ctx.fill();
-  const oc=ctx.createRadialGradient(w/2-r*.35,h/2-r*.4,r*.1,w/2,h/2,r);oc.addColorStop(0,'#18385a');oc.addColorStop(1,'#07142a');ctx.fillStyle=oc;ctx.beginPath();path({type:'Sphere'});ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=.7;ctx.beginPath();path(grat);ctx.stroke();
-  if(window.LAND){ctx.fillStyle='#22372b';ctx.strokeStyle='rgba(220,230,240,.25)';ctx.lineWidth=.6;ctx.beginPath();path(window.LAND);ctx.fill();ctx.stroke()}
-  ctx.strokeStyle='rgba(255,255,255,.14)';ctx.lineWidth=1;ctx.beginPath();path({type:'Sphere'});ctx.stroke();rot+=.06;requestAnimationFrame(draw)}
+ // a few capitals with routes between them, so the world looks alive
+ const CITY=[[-74,40.7],[-0.1,51.5],[37.6,55.7],[116.4,39.9],[139.7,35.7],[77.2,28.6],[31.2,30],[-46.6,-23.5],[18.4,-33.9],[151.2,-33.9],[-99.1,19.4],[55.3,25.2]];
+ const ROUTE=[[0,1],[1,2],[2,3],[3,4],[5,3],[1,6],[6,5],[0,7],[7,8],[8,6],[4,9],[0,10],[11,5],[11,1]].map(([a,b],i)=>({f:d3.geoInterpolate(CITY[a],CITY[b]),o:i*.37%1,sp:.00016+(i%4)*.00003}));
+ const STARS=Array.from({length:140},(_,i)=>[(i*.61803)%1,(i*.41421*1.7)%1,i%7?1:1.6,.12+(i%5)*.09]);
+ const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ function draw(now){const r=Math.min(w,h)*.46,cx=w/2,cy=h/2;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);proj.rotate([rot,-18]).scale(r).translate([cx,cy]);
+  for(const s_ of STARS){ctx.fillStyle=`rgba(220,230,255,${s_[3]})`;ctx.fillRect(s_[0]*w,s_[1]*h,s_[2],s_[2])}
+  const g=ctx.createRadialGradient(cx,cy,r*.95,cx,cy,r*1.2);g.addColorStop(0,'rgba(110,175,255,.42)');g.addColorStop(.3,'rgba(76,154,255,.16)');g.addColorStop(1,'rgba(76,154,255,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,r*1.2,0,7);ctx.fill();
+  const oc=ctx.createRadialGradient(cx-r*.4,cy-r*.45,r*.05,cx,cy,r);oc.addColorStop(0,'#22608c');oc.addColorStop(.55,'#0f3152');oc.addColorStop(1,'#061524');ctx.fillStyle=oc;ctx.beginPath();path({type:'Sphere'});ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=.7;ctx.beginPath();path(grat);ctx.stroke();
+  if(window.LAND){const lg=ctx.createRadialGradient(cx-r*.4,cy-r*.45,r*.05,cx,cy,r);lg.addColorStop(0,'#5d9a6a');lg.addColorStop(.5,'#3a6f4d');lg.addColorStop(1,'#1c3a2a');ctx.fillStyle=lg;ctx.strokeStyle='rgba(225,240,235,.4)';ctx.lineWidth=.7;ctx.beginPath();path(window.LAND);ctx.fill();ctx.stroke()}
+  // routes and capitals
+  const ctr=[-rot,18],vis=c=>d3.geoDistance(ctr,c)<1.45,t=(now||0);
+  ctx.lineCap='round';for(const R of ROUTE){ctx.beginPath();let pen=false;for(let q=0;q<=24;q++){const c=R.f(q/24);if(!vis(c)){pen=false;continue}const xy=proj(c),lift=1+.06*Math.sin(Math.PI*q/24),x=cx+(xy[0]-cx)*lift,y=cy+(xy[1]-cy)*lift;pen?ctx.lineTo(x,y):ctx.moveTo(x,y);pen=true}ctx.strokeStyle='rgba(240,195,92,.22)';ctx.lineWidth=1;ctx.stroke();
+   const s=still?.5:(R.o+t*R.sp)%1,c=R.f(s);if(vis(c)){const xy=proj(c),lift=1+.06*Math.sin(Math.PI*s),x=cx+(xy[0]-cx)*lift,y=cy+(xy[1]-cy)*lift;const gg=ctx.createRadialGradient(x,y,0,x,y,7);gg.addColorStop(0,'rgba(255,236,170,.95)');gg.addColorStop(1,'rgba(255,200,90,0)');ctx.fillStyle=gg;ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.fill()}}
+  CITY.forEach((c,i)=>{if(!vis(c))return;const xy=proj(c),pl=still?.5:.5+.5*Math.sin(t/700+i*1.9);ctx.strokeStyle=`rgba(240,195,92,${.5*(1-pl)})`;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(xy[0],xy[1],4+pl*9,0,7);ctx.stroke();ctx.fillStyle='#ffe9b0';ctx.beginPath();ctx.arc(xy[0],xy[1],2.6,0,7);ctx.fill()});
+  // sunlight from the upper left, night toward the edge, atmosphere on the rim
+  const L=ctx.createRadialGradient(cx-r*.5,cy-r*.55,0,cx-r*.15,cy-r*.15,r*1.25);L.addColorStop(0,'rgba(255,248,230,.16)');L.addColorStop(.42,'rgba(255,255,255,0)');L.addColorStop(.78,'rgba(0,4,14,.22)');L.addColorStop(1,'rgba(0,4,14,.6)');ctx.fillStyle=L;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  const lb=ctx.createRadialGradient(cx,cy,r*.84,cx,cy,r);lb.addColorStop(0,'rgba(120,180,255,0)');lb.addColorStop(.75,'rgba(120,180,255,.08)');lb.addColorStop(1,'rgba(150,205,255,.3)');ctx.fillStyle=lb;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  ctx.strokeStyle='rgba(170,215,255,.55)';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(cx,cy,r-.5,0,7);ctx.stroke();if(!still)rot+=.06;requestAnimationFrame(draw)}
  draw()})();
 </script>
 <script src="/landing-land.js" async></script>

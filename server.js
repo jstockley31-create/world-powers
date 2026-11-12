@@ -307,6 +307,7 @@ function effCfg() {
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
+  c.countdown = S.countdown && S.countdown.at + 2 * HOUR > now ? { id: S.countdown.id, text: S.countdown.text, at: S.countdown.at } : null;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
   return c;
 }
@@ -754,6 +755,7 @@ const HOF_FILE = path.join(DATA_DIR, 'halloffame.jsonl'); let HOF = [];
 try { HOF = fs.readFileSync(HOF_FILE, 'utf8').split('\n').filter(Boolean).map(l => { try { return Object.freeze(JSON.parse(l)); } catch (e) { return null; } }).filter(Boolean); } catch (e) { HOF = []; }
 const SEASON_METRICS = { score: { n: 'Score gained', title: 'Grand Strategist', fmt: v => Math.round(v).toLocaleString('en-US') }, land: { n: 'Provinces gained', title: 'Conqueror', fmt: v => (v > 0 ? '+' : '') + Math.round(v) }, gdp: { n: 'GDP growth', title: 'Tycoon', fmt: v => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }, wins: { n: 'Battles won', title: 'Warlord', fmt: v => String(Math.round(v)) }, relief: { n: 'Relief sent', title: 'Philanthropist', fmt: v => '$' + Math.round(v).toLocaleString('en-US') } };
 S.seasons = S.seasons || { cur: null, n: HOF.length };
+S.countdown = S.countdown || null; // admin countdown banner: { id, text, at } shown to every player until 2 hours after it reaches zero
 if (S.seasons.n < HOF.length) S.seasons.n = HOF.length;
 function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = se.base[u] || { score: 0, prov: 0, gdp: n.gdp || 0 }; const ss = n.ss && n.ss.id === se.id ? n.ss : {};
   if (m === 'score') return core.score(W, u) - b.score; if (m === 'land') return core.hexesOf(W, u).length - b.prov; if (m === 'gdp') return b.gdp > 0 ? (n.gdp || 0) / b.gdp - 1 : 0; if (m === 'wins') return ss.wins || 0; if (m === 'relief') return ss.relief || 0; return 0; }
@@ -1129,7 +1131,7 @@ async function adminRoute(p, req, res, me) {
   }
   if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
     const b = await readBody(req, 16384), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
-    if (op === 'list') return send(res, 200, { cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title }])) });
+    if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title }])) });
     if (op === 'create') {
       if (S.seasons.cur) return send(res, 400, { error: 'A season is already scheduled or running. End or cancel it first.' });
       const metric = SEASON_METRICS[b.metric] ? b.metric : 'score', days = +b.days, startAt = b.startAt ? +new Date(b.startAt) : 0, start = startAt && startAt > Date.now() ? startAt : Date.now();
@@ -1139,6 +1141,14 @@ async function adminRoute(p, req, res, me) {
       S.seasons.cur = se; S.seasons.n = n; audit(me.name, start > Date.now() + 5000 ? 'Scheduled a season' : 'Started a season', name);
       if (start <= Date.now() + 5000) seasonBegin(W); else { persist(); if (se.announce) { const t = `🏆 ${name} starts ${new Date(start).toUTCString().slice(0, 22)} UTC. Nations will be ranked by ${SEASON_METRICS[metric].n.toLowerCase()}.`; systemMessage(t); broadcast('announce', { text: t }); } }
       return send(res, 200, { ok: true });
+    }
+    if (op === 'countdown') { // the countdown banner players see at the top of every page
+      if (b.off) { S.countdown = null; persist(); broadcast('config', effCfg()); audit(me.name, 'Removed the countdown banner', ''); return send(res, 200, { ok: true }); }
+      const text = clean(b.text).slice(0, 120) || 'The next season starts in', at = Math.round(+b.at);
+      if (!Number.isFinite(at) || at <= Date.now() + 30e3) return send(res, 400, { error: 'Pick a time in the future for the countdown to end.' });
+      if (at > Date.now() + 365 * 864e5) return send(res, 400, { error: 'The countdown can run for at most a year.' });
+      S.countdown = { id: crypto.randomBytes(4).toString('hex'), text, at, by: me.name, t: Date.now() }; persist(); broadcast('config', effCfg());
+      audit(me.name, 'Set the countdown banner', `${text} · ${new Date(at).toUTCString().slice(0, 22)} UTC`); return send(res, 200, { ok: true, countdown: S.countdown });
     }
     const se = S.seasons.cur; if (!se) return send(res, 404, { error: 'There is no season right now.' });
     if (op === 'end') { if (se.status !== 'live') return send(res, 400, { error: 'This season has not started yet. Cancel it instead.' }); const e = seasonFinish(W, me.name); commit(W); return send(res, 200, { ok: true, entry: e }); }
