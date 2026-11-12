@@ -1040,7 +1040,8 @@ function Core(PD, CARDS) {
     if (k !== 'bombard' && k !== 'blockade' && k !== 'carpet') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
     me.cd['hv_' + k] = W.now + H.cdH * HOUR;
     const hs = k === 'bombard' || k === 'blockade' ? coastOf(W, v) : hexesOf(W, v), h0 = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, h = k === 'orbital' ? d.cap : k === 'raid' || k === 'cruise' ? (hexesOf(W, v).filter(x => devLvl(d, x) > 0).sort((a, b) => devLvl(d, b) - devLvl(d, a))[0] ?? h0) : h0, place = pname(h), dmg = {};
-    let sum = '', icept = 0, traced = true, fxKind = 'missile', from = me.cap, lost = 0;
+    let sum = '', icept = 0, traced = true, fxKind = 'missile', from = me.cap, lost = 0, fxH = h, fxN = 0;
+    const nearOwn = list => list.length ? list.slice().sort((a, b) => kmBetween(+a, +fxH) - kmBetween(+b, +fxH))[0] : me.cap;
     if (k === 'ballistic') {
       icept = domeOn(W, d) && R() < domeMis(d) * H.domeX ? 1 : 0;
       if (!icept) { dmg.pop = Math.floor((d.pop || 0) * H.pop); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops); d.troops -= dmg.troops; dmg.infra = Math.min(d.infra || 0, H.infra); d.infra -= dmg.infra; d.gdp = (d.gdp || 0) * (1 - H.gdp); d.stability = clamp(d.stability - H.st, 0, 100); d.approval = clamp(d.approval - 4, 0, 100); }
@@ -1056,20 +1057,20 @@ function Core(PD, CARDS) {
       sum = `tax revenue −${Math.round((1 - H.tax) * 100)}% and research costs +${Math.round((H.research - 1) * 100)}% for ${H.h} hours`;
     } else if (k === 'hypersonic' || k === 'orbital') {
       dmg.pop = Math.floor((d.pop || 0) * H.pop); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops); d.troops -= dmg.troops; dmg.infra = Math.min(d.infra || 0, H.infra); d.infra -= dmg.infra; d.gdp = (d.gdp || 0) * (1 - H.gdp); d.stability = clamp(d.stability - H.st, 0, 100); d.approval = clamp(d.approval - 5, 0, 100);
-      if (k === 'orbital' && devLvl(d, h) > 0) { d.dev[h]--; dmg.dev = 1; }
+      if (k === 'orbital' && devLvl(d, h) > 0) { d.dev[h]--; dmg.dev = 1; } if (k === 'orbital') from = h;
       sum = `${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? `, infrastructure −${dmg.infra}` : ''}${dmg.dev ? `, ${place} lost a development level` : ''}, GDP −${Math.round(H.gdp * 100)}%. No shield could stop it`;
     } else if (k === 'drones') {
       const lostP = Math.min(.8, (d.air || 0) / ((d.air || 0) + 200)); lost = Math.round(100 * lostP); dmg.troops = Math.floor((d.troops || 0) * H.troops * (1 - lostP)); d.troops -= dmg.troops; dmg.air = Math.floor((d.air || 0) * H.air * (1 - lostP)); d.air -= dmg.air;
       sum = `${num(dmg.troops)} troops${dmg.air ? ` and ${dmg.air} aircraft` : ''} destroyed${lost ? ` (their air force shot down ${lost}% of the swarm)` : ''}`; lost = 0;
     } else if (k === 'blockade') {
-      const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .2)); me.ships -= lost; penalty(W, d, { tax: H.tax, gdp: H.gdp }, H.h); d.blockade = W.now + H.h * HOUR;
-      sum = `their tax revenue −${Math.round((1 - H.tax) * 100)}% and GDP −${Math.round((1 - H.gdp) * 100)}% for ${H.h} hours, and their market trade is cut off${lost ? ` (you lost ${lost} warship${lost > 1 ? 's' : ''})` : ''}`; fxKind = null;
+      const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .2)); me.ships -= lost; penalty(W, d, { tax: H.tax, gdp: H.gdp }, H.h); d.blockade = W.now + H.h * HOUR; d.blockH = h;
+      sum = `their tax revenue −${Math.round((1 - H.tax) * 100)}% and GDP −${Math.round((1 - H.gdp) * 100)}% for ${H.h} hours, and their market trade is cut off${lost ? ` (you lost ${lost} warship${lost > 1 ? 's' : ''})` : ''}`; fxKind = 'sea'; from = nearOwn(coastOf(W, u)); fxN = 6;
     } else if (k === 'raid') {
       const p = clamp(.75 - (d.fort || 0) * .03 - (d.spies || 0) * .005 + ((me.tech || 0) - (d.tech || 0)) * .01, .3, .85);
       if (R() < p) { dmg.cash = Math.round(Math.min(H.stealMax, Math.max(0, d.cash) * H.steal)); d.cash -= dmg.cash; me.cash += dmg.cash; const rk = Object.keys(RES).sort((a, b) => (d.res[b] || 0) - (d.res[a] || 0))[0]; dmg.res = Math.floor((d.res[rk] || 0) * H.res); d.res[rk] -= dmg.res; me.res[rk] = (me.res[rk] || 0) + dmg.res; if (devLvl(d, h) > 0) { d.dev[h]--; dmg.dev = 1; }
         sum = `your commandos seized ${money(dmg.cash)} and ${num(dmg.res)} ${rk}${dmg.dev ? `, and wrecked a development level in ${place}` : ''}`; }
       else { traced = true; d.cb = d.cb || {}; d.cb[u] = Math.max(d.cb[u] || 0, W.now + 24 * HOUR); me.troops = Math.max(0, (me.troops || 0) - 200); sum = `the raid on ${place} failed and your commandos were captured; ${d.name} has a 24-hour just cause against you`; dmg.failed = 1; }
-      fxKind = null;
+      fxKind = 'air'; from = nearOwn(hexesOf(W, u)); fxN = 3;
     } else if (k === 'artillery') {
       fxKind = 'missile'; const fz = Math.max(0, 1 - (d.fort || 0) * .04); dmg.troops = Math.floor((d.troops || 0) * H.troops * fz); d.troops -= dmg.troops; dmg.fort = Math.min(d.fort || 0, H.fort); d.fort = (d.fort || 0) - dmg.fort; d.stability = clamp(d.stability - 1, 0, 100);
       const mine = hexesOf(W, u); from = mine.length ? mine.sort((a, b) => kmBetween(+a, +h) - kmBetween(+b, +h))[0] : me.cap;
@@ -1083,7 +1084,7 @@ function Core(PD, CARDS) {
       const f = (A_ - lost) / Math.max(1, A_); dmg.pop = Math.floor((d.pop || 0) * H.pop * f); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops * f); d.troops -= dmg.troops; dmg.infra = f > .5 ? Math.min(d.infra || 0, H.infra) : 0; d.infra -= dmg.infra; d.stability = clamp(d.stability - H.st, 0, 100); d.approval = clamp(d.approval - 3, 0, 100);
       sum = `${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? ', infrastructure −1' : ''}${lost ? ` (their air defences shot down ${lost} of your ${A_} bombers)` : ''}`;
     } else if (k === 'sub') {
-      fxKind = null; const E = d.ships || 0, sunk = Math.max(1, Math.round(E * H.sink * clamp(1 + ((me.tech || 0) - (d.tech || 0)) * .03, .5, 1.5))); dmg.ships = Math.min(E, sunk); d.ships -= dmg.ships; lost = R() < .3 ? 1 : 0; me.ships -= lost;
+      fxKind = 'sea'; { const tc = coastOf(W, v); fxH = tc.length ? tc[Math.floor(R() * tc.length)] : h; } from = nearOwn(coastOf(W, u)); fxN = 3; const E = d.ships || 0, sunk = Math.max(1, Math.round(E * H.sink * clamp(1 + ((me.tech || 0) - (d.tech || 0)) * .03, .5, 1.5))); dmg.ships = Math.min(E, sunk); d.ships -= dmg.ships; lost = R() < .3 ? 1 : 0; me.ships -= lost;
       sum = `${dmg.ships} of their warship${dmg.ships > 1 ? 's' : ''} torpedoed and sunk${lost ? ' (you lost a submarine)' : ''}`;
     } else if (k === 'emp') {
       d.empT = W.now + H.h * HOUR; dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
@@ -1097,7 +1098,7 @@ function Core(PD, CARDS) {
     note(W, v, 'attack', `${H.ic} ${who} ${k === 'cyber' ? 'launched a cyber attack on your nation' : `hit ${place} with ${hvA(H)}`}: ${sum}.`);
     if (traced) { news(W, u, icept ? `${H.ic} ${me.name} fired ${hvA(H)} at ${d.name}, but the Golden Dome shot it down.` : `${H.ic} ${me.name} ${k === 'cyber' ? `launched a cyber attack on ${d.name}` : `hit ${place}, ${d.name}, with ${hvA(H)}`}.`); for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${H.ic} ${me.name} used ${hvA(H)} on your ally ${d.name}.`); aggrHit(W, u, v, hvN(H)); }
     gainXP(W, u, 12); touch(W, u, v);
-    if (fxKind) (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from, h, place, kind: k === 'drones' ? 'air' : fxKind, heavy: k, n: k === 'bombard' ? me.ships + lost : k === 'drones' ? 12 : k === 'carpet' ? 7 : k === 'artillery' ? 3 : 1, lost, hits: icept ? 0 : 1, icept, target: k, t: W.now });
+    if (fxKind) (W.strikeFx = W.strikeFx || []).push({ id: rid(), by: u, byName: me.name, to: v, toName: d.name, from, h: fxH, noburn: k === 'blockade' || k === 'sub' || k === 'raid' || k === 'emp' ? 1 : 0, place: fxH === h ? place : pname(fxH), kind: k === 'drones' ? 'air' : fxKind, heavy: k, n: fxN ? fxN : k === 'bombard' ? me.ships + lost : k === 'drones' ? 12 : k === 'carpet' ? 7 : k === 'artillery' ? 3 : 1, lost, hits: icept ? 0 : 1, icept, target: k, t: W.now });
     return { msg: `${H.ic} ${H.n}: ${sum}.${k === 'cyber' ? traced ? ' They traced it back to you.' : ' They don\'t know it was you.' : ''}`, heavy: { k, h, icept, traced, dmg } };
   }
   // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.

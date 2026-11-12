@@ -243,7 +243,7 @@ const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid]
 function publicView(n) {
   return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
     approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, dev: n.dev || {}, prestige: n.prestige || 0, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, overlord: n.overlord || null, vassalT: n.vassalT || 0, office: n.office || 0, outposts: n.outposts || null, titles: n.titles || null, shield: n.shield || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, lvl: n.dome.lvl || 1, off: (n.cash || 0) < 0 } : null, rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
-    gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, nextElection: n.nextElection, lastElection: n.lastElection,
+    gdp: n.gdp, gdpHist: n.gdpHist, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, blockade: n.blockade || 0, blockH: n.blockH == null ? null : n.blockH, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea, vassal: e.vassal || 0 } : e) };
 }
 
@@ -348,7 +348,7 @@ function commit(W) {
     armTest(fx);
   }
   W.ntestFx = [];
-  if ((W.strikeFx || []).length) { const now = Date.now(); for (const fx of W.strikeFx) { broadcast('strike', fx); S.strikes.unshift(fx); S.strikeLog.unshift({ t: now, by: fx.by, byName: fx.byName, to: fx.to, toName: fx.toName, kind: fx.kind, n: fx.n, hits: fx.hits, lost: fx.lost, place: fx.place, target: fx.target }); if (!fx.dirty) { const b = S.burn[fx.h]; S.burn[fx.h] = { t: now, n: Math.min(20, (b && now - b.t < BURN_MS ? b.n : 0) + 1) }; } } S.strikes = S.strikes.filter(x => now - x.t < 20 * 60e3).slice(0, 80); S.strikeLog = S.strikeLog.slice(0, 400); burnList(); }
+  if ((W.strikeFx || []).length) { const now = Date.now(); for (const fx of W.strikeFx) { broadcast('strike', fx); S.strikes.unshift(fx); S.strikeLog.unshift({ t: now, by: fx.by, byName: fx.byName, to: fx.to, toName: fx.toName, kind: fx.kind, n: fx.n, hits: fx.hits, lost: fx.lost, place: fx.place, target: fx.target }); if (!fx.dirty && !fx.noburn) { const b = S.burn[fx.h]; S.burn[fx.h] = { t: now, n: Math.min(20, (b && now - b.t < BURN_MS ? b.n : 0) + 1) }; } } S.strikes = S.strikes.filter(x => now - x.t < 20 * 60e3).slice(0, 80); S.strikeLog = S.strikeLog.slice(0, 400); burnList(); }
   for (const fx of W.nukeFx || []) {
     const t = fx.intercepted ? `🛡 NUCLEAR MISSILE INTERCEPTED: ${fx.toName}'s Golden Dome destroyed the missile ${fx.byName} fired at ${fx.place}.` : `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`;
     // the chat line lands after the missile's flight, which everyone is watching
@@ -526,7 +526,7 @@ function resBlocked(W, type, v) {
 // Anyone can list food, oil, steel or goods anonymously at their own price; only nations shut out of the world market
 // (rogue states, World Council trade embargoes, naval blockades) can buy. Listing and buying both carry a risk of being caught:
 // the goods are seized, the nation is fined and named in World Chat. Sellers stay anonymous unless they are the one caught.
-const BM = { maxListings: 5, hours: 48, maxQ: 1e6, maxPrice: 1e5, sellRisk: .08, sellRiskMax: .18, buyRisk: .12, buyRiskMax: .25, riskValue: 5e8, fine: .5, fineMin: 1e6, fineMax: 5e8 };
+const BM = { maxListings: 5, hours: 48, maxQ: 1e6, maxPrice: 1e5, sellRisk: .04, sellRiskMax: .09, buyRisk: .06, buyRiskMax: .125, riskValue: 5e8, fine: .5, fineMin: 1e6, fineMax: 5e8 };
 const bmErr = (m, st = 400) => Object.assign(new Error(m), { status: st });
 const bmRisk = (base, max, value) => base + (max - base) * Math.min(1, value / BM.riskValue);
 const bmFine = value => Math.round(Math.max(BM.fineMin, Math.min(BM.fineMax, value * BM.fine)));
