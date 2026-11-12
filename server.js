@@ -540,7 +540,7 @@ function bmView(uid) {
 function bmCast() { broadcast('bm', { n: S.bm.list.length, t: Date.now() }); }
 function bmPost(uid, b) {
   const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw bmErr('Found a nation first.');
-  const r = String(b.r || ''); if (!WP.RES[r]) throw bmErr('Choose food, oil, steel or goods.');
+  const r = String(b.r || ''); if (!WP.RES[r]) throw bmErr('Choose food, oil, steel, goods or munitions.');
   const q = Math.floor(+b.q), price = Math.round(+b.price);
   if (!(q >= 1 && q <= BM.maxQ)) throw bmErr(`List between 1 and ${BM.maxQ.toLocaleString('en-US')} units.`);
   if (!(price >= 1 && price <= BM.maxPrice)) throw bmErr(`Set a price between $1 and $${BM.maxPrice.toLocaleString('en-US')} per unit.`);
@@ -1369,7 +1369,7 @@ async function adminRoute(p, req, res, me) {
       const n = S.docs['nations/' + b.id]; if (!u || !n) return send(res, 404, { error: 'That player has no nation.' });
       const changes = [], pt = b.patch || {};
       for (const k of NUM_FIELDS) if (pt[k] != null && pt[k] !== '' && isFinite(+pt[k])) { const v = +pt[k]; if (v !== n[k]) { changes.push(`${k}: ${Math.round((n[k] || 0) * 100) / 100} → ${v}`); n[k] = v; } }
-      if (pt.res && typeof pt.res === 'object') { n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods']) if (pt.res[r] != null && pt.res[r] !== '' && isFinite(+pt.res[r])) { const v = +pt.res[r]; if (v !== n.res[r]) { changes.push(`${r}: ${Math.round(n.res[r])} → ${v}`); n.res[r] = v; } } }
+      if (pt.res && typeof pt.res === 'object') { n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods', 'mun']) if (pt.res[r] != null && pt.res[r] !== '' && isFinite(+pt.res[r])) { const v = +pt.res[r]; if (v !== n.res[r]) { changes.push(`${r}: ${Math.round(n.res[r])} → ${v}`); n.res[r] = v; } } }
       if (typeof pt.name === 'string' && pt.name.trim() && pt.name.trim() !== n.name) { changes.push(`name: ${n.name} → ${pt.name.trim().slice(0, 28)}`); n.name = pt.name.trim().slice(0, 28); }
       n.approval = Math.max(0, Math.min(100, n.approval)); n.stability = Math.max(0, Math.min(100, n.stability)); n.tax = Math.max(5, Math.min(50, Math.round(n.tax)));
       if (b.resetCooldowns) { n.cd = {}; changes.push('cooldowns reset'); }

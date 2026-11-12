@@ -216,6 +216,8 @@ module.exports = function makeBots(core, WP, rng) {
   function turn(W, u, cfg) {
     const n = W.A[u]; if (!n || !n.ai) return;
     const per = PERS[n.ai.p] || PERS.merchant; W.now = Date.now();
+    // computer nations run their own munitions factories quietly: keep a working stock so their strikes are not blocked
+    if (n.res && (n.res.mun || 0) < 300 && core.MUN) n.res.mun = Math.min(core.MUN.cap(n), (n.res.mun || 0) + 25);
     const boss = pickBoss(W, cfg) === u; if (boss) bossAssist(W, u, cfg); else if (n.ai.defX || n.ai.atkX) { delete n.ai.defX; delete n.ai.atkX; core.touch(W, u); }
     const passive = boss && bossCfg(cfg).aggr === 0; // the admins set it to never start a fight
     if (boss && bossCfg(cfg).mode === 'manual') return; // manual mode: it grows, but only acts when an admin tells it to
@@ -337,7 +339,7 @@ module.exports = function makeBots(core, WP, rng) {
         if (!best) { const h0 = core.hexesOf(W, v)[0]; throw new Error(h0 != null ? (core.canAttack(W, u, h0) || `None of ${d.name}'s provinces can be reached right now.`) : `${d.name} has no provinces.`); }
         return ex({ c: 'attack', h: best.h, x: best.pl.X, air: best.pl.AIR, vassal: rng() < .5 }); }
       case 'air': need(); return ex({ c: 'strike', v, kind: 'air', target: cmd.target || 'mil', n: Math.max(5, Math.floor((n.air || 0) * .7)) });
-      case 'missile': need(); { const mx = core.maxMissiles(n); if (!mx) throw new Error('It needs tech level 8 for missiles.'); return ex({ c: 'strike', v, kind: 'missile', target: cmd.target || 'mil', n: mx }); }
+      case 'missile': need(); { const mx = core.maxMissiles(n); if (!mx) throw new Error(`It needs tech level ${core.MISSILE.tech} for missiles.`); return ex({ c: 'strike', v, kind: 'missile', target: cmd.target || 'mil', n: mx }); }
       case 'dirty': need(); return ex({ c: 'dirty', v });
       case 'ntest': return ex({ c: 'ntest' });
       case 'nuke': return ex({ c: 'nuke' });
