@@ -272,6 +272,10 @@ const councilView = () => ({ props: S.council.props.slice(0, 40).map(({ debts, n
 const councilViewFor = uid => { const v = councilView(); S.council.props.slice(0, 40).forEach((p, i) => { if (p.anon && p.by === uid && v.props[i]) { const k = 'anon:' + p.id, x = v.props[i]; if (x.votes[k] != null) { x.votes = { ...x.votes, [uid]: x.votes[k] }; delete x.votes[k]; } x.mine = true; } }); return v; };
 function councilCast() { if (!clients.size) return; const own = new Set(S.council.props.slice(0, 40).filter(p => p.anon).map(p => p.by)), pub = `event: council\ndata: ${JSON.stringify(councilView())}\n\n`; for (const c of clients) { if (own.has(c.uid)) write(c, 'council', councilViewFor(c.uid)); else writeRaw(c, pub); } }
 // alliances: everyone sees names, flags, members, projects and treasuries; only members read their own message board
+// one team per player: if old data ever lists someone in two teams, keep the team their nation points to
+function blocRepair() { let fixed = 0; const blocs = S.blocs || {};
+  for (const [id, b] of Object.entries(blocs)) b.members = (b.members || []).filter(m => { const n = S.docs['nations/' + m]; if (n && n.bloc && n.bloc !== id && blocs[n.bloc] && (blocs[n.bloc].members || []).includes(m)) { fixed++; return false; } return true; });
+  if (fixed) { console.log('Removed', fixed, 'duplicate alliance memberships'); persist(); } }
 function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [] }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
 const disView = () => S.dis.filter(d => Date.now() < d.until + 6 * HOUR);
@@ -758,7 +762,8 @@ const HOF_FILE = path.join(DATA_DIR, 'halloffame.jsonl'); let HOF = [];
 try { HOF = fs.readFileSync(HOF_FILE, 'utf8').split('\n').filter(Boolean).map(l => { try { return Object.freeze(JSON.parse(l)); } catch (e) { return null; } }).filter(Boolean); } catch (e) { HOF = []; }
 const SEASON_METRICS = { score: { n: 'Score gained', title: 'Grand Strategist', fmt: v => Math.round(v).toLocaleString('en-US') }, land: { n: 'Provinces gained', title: 'Conqueror', fmt: v => (v > 0 ? '+' : '') + Math.round(v) }, gdp: { n: 'GDP growth', title: 'Tycoon', fmt: v => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }, wins: { n: 'Battles won', title: 'Warlord', fmt: v => String(Math.round(v)) }, relief: { n: 'Relief sent', title: 'Philanthropist', fmt: v => '$' + Math.round(v).toLocaleString('en-US') } };
 S.seasons = S.seasons || { cur: null, n: HOF.length };
-S.countdown = S.countdown || null; // admin countdown banner: { id, text, at } shown to every player until 2 hours after it reaches zero
+S.countdown = S.countdown || null;
+setTimeout(() => { try { blocRepair(); } catch (e) { console.error('blocRepair', e); } }, 0); // admin countdown banner: { id, text, at } shown to every player until 2 hours after it reaches zero
 if (S.seasons.n < HOF.length) S.seasons.n = HOF.length;
 function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = se.base[u] || { score: 0, prov: 0, gdp: n.gdp || 0 }; const ss = n.ss && n.ss.id === se.id ? n.ss : {};
   if (m === 'score') return core.score(W, u) - b.score; if (m === 'land') return core.hexesOf(W, u).length - b.prov; if (m === 'gdp') return b.gdp > 0 ? (n.gdp || 0) / b.gdp - 1 : 0; if (m === 'wins') return ss.wins || 0; if (m === 'relief') return ss.relief || 0; return 0; }

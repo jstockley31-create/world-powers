@@ -80,7 +80,7 @@ const WONDERS = {
   port: { n: 'Grand Global Port', d: 'Market fees cut in half for you, and trade bonuses count up to 7 partners instead of 5.', stages: 4, cost: { cash: 3.5e6, steel: 500, oil: 400 }, fx: { spread: .04, tcap: 2 } }
 };
 // alliances: teams of nations with a shared treasury, a flag, joint projects and daily team goals
-const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 40, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3 };
+const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 120, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3 };
 const BPROJ = {
   market: { n: 'Common Market', d: '+6% tax revenue for every member.', stages: 3, fx: { tax: 1.06 } },
   defense: { n: 'Mutual Defense Network', d: 'Every member\'s provinces defend 8% better.', stages: 3, fx: { def: 1.08 } },
@@ -1936,7 +1936,7 @@ function Core(PD, CARDS) {
       }
       case 'post': {
         if (!mine) fail('You are not in an alliance.'); const x = cleanName(c.text, 1, 1000); if (!x) fail('Write a message first.');
-        if ((mine.wall || []).filter(w => w.u === u && W.now - w.t < 60e3).length >= 3) fail('Slow down a little.');
+        if ((mine.wall || []).filter(w => w.u === u && W.now - w.t < 20e3).length >= 6) fail('Slow down a little.');
         mine.wall = [{ t: W.now, u, x }, ...(mine.wall || [])].slice(0, BLOC.wall); return done('Posted.');
       }
       default: fail('Unknown alliance action.');
