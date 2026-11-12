@@ -522,6 +522,73 @@ function resBlocked(W, type, v) {
   return null;
 }
 // paying off the Council: lifts sanctions, rogue status and Council measures at once, announced to the whole world. The money is simply gone.
+// ---------- black market ----------
+// Anyone can list food, oil, steel or goods anonymously at their own price; only nations shut out of the world market
+// (rogue states, World Council trade embargoes, naval blockades) can buy. Listing and buying both carry a risk of being caught:
+// the goods are seized, the nation is fined and named in World Chat. Sellers stay anonymous unless they are the one caught.
+const BM = { maxListings: 5, hours: 48, maxQ: 1e6, maxPrice: 1e5, sellRisk: .08, sellRiskMax: .18, buyRisk: .12, buyRiskMax: .25, riskValue: 5e8, fine: .5, fineMin: 1e6, fineMax: 5e8 };
+const bmErr = (m, st = 400) => Object.assign(new Error(m), { status: st });
+const bmRisk = (base, max, value) => base + (max - base) * Math.min(1, value / BM.riskValue);
+const bmFine = value => Math.round(Math.max(BM.fineMin, Math.min(BM.fineMax, value * BM.fine)));
+function bmShut(W, n) { if (!n) return ''; if (core.rogue(W, n)) return 'rogue'; if ((n.embargo || 0) > W.now) return 'embargo'; if ((n.blockade || 0) > W.now) return 'blockade'; return ''; }
+function bmCharge(n, amt) { const pay = Math.min(amt, Math.max(0, n.cash || 0)); n.cash = (n.cash || 0) - pay; if (amt > pay) n.debt = (n.debt || 0) + (amt - pay); return amt > pay ? amt - pay : 0; } // a fine larger than the treasury becomes debt
+function bmView(uid) {
+  const W = mkWorld(), n = W.A[uid], now = Date.now(), why = bmShut(W, n);
+  return { listings: S.bm.list.filter(x => x.exp > now && x.q > 0).sort((a, b) => a.price / WP.RES[a.r].p - b.price / WP.RES[b.r].p).map(x => ({ id: x.id, r: x.r, q: x.q, price: x.price, t: x.t, exp: x.exp, mine: x.seller === uid })),
+    canBuy: !!why, why, prices: Object.fromEntries(Object.keys(WP.RES).map(k => [k, Math.round(WP.RES[k].p * ((W.m.price || {})[k] || 1))])), mine: S.bm.list.filter(x => x.seller === uid && x.exp > now && x.q > 0).length, rules: BM };
+}
+function bmCast() { broadcast('bm', { n: S.bm.list.length, t: Date.now() }); }
+function bmPost(uid, b) {
+  const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw bmErr('Found a nation first.');
+  const r = String(b.r || ''); if (!WP.RES[r]) throw bmErr('Choose food, oil, steel or goods.');
+  const q = Math.floor(+b.q), price = Math.round(+b.price);
+  if (!(q >= 1 && q <= BM.maxQ)) throw bmErr(`List between 1 and ${BM.maxQ.toLocaleString('en-US')} units.`);
+  if (!(price >= 1 && price <= BM.maxPrice)) throw bmErr(`Set a price between $1 and $${BM.maxPrice.toLocaleString('en-US')} per unit.`);
+  if ((n.res[r] || 0) < q) throw bmErr(`You only have ${Math.floor(n.res[r] || 0).toLocaleString('en-US')} ${r}.`);
+  if (S.bm.list.filter(x => x.seller === uid && x.exp > now && x.q > 0).length >= BM.maxListings) throw bmErr(`You can have at most ${BM.maxListings} listings at a time.`);
+  const value = q * price, risk = bmRisk(BM.sellRisk, BM.sellRiskMax, value);
+  n.res[r] -= q; W.changed.add(uid); // the goods leave your stockpile either way: listed, or seized
+  if (Math.random() < risk) {
+    const fine = bmFine(value), owed = bmCharge(n, fine); n.aggr = Math.min(100, (n.aggr || 0) + 5);
+    core.log(n, `🕶 Caught on the black market: ${q.toLocaleString('en-US')} ${r} seized and a ${WP.money(fine)} fine${owed ? ` (${WP.money(owed)} added to your debt)` : ''}.`, W);
+    commit(W); persist(); systemMessage(`🚨 Customs agents caught ${n.name} trying to sell ${q.toLocaleString('en-US')} ${r} on the black market. The goods were seized and ${n.name} was fined ${WP.moneyS(fine)}.`);
+    addNote(uid, 'economy', `🚨 You were caught listing ${q.toLocaleString('en-US')} ${r} on the black market. The goods were seized and you were fined ${WP.money(fine)}.`);
+    return { ok: false, caught: true, msg: `Caught! Customs seized your ${q.toLocaleString('en-US')} ${r} and fined you ${WP.money(fine)}${owed ? ` (${WP.money(owed)} went on your debt)` : ''}. The world has been told.` };
+  }
+  const x = { id: rid(), seller: uid, r, q, price, t: now, exp: now + BM.hours * HOUR }; S.bm.list.unshift(x); S.bm.list = S.bm.list.slice(0, 400);
+  commit(W); persist(); bmCast();
+  return { ok: true, msg: `Listed ${q.toLocaleString('en-US')} ${r} at ${WP.money(price)} each, anonymously. It stays up for ${BM.hours} hours; unsold goods come back to you.` };
+}
+function bmCancel(uid, b) {
+  const x = S.bm.list.find(y => y.id === String(b.id || '') && y.seller === uid); if (!x || !(x.q > 0)) throw bmErr('That listing is gone.');
+  const W = mkWorld(), n = W.A[uid]; if (n) { n.res[x.r] = (n.res[x.r] || 0) + x.q; W.changed.add(uid); }
+  S.bm.list = S.bm.list.filter(y => y !== x); commit(W); persist(); bmCast(); return { ok: true, msg: `Listing withdrawn: ${x.q.toLocaleString('en-US')} ${x.r} back in your stockpile.` };
+}
+function bmBuy(uid, b) {
+  const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw bmErr('Found a nation first.');
+  if (!bmShut(W, n)) throw bmErr('Only nations shut out of the world market (rogue states, trade embargoes or naval blockades) deal on the black market. Use the world market on the Economy page.');
+  const x = S.bm.list.find(y => y.id === String(b.id || '')); if (!x || !(x.q > 0) || x.exp <= now) throw bmErr('That listing is gone.');
+  if (x.seller === uid) throw bmErr('That is your own listing.');
+  const q = Math.min(x.q, Math.floor(+b.q || x.q)); if (!(q >= 1)) throw bmErr('Enter how many units to buy.');
+  const value = q * x.price; if ((n.cash || 0) < value) throw bmErr(`That costs ${WP.money(value)}; your treasury doesn't cover it.`);
+  const seller = W.A[x.seller], risk = bmRisk(BM.buyRisk, BM.buyRiskMax, value);
+  x.q -= q; if (x.q <= 0) S.bm.list = S.bm.list.filter(y => y !== x);
+  if (Math.random() < risk) {
+    const fine = bmFine(value), owed = bmCharge(n, fine); W.changed.add(uid);
+    core.log(n, `🕶 Caught buying on the black market: the ${q.toLocaleString('en-US')} ${x.r} shipment was seized and you were fined ${WP.money(fine)}.`, W);
+    commit(W); persist(); bmCast(); systemMessage(`🚨 A black-market shipment of ${q.toLocaleString('en-US')} ${x.r} bound for ${n.name} was intercepted. ${n.name} was fined ${WP.moneyS(fine)}.`);
+    if (seller) addNote(x.seller, 'economy', `🕶 A buyer of your black-market ${x.r} was caught: ${q.toLocaleString('en-US')} ${x.r} was seized and you were not paid. You were not identified.`);
+    return { ok: false, caught: true, msg: `Intercepted! The shipment was seized and you were fined ${WP.money(fine)}${owed ? ` (${WP.money(owed)} went on your debt)` : ''}. The world has been told.` };
+  }
+  n.cash -= value; n.res[x.r] = (n.res[x.r] || 0) + q; W.changed.add(uid);
+  if (seller) { seller.cash = (seller.cash || 0) + value; W.changed.add(x.seller); core.log(seller, `🕶 Black market: sold ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)} to an unnamed buyer.`, W); }
+  commit(W); persist(); bmCast(); if (seller) addNote(x.seller, 'economy', `🕶 Your black-market listing sold ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)}.`);
+  return { ok: true, msg: `Bought ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)}. It slipped past customs.` };
+}
+setInterval(() => { // expired listings: unsold goods go back to the seller
+  const now = Date.now(), old = S.bm.list.filter(x => x.exp <= now); if (!old.length) return; const W = mkWorld();
+  for (const x of old) { const n = W.A[x.seller]; if (n && x.q > 0) { n.res[x.r] = (n.res[x.r] || 0) + x.q; W.changed.add(x.seller); addNote(x.seller, 'economy', `🕶 Your black-market listing of ${x.q.toLocaleString('en-US')} ${x.r} expired unsold and was returned to you.`); } }
+  S.bm.list = S.bm.list.filter(x => x.exp > now); commit(W); persist(); bmCast(); }, 60e3).unref();
 function councilBribe(uid) {
   const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   if (!core.bribeNeeded(W, n)) throw Object.assign(new Error('Your nation is not under sanctions, rogue status or Council measures.'), { status: 400 });
@@ -763,6 +830,7 @@ try { HOF = fs.readFileSync(HOF_FILE, 'utf8').split('\n').filter(Boolean).map(l 
 const SEASON_METRICS = { score: { n: 'Score gained', title: 'Grand Strategist', fmt: v => Math.round(v).toLocaleString('en-US') }, land: { n: 'Provinces gained', title: 'Conqueror', fmt: v => (v > 0 ? '+' : '') + Math.round(v) }, gdp: { n: 'GDP growth', title: 'Tycoon', fmt: v => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }, wins: { n: 'Battles won', title: 'Warlord', fmt: v => String(Math.round(v)) }, relief: { n: 'Relief sent', title: 'Philanthropist', fmt: v => '$' + Math.round(v).toLocaleString('en-US') } };
 S.seasons = S.seasons || { cur: null, n: HOF.length };
 S.countdown = S.countdown || null;
+S.bm = S.bm && Array.isArray(S.bm.list) ? S.bm : { list: [] }; // black market listings (seller ids never leave the server)
 setTimeout(() => { try { blocRepair(); } catch (e) { console.error('blocRepair', e); } }, 0); // admin countdown banner: { id, text, at } shown to every player until 2 hours after it reaches zero
 if (S.seasons.n < HOF.length) S.seasons.n = HOF.length;
 function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = se.base[u] || { score: 0, prov: 0, gdp: n.gdp || 0 }; const ss = n.ss && n.ss.id === se.id ? n.ss : {};
@@ -1666,6 +1734,9 @@ async function handle(req, res) {
       const amt = voteBonus(n); n.cash = (n.cash || 0) + amt; m.voteT = now; (n.log = n.log || []).unshift({ t: now, x: `Thank you for voting for World Powers: +${WP.moneyS(amt)} daily bonus.` }); n.log = n.log.slice(0, 60);
       setDoc('nations', me.id, n); stat('votes'); return send(res, 200, { ok: true, amt, next: now + 24 * HOUR, msg: `Thanks for voting! +${WP.moneyS(amt)} has been added to your treasury.` });
     }
+    if (p === '/api/bm' && req.method === 'GET') return send(res, 200, bmView(me.id));
+    if (p.startsWith('/api/bm/') && req.method === 'POST') { if (limited('bm:' + me.id, 12, 60e3)) return send(res, 429, { error: 'Slow down: the black market is watching.' }); const b = await readBody(req, 1024); touch(me.id, req);
+      const fn = { '/api/bm/post': bmPost, '/api/bm/cancel': bmCancel, '/api/bm/buy': bmBuy }[p]; if (!fn) return send(res, 404, { error: 'Not found.' }); return send(res, 200, fn(me.id, b)); }
     if (p === '/api/council/bribe' && req.method === 'POST') { await readBody(req, 256); touch(me.id, req); const r = councilBribe(me.id); return send(res, 200, { ok: true, ...r }); }
     if (p === '/api/council/vote' && req.method === 'POST') { const b = await readBody(req, 1024); touch(me.id, req); councilVote(me.id, b); return send(res, 200, { ok: true }); }
 
