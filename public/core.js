@@ -917,7 +917,7 @@ function Core(PD, CARDS) {
     else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, 1); me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
-    Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); if (win) seasonBump(W, me, 'wins');
+    Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); if (win) seasonWin(W, u, v);
     // generals: victories can produce a new general and promote the commander; defeats can cost a general's life
     const ag = bestGen(me, 'attack');
     if (win) { if (ag) { ag.wins++; if (ag.wins % 3 === 0 && ag.stars < 5) { ag.stars++; result.genUp = ag.name; } } if (rng() < .25) { const g = newGeneral(W, u, rng); if (g) { result.newGen = g; log(me, `${g.name} distinguished themselves in battle and was appointed ${GEN_TYPES[g.type].n}.`, W); note(W, u, 'rank', `New general: ${g.name}, ${GEN_TYPES[g.type].n}.`); } }
@@ -2149,6 +2149,8 @@ function Core(PD, CARDS) {
     log(n, `Administrative offices expanded to level ${n.office}: administration capacity +${O.cap}.`, W); touch(W, u); return { msg: `Administrative offices level ${n.office}: +${O.cap} administration capacity (now ${adminCap(n)}).` };
   }
   // season counters: battles won and relief sent while a season is running
+  // a season win only counts against a real opponent (at least half your military power) and at most 3 times per target per day, so tiny nations and friends can't be farmed
+  const seasonWin = (W, u, v) => { const me = W.A[u], d = W.A[v]; if (!me || !d || !(W.cfg && W.cfg.season)) return; if (power(W, v) < power(W, u) * .5) return; const day = Math.floor(W.now / 864e5); me.ssw = me.ssw && me.ssw.day === day ? me.ssw : { day, t: {} }; if ((me.ssw.t[v] || 0) >= 3) return; me.ssw.t[v] = (me.ssw.t[v] || 0) + 1; seasonBump(W, me, 'wins'); };
   const seasonBump = (W, n, k, v = 1) => { const id = W.cfg && W.cfg.season; if (!id || !n) return; if (!n.ss || n.ss.id !== id) n.ss = { id, wins: 0, relief: 0 }; n.ss[k] = (n.ss[k] || 0) + v; };
   // vassals
   const vassalsOf = (W, u) => Object.keys(W.A).filter(k => W.A[k].overlord === u);
@@ -2266,7 +2268,7 @@ function Core(PD, CARDS) {
     if (d.u === u) fail('You cannot send relief to yourself.'); const v = W.A[d.u]; if (!v) fail('That nation no longer exists.'); if (atWar(W, u, d.u)) fail(`You are at war with ${v.name}.`);
     const a = Math.floor(Number(amt)); if (!(a >= DISASTER.minGive)) fail(`Send at least ${money(DISASTER.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
     const before = d.aid[u] || 0, pr0 = Math.min(3, Math.floor(before / d.need * 8) / 2), pr1 = Math.min(3, Math.floor((before + a) / d.need * 8) / 2);
-    n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; seasonBump(W, n, 'relief', a); if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
+    const counts = Math.max(0, Math.min(a, (d.need || 0) - (d.got || 0))); n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; if (counts > 0) seasonBump(W, n, 'relief', counts); // only relief up to what the disaster needs counts for the season if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
     // every 20% of the appeal you fund lowers your aggression by 1 (up to −5 for funding all of it)
     const ag0 = Math.min(5, Math.floor(before / d.need * 5 + 1e-9)), ag1 = Math.min(5, Math.floor((before + a) / d.need * 5 + 1e-9)), agD = ag1 - ag0; if (agD > 0) n.aggr = Math.max(0, (n.aggr || 0) - agD);
     if (!before) n.approval = clamp(n.approval + 1, 0, 100); xpOnce(W, u, 'rel_' + d.id, 30 * MIN, Math.min(30, 3 + Math.round(a / 1e7)));

@@ -314,6 +314,7 @@ function effCfg() {
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
+  { const se = S.seasons && S.seasons.cur; c.fresh = S.fresh && se && se.fresh ? { name: se.name, end: se.end || 0, n: se.n } : S.fresh ? { name: 'Season', end: 0 } : null; }
   c.countdown = S.countdown && S.countdown.at + 2 * HOUR > now ? { id: S.countdown.id, text: S.countdown.text, at: S.countdown.at } : null;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
   return c;
@@ -827,25 +828,30 @@ function botPresence(W) {
 // an append-only file (one line per season). Nothing in the game or the admin page can edit or delete those lines.
 const HOF_FILE = path.join(DATA_DIR, 'halloffame.jsonl'); let HOF = [];
 try { HOF = fs.readFileSync(HOF_FILE, 'utf8').split('\n').filter(Boolean).map(l => { try { return Object.freeze(JSON.parse(l)); } catch (e) { return null; } }).filter(Boolean); } catch (e) { HOF = []; }
-const SEASON_METRICS = { score: { n: 'Score gained', title: 'Grand Strategist', fmt: v => Math.round(v).toLocaleString('en-US') }, land: { n: 'Provinces gained', title: 'Conqueror', fmt: v => (v > 0 ? '+' : '') + Math.round(v) }, gdp: { n: 'GDP growth', title: 'Tycoon', fmt: v => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }, wins: { n: 'Battles won', title: 'Warlord', fmt: v => String(Math.round(v)) }, relief: { n: 'Relief sent', title: 'Philanthropist', fmt: v => '$' + Math.round(v).toLocaleString('en-US') } };
+const SEASON_METRICS = { score: { n: 'Score gained', title: 'Grand Strategist', fmt: v => Math.round(v).toLocaleString('en-US') }, land: { n: 'Provinces gained', title: 'Conqueror', fmt: v => (v > 0 ? '+' : '') + Math.round(v) }, gdp: { n: 'GDP growth', title: 'Tycoon', fmt: v => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%' }, wins: { n: 'Battles won', title: 'Warlord', fmt: v => String(Math.round(v)) }, relief: { n: 'Relief sent', title: 'Philanthropist', fmt: v => '$' + Math.round(v).toLocaleString('en-US') },
+  // fresh-start seasons: everyone began from nothing on the same day, so the totals themselves are fair
+  final: { n: 'Final score', title: 'Grand Strategist', fresh: 1, fmt: v => Math.round(v).toLocaleString('en-US') }, prov: { n: 'Provinces held', title: 'Conqueror', fresh: 1, fmt: v => String(Math.round(v)) }, econ: { n: 'Largest economy', title: 'Tycoon', fresh: 1, fmt: v => '$' + Math.round(v).toLocaleString('en-US') }, tech: { n: 'Highest tech', title: 'Innovator', fresh: 1, fmt: v => 'Tech ' + Math.floor(v) }, power: { n: 'Military power', title: 'Supreme Commander', fresh: 1, fmt: v => Math.round(v).toLocaleString('en-US') } };
+const FRESH_AWARDS = ['prov', 'econ', 'tech', 'power', 'wins', 'relief'], NORMAL_AWARDS = ['score', 'land', 'gdp', 'wins', 'relief'];
 S.seasons = S.seasons || { cur: null, n: HOF.length };
 S.countdown = S.countdown || null;
 S.bm = S.bm && Array.isArray(S.bm.list) ? S.bm : { list: [] }; // black market listings (seller ids never leave the server)
 setTimeout(() => { try { blocRepair(); } catch (e) { console.error('blocRepair', e); } }, 0); // admin countdown banner: { id, text, at } shown to every player until 2 hours after it reaches zero
 if (S.seasons.n < HOF.length) S.seasons.n = HOF.length;
 function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = se.base[u] || { score: 0, prov: 0, gdp: n.gdp || 0 }; const ss = n.ss && n.ss.id === se.id ? n.ss : {};
-  if (m === 'score') return core.score(W, u) - b.score; if (m === 'land') return core.hexesOf(W, u).length - b.prov; if (m === 'gdp') return b.gdp > 0 ? (n.gdp || 0) / b.gdp - 1 : 0; if (m === 'wins') return ss.wins || 0; if (m === 'relief') return ss.relief || 0; return 0; }
+  if (m === 'score') return core.score(W, u) - b.score; if (m === 'land') return core.hexesOf(W, u).length - b.prov; if (m === 'gdp') return b.gdp > 0 ? (n.gdp || 0) / b.gdp - 1 : 0; if (m === 'wins') return ss.wins || 0; if (m === 'relief') return ss.relief || 0;
+  if (m === 'final') return core.score(W, u); if (m === 'prov') return core.hexesOf(W, u).length; if (m === 'econ') return n.gdp || 0; if (m === 'tech') return n.tech || 0; if (m === 'power') return core.power(W, u); return 0; }
 function seasonEligible(W, se, u) { const n = W.A[u]; if (!n) return false; if (n.ai && n.ai.boss) return false; return se.who === 'all' || !n.ai; }
 function seasonTable(W, se, m, max) { m = m || se.metric; return Object.keys(W.A).filter(u => seasonEligible(W, se, u)).map(u => ({ u, v: seasonVal(W, se, u, m) })).sort((a, b) => b.v - a.v).slice(0, max || 1e9); }
 function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, leader: (S.users[x.u] || {}).name || '', color: W.A[x.u].color, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
   const mi = t.findIndex(x => x.u === uid);
   return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
-function seasonBegin(W) { const se = S.seasons.cur; se.status = 'live'; se.start = Date.now(); se.base = {};
+function seasonBegin(W) { const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
+  se.status = 'live'; se.start = Date.now(); se.base = {};
   for (const u of Object.keys(W.A)) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 };
-  const t = `🏆 ${se.name} has begun! Nations are ranked by ${SEASON_METRICS[se.metric].n.toLowerCase()}${se.end ? ` until ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ''}.${se.prizes && se.prizes[0] ? ` The champion wins $${Math.round(se.prizes[0]).toLocaleString('en-US')}.` : ''} See Rankings for the live standings.`;
+  const t = se.fresh ? `🏆 ${se.name} has begun! Everyone starts fresh in a brand-new world: found your season nation now. Your real nation is saved and comes back${se.end ? ` on ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ' when the season ends'}, with your prizes.` : `🏆 ${se.name} has begun! Nations are ranked by ${SEASON_METRICS[se.metric].n.toLowerCase()}${se.end ? ` until ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ''}.${se.prizes && se.prizes[0] ? ` The champion wins $${Math.round(se.prizes[0]).toLocaleString('en-US')}.` : ''} See Rankings for the live standings.`;
   if (se.announce) { systemMessage(t); broadcast('announce', { text: t }); }
   persist(); broadcast('config', effCfg()); }
-function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !== 'live') return null; const M = SEASON_METRICS[se.metric], table = seasonTable(W, se), now = Date.now();
+function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !== 'live') return null; if (se.fresh) return seasonFinishFresh(W, by); const M = SEASON_METRICS[se.metric], table = seasonTable(W, se), now = Date.now();
   const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
   const ranked = table.filter(x => x.v > 0 || se.metric === 'gdp'), top = ranked.slice(0, 10);
   const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
@@ -857,7 +863,8 @@ function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !=
     badge(n, i === 0 ? { k: 'champion', ic: '🏆', t: `${se.name} Champion` } : i === 1 ? { k: 'second', ic: '🥈', t: `${se.name} 2nd place` } : i === 2 ? { k: 'third', ic: '🥉', t: `${se.name} 3rd place` } : { k: 'top10', ic: '🎖', t: `${se.name} top 10 (${ord(i)})` });
     n.log = [{ t: now, x: `🏆 ${se.name} is over: you finished ${ord(i)}!${cash ? ` Prize: $${Math.round(cash).toLocaleString('en-US')}.` : ''}${xp ? ` +${xp} XP.` : ''}${i === 0 ? ' You can now use the champion\'s gold flag frame and the champion map colours (Government page → Flag).' : ''}` }, ...(n.log || [])].slice(0, 120); W.changed.add(x.u);
     if (S.users[x.u]) addNote(x.u, 'event', `🏆 ${se.name}: you finished ${ord(i)}!${cash ? ` +$${Math.round(cash).toLocaleString('en-US')}` : ''}${xp ? ` +${xp} XP` : ''}${i === 0 ? '. Champion rewards unlocked: gold flag frame and champion map colours.' : '.'}`); });
-  for (const c of cats) { const n = W.A[c.u]; if (!n) continue; if (se.titles !== false) n.titles = [...(n.titles || []), { s: se.n, t: `${c.award} of ${se.name}` }].slice(-30); badge(n, { k: 'award', ic: '🏅', t: `${c.award} of ${se.name}` }); W.changed.add(c.u); }
+  for (const c of cats) { const n = W.A[c.u]; if (!n) continue; if (se.titles !== false) n.titles = [...(n.titles || []), { s: se.n, t: `${c.award} of ${se.name}` }].slice(-30); badge(n, { k: 'award', ic: '🏅', t: `${c.award} of ${se.name}` });
+    const aw = (se.award || {})[c.k] || {}; if (aw.cash) n.cash += aw.cash; if (aw.xp) n.xp = (n.xp || 0) + aw.xp; if ((aw.cash || aw.xp) && S.users[c.u]) addNote(c.u, 'event', `🏅 ${c.award} of ${se.name}!${aw.cash ? ` +$${Math.round(aw.cash).toLocaleString('en-US')}` : ''}${aw.xp ? ` +${aw.xp} XP` : ''}`); W.changed.add(c.u); }
   // everyone who played during the season gets the participation badge
   let veterans = 0; for (const u of Object.keys(W.A)) { const n = W.A[u]; if (!seasonEligible(W, se, u) || n.ai || !S.users[u]) continue; if (((S.meta[u] || {}).lastSeen || 0) < se.start) continue; badge(n, { k: 'played', ic: '🎗', t: `Played ${se.name}` }); veterans++; W.changed.add(u); }
   const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10), recorded: now };
@@ -869,9 +876,95 @@ function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !=
 let SW = null; const seasonW = () => { if (!SW || Date.now() - SW.t > 15e3) SW = { t: Date.now(), W: mkWorld() }; return SW.W; };
 function seasonTick(W) { const se = S.seasons.cur; if (!se) return; const now = Date.now();
   if (se.status === 'scheduled' && now >= se.start) seasonBegin(W);
+  else if (se.status === 'failed') return;
   else if (se.status === 'live') { for (const u of Object.keys(W.A)) if (!se.base[u]) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 }; // nations founded mid-season start from zero
     if (se.end && now >= se.end) seasonFinish(W); } }
 
+// ---------- FRESH-START SEASONS ----------
+// The real world is saved to a file and set aside; everyone founds a new nation in an empty world for the season; when it ends,
+// the real world comes back exactly as it was saved and the prizes are paid into each player's real nation.
+// Accounts, chat, mail, notes, the Hall of Fame, casino records and admin data are never touched.
+const FRESH_FILE = path.join(DATA_DIR, 'season-realworld.json');
+const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'overPause', 'overPauseSet'];
+function freshSave(se) {
+  const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
+  const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m && (m.fallen || m.rem)) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
+  const snap = { v: 1, t: Date.now(), season: se.id, name: se.name, nations, keys: Object.fromEntries(FRESH_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH };
+  const txt = JSON.stringify(snap), tmp = FRESH_FILE + '.tmp';
+  fs.writeFileSync(tmp, txt); fs.renameSync(tmp, FRESH_FILE);
+  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `season-realworld-${se.id}.json`), txt); } catch (e) { logErr('Could not write the second copy of the real world: ' + e.message); }
+  // read it back before anything is cleared: the real world is only set aside once its copy is proven good
+  const back = JSON.parse(fs.readFileSync(FRESH_FILE, 'utf8'));
+  if (!back || back.season !== se.id || Object.keys(back.nations || {}).length !== Object.keys(nations).length) throw new Error('The saved copy of the real world did not read back correctly.');
+  return Object.keys(nations).length;
+}
+function freshClear() {
+  const now = Date.now();
+  for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
+  S.council = { props: [], active: {} }; S.blocs = Object.create(null); S.crisis = null; S.crisisHist = []; S.games = null; S.gamesHist = []; S.dis = [];
+  S.nextGames = now + 12 * HOUR; S.nextDis = now + 3 * HOUR; S.nextCrisis = now + 36 * HOUR; S.event = null; S.nextEvent = now + 6 * HOUR; S.lastEventKey = null;
+  S.fallen = []; S.nukes = []; S.strikes = []; S.strikeLog = []; S.ntests = []; S.ntestPending = []; S.burn = {}; S.bm = { list: [] }; S.freedQ = 0; S.freedLast = []; S.freedAt = 0; S.bossFell = 0; S.overPause = 0; S.overPauseSet = 1;
+  for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
+  RH = []; rhGz = null; try { fs.writeFileSync(RANK_FILE, '[]'); } catch (e) {}
+}
+// the world loop's copy of the old world must never be written back after the switch
+function freshDropW(W) { if (!W) return; W.changed = new Set(); for (const k of Object.keys(W.A)) delete W.A[k]; W.OWN = {}; W.fallen = []; W.strikeFx = []; W.welcome = null; }
+function freshBegin(W, se) {
+  const n = freshSave(se); freshClear(); freshDropW(W); SW = null; publicCache = null;
+  S.fresh = { id: se.id, t: Date.now(), nations: n }; persist(true);
+  audit('System', 'Fresh season world started', `${se.name}: real world (${n} nations) saved to ${path.basename(FRESH_FILE)}`);
+  setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
+}
+function freshRestore(by, why) {
+  let snap = null, src = FRESH_FILE;
+  try { snap = JSON.parse(fs.readFileSync(FRESH_FILE, 'utf8')); } catch (e) { const id = S.fresh && S.fresh.id; const alt = id && path.join(BACKUP_DIR, `season-realworld-${id}.json`); if (alt && fs.existsSync(alt)) { snap = JSON.parse(fs.readFileSync(alt, 'utf8')); src = alt; } }
+  if (!snap || snap.v !== 1 || !snap.nations) throw Object.assign(new Error('The saved real world could not be found or read. Nothing was changed.'), { status: 500 });
+  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `season-world-final-${snap.season}-${Date.now()}.json`), JSON.stringify(gameState())); } catch (e) {}
+  const now = Date.now();
+  for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
+  for (const [id, n] of Object.entries(snap.nations)) { n.lastTick = now; if (n.nextCard && n.nextCard < now) n.nextCard = now + 10 * 60e3; S.docs['nations/' + id] = n; }
+  for (const k of FRESH_KEYS) S[k] = snap.keys[k] === null || snap.keys[k] === undefined ? (k === 'blocs' ? Object.create(null) : S[k]) : snap.keys[k];
+  S.blocs = Object.assign(Object.create(null), S.blocs || {}); if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
+  for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
+  for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
+  RH = Array.isArray(snap.rh) ? snap.rh : []; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
+  try { fs.renameSync(src, path.join(DATA_DIR, `season-realworld-restored-${snap.season}-${now}.json`)); } catch (e) {}
+  S.fresh = null; SW = null; publicCache = null; persist(true);
+  audit(by || 'System', 'Real world restored', `${snap.name || 'season'}: ${Object.keys(snap.nations).length} nations back${why ? ' (' + why + ')' : ''}`);
+  setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
+  return snap;
+}
+// a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
+function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
+function applyGrant(n, g) { if (g.cash) n.cash = (n.cash || 0) + g.cash; if (g.xp) n.xp = (n.xp || 0) + g.xp; for (const t of g.titles || []) n.titles = [...(n.titles || []), t].slice(-30);
+  for (const b of g.badges || []) n.badges = [...(n.badges || []).filter(x => !(x.s === b.s && x.k === b.k && x.t === b.t)), b].slice(-60); if (g.log) n.log = [{ t: Date.now(), x: g.log }, ...(n.log || [])].slice(0, 120); }
+function seasonPendingApply(u) { const m = S.meta[u], d = S.docs['nations/' + u]; if (!m || !d || !(m.seasonPending || []).length) return; for (const g of m.seasonPending) applyGrant(d, g); const k = m.seasonPending.length; m.seasonPending = []; addNote(u, 'event', `🏆 ${k} season reward${k > 1 ? 's were' : ' was'} waiting for your new nation and ${k > 1 ? 'have' : 'has'} been added.`); sendNation(u); persist(); }
+function seasonFinishFresh(W, by) {
+  const se = S.seasons.cur, M = SEASON_METRICS[se.metric] || SEASON_METRICS.final, table = seasonTable(W, se), now = Date.now();
+  const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
+  const ranked = table.filter(x => x.v > 0), top = ranked.slice(0, 10);
+  const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
+  const ord = i => ['1st', '2nd', '3rd'][i] || `${i + 1}th`, place = ['Champion', '2nd place', '3rd place'], grants = {};
+  const G = u => grants[u] = grants[u] || { cash: 0, xp: 0, titles: [], badges: [], lines: [] };
+  top.forEach((x, i) => { if (W.A[x.u].ai || !S.users[x.u]) return; const g = G(x.u), cash = Math.max(0, +((se.prizes || [])[i]) || 0), xp = Math.max(0, +((se.xp || [])[i]) || 0); g.cash += cash; g.xp += xp;
+    if (se.titles !== false && i < 3) g.titles.push({ s: se.n, t: `${se.name} ${place[i]}`, r: i + 1 });
+    g.badges.push(i === 0 ? { s: se.n, k: 'champion', ic: '🏆', t: `${se.name} Champion` } : i === 1 ? { s: se.n, k: 'second', ic: '🥈', t: `${se.name} 2nd place` } : i === 2 ? { s: se.n, k: 'third', ic: '🥉', t: `${se.name} 3rd place` } : { s: se.n, k: 'top10', ic: '🎖', t: `${se.name} top 10 (${ord(i)})` });
+    g.lines.push(`finished ${ord(i)} with ${W.A[x.u].name}${cash ? ` (+$${Math.round(cash).toLocaleString('en-US')})` : ''}${xp ? ` (+${xp} XP)` : ''}`); });
+  for (const c of cats) { if (W.A[c.u].ai || !S.users[c.u]) continue; const g = G(c.u), aw = (se.award || {})[c.k] || {}; g.cash += aw.cash || 0; g.xp += aw.xp || 0; if (se.titles !== false) g.titles.push({ s: se.n, t: `${c.award} of ${se.name}` }); g.badges.push({ s: se.n, k: 'award', ic: '🏅', t: `${c.award} of ${se.name}` }); g.lines.push(`${c.award} (${c.metric}: ${c.shown})${aw.cash ? ` +$${Math.round(aw.cash).toLocaleString('en-US')}` : ''}${aw.xp ? ` +${aw.xp} XP` : ''}`); }
+  let veterans = 0; for (const u of Object.keys(W.A)) { const n = W.A[u]; if (n.ai || !S.users[u] || !seasonEligible(W, se, u)) continue; G(u).badges.push({ s: se.n, k: 'played', ic: '🎗', t: `Played ${se.name}` }); veterans++; }
+  const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, fresh: true, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10) };
+  try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); }
+  HOF.push(Object.freeze(entry));
+  const champ = top[0] ? W.A[top[0].u].name : null, t2 = top[1] ? W.A[top[1].u].name : null, t3 = top[2] ? W.A[top[2].u].name : null;
+  freshDropW(W);
+  try { freshRestore(by || 'System', 'season ended'); } catch (e) { logErr('Real world restore failed at season end: ' + (e.stack || e)); se.status = 'restorefail'; persist(true); return entry; }
+  // prizes go to the real nations (or wait for players who don't have one yet)
+  for (const [u, g] of Object.entries(grants)) { const lines = g.lines.length ? g.lines.join('; ') : 'took part'; g.log = `🏆 ${se.name} is over: you ${lines}.${g.cash || g.xp ? ' Your prizes have been added to this nation.' : ''}`; const paid = seasonGrant(u, g); addNote(u, 'event', `🏆 ${se.name}: you ${lines}.${paid ? '' : ' Found a nation to receive your rewards.'}`); }
+  S.seasons.cur = null; audit(by || 'System', 'Season ended', se.name); persist(true);
+  const t = champ ? `🏆 ${se.name} is over! Champion: ${champ}.${t2 ? ` 2nd: ${t2}.` : ''}${t3 ? ` 3rd: ${t3}.` : ''} The real world is back exactly as you left it, with the prizes added. The winners are in the Hall of Fame forever.` : `${se.name} is over. The real world is back exactly as you left it.`;
+  if (se.announce) { systemMessage(t); setTimeout(() => broadcast('announce', { text: t }), 2500); }
+  broadcast('config', effCfg()); return entry;
+}
 
 // casino bookkeeping for the admin page: totals by game and by day, biggest wins, recent plays
 S.casino = S.casino || { tot: {}, days: {}, recent: [], big: [] };
@@ -1212,15 +1305,16 @@ async function adminRoute(p, req, res, me) {
   }
   if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
     const b = await readBody(req, 16384), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
-    if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title }])) });
+    if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title, fresh: !!v.fresh }])), awards: { fresh: FRESH_AWARDS, normal: NORMAL_AWARDS }, freshActive: S.fresh || null, freshFile: fs.existsSync(FRESH_FILE) });
     if (op === 'create') {
       if (S.seasons.cur) return send(res, 400, { error: 'A season is already scheduled or running. End or cancel it first.' });
-      const metric = SEASON_METRICS[b.metric] ? b.metric : 'score', days = +b.days, startAt = b.startAt ? +new Date(b.startAt) : 0, start = startAt && startAt > Date.now() ? startAt : Date.now();
+      const fresh = !!b.fresh; if (fresh && S.fresh) return send(res, 400, { error: 'A fresh season world is still active. Restore the real world first.' }); if (fresh && !(+b.days > 0)) return send(res, 400, { error: 'A fresh-start season needs an end date (number of days), so the real world comes back on time.' });
+      const metric = fresh ? 'final' : SEASON_METRICS[b.metric] && !SEASON_METRICS[b.metric].fresh ? b.metric : 'score', days = +b.days, startAt = b.startAt ? +new Date(b.startAt) : 0, start = startAt && startAt > Date.now() ? startAt : Date.now();
       if (b.startAt && !Number.isFinite(startAt)) return send(res, 400, { error: 'That start time is not a valid date.' });
       const n = S.seasons.n + 1, name = clean(b.name).slice(0, 60) || `Season ${n}`, num_ = v => Math.max(0, Math.min(1e12, Math.round(+v || 0)));
-      const se = { id: crypto.randomBytes(5).toString('hex'), n, name, msg: clean(b.msg).slice(0, 300), metric, who: b.who === 'all' ? 'all' : 'players', start, end: days > 0 ? start + Math.min(365, days) * 864e5 : 0, prizes: (Array.isArray(b.prizes) ? b.prizes : []).slice(0, 10).map(num_), xp: (Array.isArray(b.xp) ? b.xp : []).slice(0, 10).map(v => Math.min(1e6, num_(v))), cats: (Array.isArray(b.cats) ? b.cats : []).filter(k => SEASON_METRICS[k]).slice(0, 5), titles: b.titles !== false, announce: b.announce !== false, status: 'scheduled', base: {}, by: me.name, created: Date.now() };
+      const se = { id: crypto.randomBytes(5).toString('hex'), n, name, msg: clean(b.msg).slice(0, 300), metric, who: b.who === 'all' ? 'all' : 'players', start, end: days > 0 ? start + Math.min(365, days) * 864e5 : 0, prizes: (Array.isArray(b.prizes) ? b.prizes : []).slice(0, 10).map(num_), xp: (Array.isArray(b.xp) ? b.xp : []).slice(0, 10).map(v => Math.min(1e6, num_(v))), cats: (Array.isArray(b.cats) ? b.cats : []).filter(k => (fresh ? FRESH_AWARDS : NORMAL_AWARDS).includes(k)).slice(0, 6), fresh, award: Object.fromEntries(Object.entries(b.award && typeof b.award === 'object' ? b.award : {}).filter(([k]) => (fresh ? FRESH_AWARDS : NORMAL_AWARDS).includes(k)).map(([k, v]) => [k, { cash: num_((v || {}).cash), xp: Math.min(1e6, num_((v || {}).xp)) }])), titles: b.titles !== false, announce: b.announce !== false, status: 'scheduled', base: {}, by: me.name, created: Date.now() };
       S.seasons.cur = se; S.seasons.n = n; audit(me.name, start > Date.now() + 5000 ? 'Scheduled a season' : 'Started a season', name);
-      if (start <= Date.now() + 5000) seasonBegin(W); else { persist(); if (se.announce) { const t = `🏆 ${name} starts ${new Date(start).toUTCString().slice(0, 22)} UTC. Nations will be ranked by ${SEASON_METRICS[metric].n.toLowerCase()}.`; systemMessage(t); broadcast('announce', { text: t }); } }
+      if (start <= Date.now() + 5000) { seasonBegin(W); if (se.status === 'failed') { const err = se.err; S.seasons.cur = null; S.seasons.n = n - 1; persist(true); return send(res, 500, { error: 'The season could not start: ' + err + ' The real world was not changed.' }); } } else { persist(); if (se.announce) { const t = fresh ? `🏆 ${name} starts ${new Date(start).toUTCString().slice(0, 22)} UTC. Everyone starts fresh in a brand-new world, and your real nation will be saved and returned with your prizes.` : `🏆 ${name} starts ${new Date(start).toUTCString().slice(0, 22)} UTC. Nations will be ranked by ${SEASON_METRICS[metric].n.toLowerCase()}.`; systemMessage(t); broadcast('announce', { text: t }); } }
       return send(res, 200, { ok: true });
     }
     if (op === 'countdown') { // the countdown banner players see at the top of every page
@@ -1231,9 +1325,18 @@ async function adminRoute(p, req, res, me) {
       S.countdown = { id: crypto.randomBytes(4).toString('hex'), text, at, by: me.name, t: Date.now() }; persist(); broadcast('config', effCfg());
       audit(me.name, 'Set the countdown banner', `${text} · ${new Date(at).toUTCString().slice(0, 22)} UTC`); return send(res, 200, { ok: true, countdown: S.countdown });
     }
+    if (op === 'restore') { // emergency: bring the real world back now, without prizes
+      if (b.confirm !== 'RESTORE') return send(res, 400, { error: 'Type RESTORE to confirm.' });
+      if (!S.fresh && !fs.existsSync(FRESH_FILE)) return send(res, 400, { error: 'There is no saved real world waiting to be restored.' });
+      const se0 = S.seasons.cur; freshDropW(W);
+      try { freshRestore(me.name, 'emergency restore'); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+      if (se0 && se0.fresh) { S.seasons.cur = null; if (se0.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se0.n - 1); persist(true); }
+      systemMessage('🌍 The real world has been restored by the administrators. Everything is back as it was when the season began.'); broadcast('config', effCfg()); return send(res, 200, { ok: true });
+    }
     const se = S.seasons.cur; if (!se) return send(res, 404, { error: 'There is no season right now.' });
     if (op === 'end') { if (se.status !== 'live') return send(res, 400, { error: 'This season has not started yet. Cancel it instead.' }); const e = seasonFinish(W, me.name); commit(W); return send(res, 200, { ok: true, entry: e }); }
-    if (op === 'cancel') { S.seasons.cur = null; if (se.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se.n - 1); persist(); broadcast('config', effCfg()); audit(me.name, 'Cancelled a season (nothing recorded)', se.name); if (se.announce && b.announce !== false) systemMessage(`${se.name} has been cancelled.`); return send(res, 200, { ok: true }); }
+    if (op === 'cancel') { if (se.fresh && S.fresh) { freshDropW(W); try { freshRestore(me.name, 'season cancelled'); } catch (e) { return send(res, e.status || 500, { error: e.message }); } }
+      S.seasons.cur = null; if (se.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se.n - 1); persist(); broadcast('config', effCfg()); audit(me.name, 'Cancelled a season (nothing recorded)', se.name); if (se.announce && b.announce !== false) systemMessage(`${se.name} has been cancelled.`); return send(res, 200, { ok: true }); }
     if (op === 'extend') { const d = +b.days; if (!(d > 0) || !se.end) return send(res, 400, { error: 'Only seasons with an end date can be extended.' }); se.end += Math.min(90, d) * 864e5; persist(); audit(me.name, 'Extended a season', `${se.name} by ${d} days`); if (se.announce) systemMessage(`⏳ ${se.name} has been extended. It now ends ${new Date(se.end).toUTCString().slice(0, 22)} UTC.`); return send(res, 200, { ok: true }); }
     if (op === 'rename') { const nm = clean(b.name).slice(0, 60); if (!nm) return send(res, 400, { error: 'Give the season a name.' }); se.name = nm; se.msg = clean(b.msg).slice(0, 300); persist(); return send(res, 200, { ok: true }); }
     return send(res, 400, { error: 'Unknown operation.' });
@@ -1673,8 +1776,9 @@ async function handle(req, res) {
       if (fair) { if (r.casino) r.casino.fair = { nonce: fair.nonce, hash: W.fairHash }; fair.nonce++; }
       actLog(me.id, W, b, true, r.msg); pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
+      const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;
       if (W.casinoEv) casinoRecord(W);
-      commit(W);
+      commit(W); if (pendFound) seasonPendingApply(me.id);
       // your own nation comes back with the answer, so the screen updates the moment the action is done (no waiting on the live stream)
       return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });
     }
