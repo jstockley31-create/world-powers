@@ -1416,6 +1416,38 @@ function Core(PD, CARDS) {
     log(me, msg, W); gainXP(W, u, 2); touch(W, u); return { msg };
   }
 
+  // AUTO-BUY ORDERS: "when my food falls below X, buy Y on the world market", checked every 10 minutes, online or not.
+  // An order only fills when the nation can pay for it outright (it never borrows), at the normal market price and fees,
+  // and never above the leader's optional price limit. Munitions only fill up to the free depot space.
+  const AUTOBUY = { maxQ: 1e6, maxBelow: 1e8, everyMs: TICK, warnH: 6 };
+  function setAutoBuy(W, u, c) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); const r = String(c.r || ''); if (!has(RES, r)) fail('Unknown commodity.');
+    n.auto = n.auto || {};
+    if (c.off) { delete n.auto[r]; touch(W, u); return { msg: `Auto-buy for ${rName(r)} switched off.` }; }
+    const below = Math.floor(Number(c.below)), q = Math.floor(Number(c.q)), maxp = c.maxp === '' || c.maxp == null ? 0 : Math.round(Number(c.maxp));
+    if (!(below > 0) || below > AUTOBUY.maxBelow) fail('Enter the level to buy at (more than 0).');
+    if (!(q > 0) || q > AUTOBUY.maxQ) fail(`Enter how much to buy each time (1 to ${num(AUTOBUY.maxQ)}).`);
+    if (!(maxp >= 0) || maxp > 1e7) fail('Enter a sensible price limit, or leave it empty.');
+    n.auto[r] = { below, q, maxp, t: W.now }; touch(W, u);
+    return { msg: `Auto-buy set: when ${rName(r)} falls below ${num(below)}, buy ${num(q)}${maxp ? ` (at most ${money(maxp)} each)` : ''}.` };
+  }
+  const autoUnit = (W, u, r, q) => { const s = spreads(W, u); return RES[r].p * (W.m.price[r] || 1) * orderMult(W, u, r, q) * s.buy; };
+  function autoBuyTick(W, u) {
+    const n = W.A[u]; if (!n || !n.auto || n.ai) return false; const ks = Object.keys(n.auto).filter(r => has(RES, r)); if (!ks.length) return false;
+    if (n.autoT && W.now - n.autoT < AUTOBUY.everyMs) return false; n.autoT = W.now; let ch = false;
+    for (const r of ks) {
+      const o = n.auto[r]; if ((n.res[r] || 0) >= o.below) continue;
+      let q = o.q; if (r === 'mun') q = Math.min(q, munRoom(n));
+      const why = q <= 0 ? 'your depots are full' : embargoed(W, n) ? 'a World Council embargo closes the world market to you' : (n.blockade || 0) > W.now ? 'enemy warships are blockading your ports' : rogue(W, n) ? 'rogue states are shut out of the world market' : null;
+      let cost = 0, unit = 0; if (!why) { unit = autoUnit(W, u, r, q); cost = Math.round(unit * q); }
+      const why2 = why || (o.maxp && unit > o.maxp ? `the price (${money(Math.round(unit))} each) is above your limit of ${money(o.maxp)}` : cost > Math.max(0, n.cash) ? `you need ${money(cost)} and have ${money(Math.max(0, Math.floor(n.cash)))}` : null);
+      if (why2) { o.fail = why2; o.failT = W.now; if (!o.warnT || W.now - o.warnT > AUTOBUY.warnH * HOUR) { o.warnT = W.now; note(W, u, 'economy', `🛒 Auto-buy couldn't restock ${rName(r)}: ${why2}.`); log(n, `Auto-buy skipped for ${rName(r)}: ${why2}.`, W); } ch = true; continue; }
+      n.cash -= cost; n.res[r] = (n.res[r] || 0) + q; n.imp = (n.imp || 0) + cost; n.trades = [{ t: W.now, r, q }, ...(n.trades || [])].slice(0, 40);
+      o.last = { t: W.now, q, cost }; delete o.fail; delete o.warnT;
+      log(n, `🛒 Auto-buy: imported ${num(q)} ${rName(r)} for ${money(cost)} (stock had fallen below ${num(o.below)}).`, W); ch = true;
+    }
+    if (ch) touch(W, u); return ch;
+  }
   function setTax(W, u, t) { const n = W.A[u]; if (!n) fail('Found a nation first.'); t = Math.round(Number(t)); if (!(t >= 5 && t <= 50)) fail('Tax must be between 5% and 50%.'); n.tax = t; touch(W, u); return { msg: `Tax rate set to ${t}%.` }; }
   function setBudget(W, u, b) {
     const n = W.A[u]; if (!n) fail('Found a nation first.');
@@ -1680,6 +1712,7 @@ function Core(PD, CARDS) {
     if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + INSPECT.everyH * HOUR; changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + INSPECT.everyH * HOUR; n.iaeaPaid = fee;
       log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } }
     if (expedResolve(W, u, rng)) changed = true;
+    if (autoBuyTick(W, u)) changed = true;
     if (n.dome && n.dome.up && n.dome.up.ready <= W.now) { n.dome.lvl = n.dome.up.lvl; delete n.dome.up; note(W, u, 'economy', `🛡 Your Golden Dome is now level ${n.dome.lvl}: it stops ${Math.round(domeMis(n) * 100)}% of missiles and has a ${Math.round(domeNuke(n) * 100)}% chance against a nuclear missile.`); changed = true; }
     if (offersExpire(W, u)) changed = true;
     if (n.frozen && n.frozen.until <= W.now) { const a = n.frozen.amt || 0; n.cash += a; n.frozen = null; log(n, `The asset freeze has ended: ${money(a)} returned to your treasury.`, W); note(W, u, 'council', `The World Council asset freeze has ended. ${money(a)} is back in your treasury.`); changed = true; }
@@ -2327,6 +2360,7 @@ function Core(PD, CARDS) {
       case 'dip': return dip(W, u, String(c.kind), String(c.v));
       case 'aid': return aid(W, u, String(c.v), c.amt || {});
       case 'market': return market(W, u, String(c.r), c.q, !!c.buy);
+      case 'autobuy': return setAutoBuy(W, u, c);
       case 'tax': return setTax(W, u, c.t);
       case 'budget': return setBudget(W, u, c.b || {});
       case 'bonds': return bonds(W, u, c.amt, !!c.repay);
@@ -2363,7 +2397,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     budget, domeUpkeep, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
