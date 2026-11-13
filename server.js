@@ -1457,6 +1457,88 @@ async function adminRoute(p, req, res, me) {
     setDoc('nations', b.a, A_); setDoc('nations', b.b, B_); systemMessage(`🕊 The administrators have imposed peace between ${A_.name} and ${B_.name}.`);
     audit(me.name, 'Forced peace', `${A_.name} ↔ ${B_.name}`); return send(res, 200, { ok: true });
   }
+  // ---------- admin fix-it tools: repair one nation, an alliance, the whole world; compensate players ----------
+  if (p === '/api/admin/fix' && req.method === 'POST') { // Players → a nation → Fix problems (also works on AI nations)
+    const b = await readBody(req, 2048), id = String(b.id || ''), key = 'nations/' + id; if (!Object.prototype.hasOwnProperty.call(S.docs, key) || !S.docs[key]) return send(res, 404, { error: 'Unknown nation.' });
+    const n = S.docs[key], ops = Array.isArray(b.ops) ? b.ops.map(String) : [], done = [], t = Date.now();
+    if (ops.includes('rogue')) { const was = Math.round(n.aggr || 0); n.rogue = 0; n.rogueT = 0; n.aggr = 0; done.push(`rogue status cleared, aggression ${was} → 0`); }
+    if (ops.includes('sanctions')) { n.embargo = 0; n.armsEmb = 0; if ((n.aggr || 0) >= 50) n.aggr = 40; done.push('sanctions, embargo and arms embargo lifted'); }
+    if (ops.includes('wars')) { let k = 0; n.rel = n.rel || {}; for (const [v, r] of Object.entries(n.rel)) { const o = S.docs['nations/' + v]; const or = o && o.rel && o.rel[id] || {}; const w = Math.max((r && r.war) || 0, or.war || 0); if (!w) continue; if ((r.peace || 0) > w && (or.peace || 0) > w) continue; n.rel[v] = { ...r, peace: t }; if (o) { o.rel = o.rel || {}; o.rel[id] = { ...or, peace: t }; setDoc('nations', v, o); } k++; } done.push(`${k} war${k === 1 ? '' : 's'} ended`); }
+    if (ops.includes('nuke')) { n.nuked = null; n.fallout = 0; n.winter = 0; n.rad = null; done.push('nuclear damage, fallout, winter and radiation cleared'); }
+    if (ops.includes('shield')) { const h = Math.max(1, Math.min(168, Math.round(+b.hours || 24))); n.shield = Math.max(n.shield || 0, t + h * HOUR); done.push(`protected from attack for ${h} hours`); }
+    if (ops.includes('cooldowns')) { n.cd = {}; done.push('cooldowns reset'); }
+    if (ops.includes('unrest')) { n.approval = Math.max(n.approval || 0, 60); n.stability = Math.max(n.stability || 0, 60); done.push('approval and stability raised to at least 60'); }
+    if (!done.length) return send(res, 400, { error: 'Choose at least one fix.' });
+    setDoc('nations', id, n); audit(me.name, 'Fixed nation', n.name, done.join('; '));
+    if (b.tell && S.users[id]) addNote(id, 'diplo', `🛠 The administrators fixed a problem with your nation: ${done.join(', ')}.`);
+    return send(res, 200, { ok: true, done });
+  }
+  if (p === '/api/admin/blocs' && req.method === 'GET') { // Alliances tab
+    const nm = id => (S.docs['nations/' + id] || {}).name || (S.users[id] || {}).name || '?';
+    return send(res, 200, { blocs: Object.values(S.blocs || {}).map(b => ({ id: b.id, name: b.name, tag: b.tag, leader: b.leader, co: (b.co || []).filter(m => (b.members || []).includes(m)), members: (b.members || []).map(m => ({ id: m, name: nm(m), seen: (S.meta[m] || {}).lastSeen || 0 })), bank: b.bank || 0, done: Object.keys(b.done || {}).length, proj: b.proj ? { k: b.proj.k, stage: b.proj.stage } : null, open: !!b.open, created: b.created || 0, log: (b.log || []).slice(0, 15) })) });
+  }
+  if (p === '/api/admin/bloc' && req.method === 'POST') {
+    const b = await readBody(req, 2048), bl = Object.prototype.hasOwnProperty.call(S.blocs || {}, String(b.bid)) ? S.blocs[String(b.bid)] : null; if (!bl) return send(res, 404, { error: 'That alliance no longer exists.' });
+    const v = String(b.v || ''), nm = id => (S.docs['nations/' + id] || {}).name || '?', blog = x => { bl.log = [{ t: Date.now(), x }, ...(bl.log || [])].slice(0, 30); }, mem = () => (bl.members || []).includes(v);
+    let msg = '';
+    switch (String(b.op)) {
+      case 'leader': if (!mem()) return send(res, 400, { error: 'Choose a member.' }); bl.leader = v; bl.co = (bl.co || []).filter(m => m !== v); blog(`The administrators made ${nm(v)} the leader.`); addNote(v, 'diplo', `You are now the leader of ${bl.name}.`); msg = `${nm(v)} now leads ${bl.name}`; break;
+      case 'co': { if (!mem() || v === bl.leader) return send(res, 400, { error: 'Choose a member who is not the leader.' }); const co = (bl.co || []).filter(m => bl.members.includes(m)); if (b.on === false) { bl.co = co.filter(m => m !== v); blog(`The administrators removed ${nm(v)} as co-leader.`); msg = `${nm(v)} is no longer a co-leader`; } else { if (co.includes(v)) return send(res, 400, { error: 'Already a co-leader.' }); if (co.length >= 2) return send(res, 400, { error: 'An alliance can have 2 co-leaders. Remove one first.' }); co.push(v); bl.co = co; blog(`The administrators made ${nm(v)} a co-leader.`); addNote(v, 'diplo', `⭐ You are now a co-leader of ${bl.name}.`); msg = `${nm(v)} is now a co-leader`; } break; }
+      case 'rename': { const name = String(b.name || '').replace(/\s+/g, ' ').trim().slice(0, 28), tag = String(b.tag || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); if (name.length < 3) return send(res, 400, { error: 'Names need at least 3 characters.' }); if (tag.length < 2) return send(res, 400, { error: 'The tag needs 2 to 4 letters or numbers.' }); if (Object.values(S.blocs).some(x => x !== bl && (x.name.toLowerCase() === name.toLowerCase() || x.tag === tag))) return send(res, 400, { error: 'Another alliance already uses that name or tag.' }); msg = `renamed ${bl.name} [${bl.tag}] → ${name} [${tag}]`; bl.name = name; bl.tag = tag; blog('The administrators renamed the alliance.'); break; }
+      case 'kick': { if (!mem()) return send(res, 400, { error: 'Not a member.' }); bl.members = bl.members.filter(m => m !== v); bl.co = (bl.co || []).filter(m => m !== v); const n = S.docs['nations/' + v]; if (n) { n.bloc = null; setDoc('nations', v, n); } addNote(v, 'diplo', `The administrators removed you from the alliance ${bl.name}.`); blog(`The administrators removed ${nm(v)}.`);
+        if (!bl.members.length) { delete S.blocs[bl.id]; msg = `removed ${nm(v)}; the alliance was empty and was closed`; break; }
+        if (bl.leader === v) { bl.leader = bl.co[0] || bl.members[0]; bl.co = bl.co.filter(m => m !== bl.leader); blog(`${nm(bl.leader)} is the new leader.`); addNote(bl.leader, 'diplo', `You are now the leader of ${bl.name}.`); }
+        msg = `removed ${nm(v)} from ${bl.name}`; break; }
+      case 'bank': { const amt = Math.round(+b.amt); if (!isFinite(amt) || Math.abs(amt) > 1e13) return send(res, 400, { error: 'Enter an amount (use a minus sign to take money out).' }); const was = bl.bank || 0; bl.bank = Math.max(0, was + amt); blog(`The administrators ${amt >= 0 ? 'added' : 'removed'} ${WP.moneyS(Math.abs(bl.bank - was))} ${amt >= 0 ? 'to' : 'from'} the treasury.`); msg = `treasury ${WP.moneyS(was)} → ${WP.moneyS(bl.bank)}`; break; }
+      case 'project': { if (!bl.proj) return send(res, 400, { error: 'No project is being built.' }); bl.proj.next = 0; blog('The administrators finished the current building stage.'); msg = 'current project stage finished early'; break; }
+      case 'disband': { if (String(b.confirm) !== 'DISBAND') return send(res, 400, { error: 'Type DISBAND to confirm.' }); const ref = String(b.refund) === 'members' ? 'members' : 'none', each = ref === 'members' && bl.members.length ? Math.floor((bl.bank || 0) / bl.members.length) : 0;
+        for (const m of bl.members) { const n = S.docs['nations/' + m]; if (n) { n.bloc = null; if (each) n.cash = (n.cash || 0) + each; setDoc('nations', m, n); } addNote(m, 'diplo', `The administrators disbanded the alliance ${bl.name}${each ? `; you received ${WP.moneyS(each)} from its treasury` : ''}.`); }
+        delete S.blocs[bl.id]; msg = `disbanded ${bl.name}${each ? `, ${WP.moneyS(each)} to each member` : ''}`; break; }
+      default: return send(res, 400, { error: 'Unknown alliance action.' });
+    }
+    persist(); sendBlocs(); audit(me.name, 'Alliance: ' + msg, bl.name); return send(res, 200, { ok: true, msg });
+  }
+  if (p === '/api/admin/give' && req.method === 'POST') { // compensation, to one player or every player
+    const b = await readBody(req, 4096), cash = Math.round(+b.cash || 0), xp = Math.round(+b.xp || 0), res_ = {}, note = String(b.note || '').trim().slice(0, 300);
+    for (const r of ['food', 'oil', 'steel', 'goods', 'mun']) { const v = Math.round(+((b.res || {})[r]) || 0); if (v) res_[r] = v; }
+    if (!(cash > 0) && !(xp > 0) && !Object.values(res_).some(v => v > 0)) return send(res, 400, { error: 'Enter something to give.' });
+    if (cash < 0 || xp < 0 || Object.values(res_).some(v => v < 0)) return send(res, 400, { error: 'Amounts must be positive. To take something away, edit the nation instead.' });
+    if (cash > 1e12 || xp > 1e6 || Object.values(res_).some(v => v > 1e9)) return send(res, 400, { error: 'That is more than the safety limit ($1T cash, 1M XP, 1B of a resource per player).' });
+    let ids; if (b.to === 'all') ids = Object.keys(S.users).filter(id => !S.users[id].banned && S.docs['nations/' + id]); else { const id = String(b.to || ''); if (!S.users[id] || !S.docs['nations/' + id]) return send(res, 404, { error: 'That player has no nation.' }); ids = [id]; }
+    const parts = [cash ? WP.moneyS(cash) : '', ...Object.entries(res_).map(([r, v]) => `${WP.num(v)} ${r === 'mun' ? 'munitions' : r}`), xp ? `${WP.num(xp)} XP` : ''].filter(Boolean).join(', ');
+    for (const id of ids) { const n = S.docs['nations/' + id]; n.cash = (n.cash || 0) + cash; n.xp = (n.xp || 0) + xp; n.res = n.res || {}; for (const [r, v] of Object.entries(res_)) n.res[r] = (n.res[r] || 0) + v; setDoc('nations', id, n); addNote(id, 'diplo', `🎁 Gift from the administrators: ${parts}.${note ? ' ' + note : ''}`); }
+    audit(me.name, b.to === 'all' ? `Gave every player (${ids.length})` : 'Gave a player', b.to === 'all' ? null : (S.users[ids[0]] || {}).name, parts + (note ? ` — “${note}”` : ''));
+    if (b.to === 'all' && b.announce) systemMessage(`🎁 Every leader received ${parts} from the administrators.${note ? ' ' + note : ''}`);
+    return send(res, 200, { ok: true, n: ids.length, parts });
+  }
+  if (p === '/api/admin/cleanup' && req.method === 'POST') { // World → Repair tools
+    const b = await readBody(req, 1024), op = String(b.op || ''), t = Date.now(), all = Object.entries(S.docs).filter(([k, d]) => k.startsWith('nations/') && d); let msg = '';
+    if (op === 'wars') { let k = 0; const touched = new Set(); for (const [key, n] of all) { const id = key.slice(8); for (const [v, r] of Object.entries(n.rel || {})) { const o = S.docs['nations/' + v]; const or = (o && o.rel && o.rel[id]) || {}; const w = Math.max((r && r.war) || 0, or.war || 0); if (!w || ((r.peace || 0) > w && (or.peace || 0) > w)) continue; n.rel[v] = { ...r, peace: t }; touched.add(id); if (o) { o.rel = o.rel || {}; o.rel[id] = { ...or, peace: t }; touched.add(v); } k++; } } for (const id of touched) setDoc('nations', id, S.docs['nations/' + id]); systemMessage('🕊 The administrators have ended every war. The world is at peace.'); msg = `ended every war (${k})`; }
+    else if (op === 'nukes') { let k = 0; for (const [key, n] of all) if (n.nuked || n.fallout || n.winter || n.rad) { n.nuked = null; n.fallout = 0; n.winter = 0; n.rad = null; setDoc('nations', key.slice(8), n); k++; } S.nukes = []; msg = `cleared nuclear effects on ${k} nations`; }
+    else if (op === 'rogue') { let k = 0; for (const [key, n] of all) if ((n.rogue || 0) > t || (n.aggr || 0) >= 50) { n.rogue = 0; n.rogueT = 0; n.aggr = Math.min(n.aggr || 0, 20); setDoc('nations', key.slice(8), n); k++; } msg = `cleared rogue and sanctioned status on ${k} nations`; }
+    else if (op === 'bm') { let k = 0, back = 0; for (const x of S.bm.list) { if (x.exp > t && x.q > 0) { const n = S.docs['nations/' + x.seller]; if (n) { n.res = n.res || {}; n.res[x.r] = (n.res[x.r] || 0) + x.q; setDoc('nations', x.seller, n); back++; } k++; } } S.bm.list = []; bmCast(); msg = `cleared ${k} black-market listings (goods returned to ${back} sellers)`; }
+    else if (op === 'health' || op === 'healthfix') {
+      const fix = op === 'healthfix', found = [], numF = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'infra', 'fort', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl', 'tax', 'gdp'];
+      for (const [key, n] of all) { const id = key.slice(8); let ch = false;
+        for (const f of numF) if ((n[f] == null && ['cash', 'pop', 'xp'].includes(f)) || (n[f] != null && (typeof n[f] !== 'number' || !Number.isFinite(n[f])) && !(typeof n[f] === 'string' && n[f].trim() !== '' && Number.isFinite(+n[f])))) { found.push(`${n.name}: ${f} is broken (${n[f]})`); if (fix) { n[f] = f === 'approval' || f === 'stability' ? 50 : f === 'tax' ? 20 : 0; ch = true; } }
+        for (const r of Object.keys(n.res || {})) if (!Number.isFinite(+n.res[r]) || n.res[r] < 0) { found.push(`${n.name}: ${r} is ${n.res[r]}`); if (fix) { n.res[r] = Math.max(0, +n.res[r] || 0); ch = true; } }
+        for (const f of ['approval', 'stability']) if (Number.isFinite(+n[f]) && (n[f] < 0 || n[f] > 100)) { found.push(`${n.name}: ${f} out of range (${Math.round(n[f])})`); if (fix) { n[f] = Math.max(0, Math.min(100, n[f])); ch = true; } }
+        if (n.bloc && !(S.blocs[n.bloc] && (S.blocs[n.bloc].members || []).includes(id))) { found.push(`${n.name}: points at an alliance it is not in`); if (fix) { n.bloc = null; ch = true; } }
+        if (n.bj && n.bj.t && t - n.bj.t > 6 * HOUR) { found.push(`${n.name}: blackjack hand stuck for hours`); if (fix) { n.cash = (n.cash || 0) + (n.bj.bet || 0); n.bj = null; ch = true; } }
+        for (const v of Object.keys(n.rel || {})) if (!S.docs['nations/' + v]) { if (fix) { delete n.rel[v]; ch = true; } }
+        if (ch) setDoc('nations', id, n); }
+      for (const bl of Object.values(S.blocs || {})) { const live = (bl.members || []).filter(m => S.docs['nations/' + m]); if (live.length !== (bl.members || []).length) { found.push(`${bl.name}: lists ${bl.members.length - live.length} nation(s) that no longer exist`); if (fix) bl.members = live; }
+        for (const m of live) { const n = S.docs['nations/' + m]; if (n.bloc !== bl.id) { found.push(`${bl.name}: ${n.name} is a member but its nation points elsewhere`); if (fix) { const other = n.bloc && S.blocs[n.bloc] && S.blocs[n.bloc].members.includes(m); if (other) bl.members = bl.members.filter(x => x !== m); else { n.bloc = bl.id; setDoc('nations', m, n); } } } }
+        if (fix && !bl.members.length) { delete S.blocs[bl.id]; continue; }
+        if (!bl.members.includes(bl.leader)) { found.push(`${bl.name}: its leader is not a member`); if (fix) bl.leader = (bl.co || []).find(m => bl.members.includes(m)) || bl.members[0]; }
+        if ((bl.co || []).some(m => !bl.members.includes(m) || m === bl.leader)) { found.push(`${bl.name}: stale co-leader entries`); if (fix) bl.co = bl.co.filter(m => bl.members.includes(m) && m !== bl.leader); }
+        if (!Number.isFinite(+bl.bank) || bl.bank < 0) { found.push(`${bl.name}: treasury is ${bl.bank}`); if (fix) bl.bank = Math.max(0, +bl.bank || 0); } }
+      if (fix) { persist(); sendBlocs(); try { blocRepair(); } catch (e) {} audit(me.name, 'World health check: fixed', null, found.length ? found.slice(0, 40).join('; ') : 'nothing to fix'); }
+      return send(res, 200, { ok: true, found, fixed: fix });
+    }
+    else return send(res, 400, { error: 'Unknown repair.' });
+    persist(); audit(me.name, 'World repair: ' + msg); return send(res, 200, { ok: true, msg });
+  }
   if (p === '/api/admin/fires-out' && req.method === 'POST') { const n = Object.keys(S.burn).length; S.burn = {}; S.strikes = []; persist(); broadcast('firesout', {}); audit(me.name, 'Put out all fires', null, `${n} burning provinces`); return send(res, 200, { ok: true, n }); }
   if (p === '/api/admin/backup' && req.method === 'GET') {
     audit(me.name, 'Downloaded a backup');
