@@ -87,14 +87,26 @@ const WONDERS = {
   port: { n: 'Grand Global Port', d: 'Market fees cut in half for you, and trade bonuses count up to 7 partners instead of 5.', stages: 4, cost: { cash: 3.5e6, steel: 500, oil: 400 }, fx: { spread: .04, tcap: 2 } }
 };
 // alliances: teams of nations with a shared treasury, a flag, joint projects and daily team goals
-const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 120, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3 };
+const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 120, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3, coMax: 2, coGrant: .25 };
 const BPROJ = {
   market: { n: 'Common Market', d: '+6% tax revenue for every member.', stages: 3, fx: { tax: 1.06 } },
   defense: { n: 'Mutual Defense Network', d: 'Every member\'s provinces defend 8% better.', stages: 3, fx: { def: 1.08 } },
   research: { n: 'Joint Research Institute', d: 'Research costs 12% less for every member.', stages: 3, fx: { research: .88 } },
   devbank: { n: 'Development Bank', d: '+3% GDP for every member.', stages: 4, fx: { gdp: 1.03 } },
   college: { n: 'War College', d: 'Operations earn 15% more XP for every member.', stages: 3, fx: { xp: 1.15 } },
-  hq: { n: 'Alliance Headquarters', d: '+3 approval and +3 stability for every member, and room for 2 more members (8 instead of 6).', stages: 4, fx: { ap: 3, st: 3 } }
+  hq: { n: 'Alliance Headquarters', d: '+3 approval and +3 stability for every member, and room for 2 more members (8 instead of 6).', stages: 4, fx: { ap: 3, st: 3 } },
+  // second wave: longer projects, several built on an earlier one, so an alliance always has something to work toward
+  pipeline: { n: 'Shared Energy Grid', d: 'Every member burns 15% less oil.', stages: 4, fx: { oil: .85 } },
+  industry: { n: 'Industrial Consortium', d: 'Every member\'s provinces produce 5% more food, oil, steel and goods.', stages: 4, fx: { prod: 1.05 } },
+  medical: { n: 'Medical Corps', d: 'Health drifts 8 higher for every member, so populations grow faster.', stages: 3, fx: { health: 8 } },
+  jobs: { n: 'Jobs Accord', d: 'Unemployment drifts 1 point lower for every member.', stages: 3, fx: { unemp: -1 } },
+  university: { n: 'Alliance University', d: 'Education drifts 8 higher for every member.', stages: 4, req: 'research', fx: { edu: 8 } },
+  trade: { n: 'Trade Federation', d: 'Members buy 2% cheaper and sell 2% higher on the market, and trade bonuses count 1 more partner.', stages: 5, req: 'market', fx: { spread: .02, tcap: 1 } },
+  civil: { n: 'Civil Service Academy', d: 'Government spending costs 6% less for every member.', stages: 5, req: 'devbank', fx: { spend: .94 } },
+  fortress: { n: 'Fortress Line', d: 'Every member\'s provinces defend another 7% better.', stages: 5, req: 'defense', fx: { def: 1.07 } },
+  space: { n: 'Joint Space Program', d: 'Research costs another 8% less and operations earn 10% more XP for every member.', stages: 6, req: 'university', fx: { research: .92, xp: 1.1 } },
+  wealth: { n: 'Sovereign Wealth Fund', d: '+3% GDP and +3% tax revenue for every member.', stages: 6, req: 'trade', fx: { gdp: 1.03, tax: 1.03 } },
+  embassy: { n: 'Grand Embassy', d: '+3 approval and +4 stability for every member.', stages: 5, req: 'hq', fx: { ap: 3, st: 4 } }
 };
 // world crises: a threat to everyone. Each nation chooses to cooperate (pay into a shared world effort) or exploit (take an instant profit).
 // If the world effort is met in time, the threat is averted and the top contributors are rewarded; if not, disaster strikes.
@@ -1956,6 +1968,7 @@ function Core(PD, CARDS) {
   function blocCmd(W, u, op, c) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); const mine = blocOf(W, u);
     const isLeader = mine && mine.leader === u, needLeader = () => { if (!mine) fail('You are not in an alliance.'); if (!isLeader) fail('Only the alliance leader can do that.'); };
+    const isCo = !!(mine && !isLeader && (mine.co || []).includes(u)), needStaff = () => { if (!mine) fail('You are not in an alliance.'); if (!isLeader && !isCo) fail('Only the leader or a co-leader can do that.'); };
     const nameOk = (name, skip) => { const x = cleanName(name, BLOC.nameMin, BLOC.nameMax); if (x.length < BLOC.nameMin) fail(`Alliance names need at least ${BLOC.nameMin} characters.`); if (Object.values(W.B).some(b => b !== skip && b.name.toLowerCase() === x.toLowerCase())) fail('Another alliance already uses that name.'); return x; };
     const tagOk = (tag, skip) => { const x = String(tag || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); if (x.length < 2) fail('The tag needs 2 to 4 letters or numbers.'); if (Object.values(W.B).some(b => b !== skip && b.tag === x)) fail('Another alliance already uses that tag.'); return x; };
     const peer = v => { if (!has(W.A, v)) fail('Unknown nation.'); return W.A[v]; };
@@ -1975,14 +1988,14 @@ function Core(PD, CARDS) {
         return done('Alliance updated.');
       }
       case 'invite': {
-        needLeader(); const t = peer(String(c.v)); const v = String(c.v); if (v === u) fail('You are already a member.'); if (t.ai) fail('AI nations do not join alliances.');
+        needStaff(); const t = peer(String(c.v)); const v = String(c.v); if (v === u) fail('You are already a member.'); if (t.ai) fail('AI nations do not join alliances.');
         if (mine.members.includes(v)) fail(`${t.name} is already a member.`); if (blocOf(W, v)) fail(`${t.name} is already in another alliance.`);
         if (mine.members.length >= blocCap(mine)) fail(`Your alliance is full (${blocCap(mine)} members).`);
         if (rogue(W, t)) fail(`${t.name} is a rogue state.`);
         mine.invites[v] = W.now; note(W, v, 'diplo', `🤝 ${n.name} invites you to join the alliance ${mine.name} [${mine.tag}]. Answer on the Diplomacy page.`); log(t, `${n.name} invited you to join ${mine.name} [${mine.tag}].`, W); touch(W, v);
         return done(`Invitation sent to ${t.name}.`);
       }
-      case 'uninvite': { needLeader(); delete mine.invites[String(c.v)]; return done('Invitation withdrawn.'); }
+      case 'uninvite': { needStaff(); delete mine.invites[String(c.v)]; return done('Invitation withdrawn.'); }
       case 'join': {
         const b = has(W.B, String(c.id)) ? W.B[String(c.id)] : null; if (!b) fail('That alliance no longer exists.');
         if (mine) fail(`You are already in ${mine.name}. Leave it first.`);
@@ -1997,8 +2010,15 @@ function Core(PD, CARDS) {
       case 'leave': {
         if (!mine) fail('You are not in an alliance.'); blocRemove(W, mine, u, `${n.name} left the alliance.`); news(W, u, `${n.name} left the alliance ${mine.name}.`); return done(`You left ${mine.name}.`);
       }
-      case 'kick': { needLeader(); const v = String(c.v); if (v === u || !mine.members.includes(v)) fail('Not a member.'); const t = W.A[v]; blocRemove(W, mine, v, `${t ? t.name : 'A nation'} was removed by the leader.`); if (t) { note(W, v, 'diplo', `You were removed from the alliance ${mine.name}.`); touch(W, v); } return done('Member removed.'); }
-      case 'lead': { needLeader(); const v = String(c.v); if (!mine.members.includes(v) || v === u) fail('Choose another member.'); mine.leader = v; blocLog(mine, `${W.A[v].name} is the new leader.`, W); note(W, v, 'diplo', `You are now the leader of ${mine.name}.`); touch(W, v); return done(`${W.A[v].name} now leads the alliance.`); }
+      case 'kick': { needStaff(); const v = String(c.v); if (v === u || !mine.members.includes(v)) fail('Not a member.'); if (isCo && (v === mine.leader || (mine.co || []).includes(v))) fail('Co-leaders cannot remove the leader or another co-leader.'); const t = W.A[v]; blocRemove(W, mine, v, `${t ? t.name : 'A nation'} was removed by ${isCo ? 'co-leader ' + n.name : 'the leader'}.`); if (t) { note(W, v, 'diplo', `You were removed from the alliance ${mine.name}.`); touch(W, v); } return done('Member removed.'); }
+      case 'lead': { needLeader(); const v = String(c.v); if (!mine.members.includes(v) || v === u) fail('Choose another member.'); mine.leader = v; mine.co = (mine.co || []).filter(m => m !== v); if (mine.co.length < BLOC.coMax) mine.co.push(u); blocLog(mine, `${W.A[v].name} is the new leader.`, W); note(W, v, 'diplo', `You are now the leader of ${mine.name}.`); touch(W, v); return done(`${W.A[v].name} now leads the alliance.`); }
+      case 'colead': {
+        needLeader(); const v = String(c.v); if (!mine.members.includes(v) || v === u || !W.A[v]) fail('Choose another member.'); const co = mine.co = (mine.co || []).filter(m => mine.members.includes(m));
+        if (c.on === false || c.on === 0 || c.on === 'false') { if (!co.includes(v)) fail(`${W.A[v].name} is not a co-leader.`); mine.co = co.filter(m => m !== v); blocLog(mine, `${W.A[v].name} is no longer a co-leader.`, W); note(W, v, 'diplo', `You are no longer a co-leader of ${mine.name}.`); touch(W, v); return done(`${W.A[v].name} is no longer a co-leader.`); }
+        if (co.includes(v)) fail(`${W.A[v].name} is already a co-leader.`); if (co.length >= BLOC.coMax) fail(`An alliance can have ${BLOC.coMax} co-leaders. Remove one first.`);
+        co.push(v); blocLog(mine, `${W.A[v].name} is now a co-leader.`, W); note(W, v, 'diplo', `⭐ ${n.name} made you a co-leader of ${mine.name}. You can now send treasury money, start projects, invite and remove members.`); touch(W, v);
+        return done(`${W.A[v].name} is now a co-leader.`);
+      }
       case 'disband': { needLeader(); for (const m of [...mine.members]) if (W.A[m]) { W.A[m].bloc = null; touch(W, m); if (m !== u) note(W, m, 'diplo', `The alliance ${mine.name} was disbanded.`); } if (mine.bank > 0) n.cash += mine.bank; news(W, u, `The alliance ${mine.name} has been disbanded.`); delete W.B[mine.id]; return done(`${mine.name} was disbanded${mine.bank > 0 ? `; ${money(mine.bank)} from the treasury went to you` : ''}.`); }
       case 'give': {
         if (!mine) fail('You are not in an alliance.'); const amt = Math.floor(Number(c.amt)); if (!(amt >= 1e5)) fail('Deposit at least $100,000.'); if (amt > n.cash) fail('You do not have that much money.');
@@ -2006,15 +2026,19 @@ function Core(PD, CARDS) {
         return done(`${moneyS(amt)} deposited into the ${mine.name} treasury.`);
       }
       case 'grant': {
-        needLeader(); const v = String(c.v); if (!mine.members.includes(v) || !W.A[v]) fail('Choose a member.'); const amt = Math.floor(Number(c.amt)); if (!(amt >= 1e5)) fail('Send at least $100,000.'); if (amt > (mine.bank || 0)) fail('The treasury does not hold that much.');
-        mine.bank -= amt; W.A[v].cash += amt; blocLog(mine, `The leader sent ${moneyS(amt)} to ${W.A[v].name}.`, W); if (v !== u) note(W, v, 'diplo', `${mine.name} sent you ${moneyS(amt)} from the alliance treasury.`); touch(W, v);
+        needStaff(); const v = String(c.v); if (!mine.members.includes(v) || !W.A[v]) fail('Choose a member.'); const amt = Math.floor(Number(c.amt)); if (!(amt >= 1e5)) fail('Send at least $100,000.'); if (amt > (mine.bank || 0)) fail('The treasury does not hold that much.');
+        if (isCo) { const cs = mine.coSent = mine.coSent || {}; const L = (cs[u] || []).filter(x => W.now - x[0] < 24 * HOUR); const sent = L.reduce((a, x) => a + x[1], 0), cap = Math.floor(((mine.bank || 0) + sent) * BLOC.coGrant);
+          if (sent + amt > cap) fail(`Co-leaders can send up to ${Math.round(BLOC.coGrant * 100)}% of the treasury a day: ${moneyS(Math.max(0, cap - sent))} left today. The leader has no limit.`); L.push([W.now, amt]); cs[u] = L;
+          if (W.A[mine.leader] && mine.leader !== v) note(W, mine.leader, 'diplo', `Co-leader ${n.name} sent ${moneyS(amt)} from the ${mine.name} treasury to ${W.A[v].name}.`); }
+        mine.bank -= amt; W.A[v].cash += amt; blocLog(mine, `${isCo ? 'Co-leader ' + n.name : 'The leader'} sent ${moneyS(amt)} to ${W.A[v].name}.`, W); if (v !== u) note(W, v, 'diplo', `${mine.name} sent you ${moneyS(amt)} from the alliance treasury.`); touch(W, v);
         return done(`${moneyS(amt)} sent to ${W.A[v].name}.`);
       }
       case 'proj': {
         if (!mine) fail('You are not in an alliance.'); const k = String(c.k); if (!has(BPROJ, k)) fail('Unknown project.'); const P_ = BPROJ[k];
         if (mine.done[k]) fail(`Your alliance already completed the ${P_.n}.`);
         if (mine.proj && mine.proj.k !== k) fail(`Your alliance is building the ${BPROJ[mine.proj.k].n}. Finish it first.`);
-        if (!mine.proj && !isLeader) fail('Only the leader can choose a new project. Any member can then build its stages.');
+        if (!mine.proj && !isLeader && !isCo) fail('Only the leader or a co-leader can choose a new project. Any member can then build its stages.');
+        if (!mine.proj && P_.req && !mine.done[P_.req]) fail(`The ${P_.n} builds on the ${BPROJ[P_.req].n}. Complete that first.`);
         if (mine.proj && mine.proj.next > W.now) fail(`Stage ${mine.proj.stage} is still being built: next stage in ${fmtT(mine.proj.next - W.now)}.`);
         const cost = blocStageCost(W, mine); if ((mine.bank || 0) < cost) fail(`Each stage costs ${moneyS(cost)} from the alliance treasury (it holds ${moneyS(mine.bank || 0)}).`);
         mine.bank -= cost; const pr = mine.proj || (mine.proj = { k, stage: 0 }); pr.stage++; pr.next = W.now + BLOC.stageH * HOUR; gainXP(W, u, 20);
@@ -2030,9 +2054,9 @@ function Core(PD, CARDS) {
     }
   }
   function blocRemove(W, b, v, why) {
-    b.members = b.members.filter(m => m !== v); if (W.A[v]) { W.A[v].bloc = null; touch(W, v); } blocLog(b, why, W);
+    b.members = b.members.filter(m => m !== v); b.co = (b.co || []).filter(m => m !== v && b.members.includes(m)); if (b.coSent) delete b.coSent[v]; if (W.A[v]) { W.A[v].bloc = null; touch(W, v); } blocLog(b, why, W);
     if (!b.members.length) { delete W.B[b.id]; return; }
-    if (b.leader === v) { const nxt = b.members.filter(m => W.A[m]).sort((x, y) => score(W, y) - score(W, x))[0] || b.members[0]; b.leader = nxt; blocLog(b, `${W.A[nxt] ? W.A[nxt].name : 'A member'} is the new leader.`, W); if (W.A[nxt]) note(W, nxt, 'diplo', `You are now the leader of ${b.name}.`); }
+    if (b.leader === v) { const live = b.members.filter(m => W.A[m]), byScore = (x, y) => score(W, y) - score(W, x); const nxt = b.co.filter(m => W.A[m]).sort(byScore)[0] || live.sort(byScore)[0] || b.members[0]; b.co = b.co.filter(m => m !== nxt); b.leader = nxt; blocLog(b, `${W.A[nxt] ? W.A[nxt].name : 'A member'} is the new leader.`, W); if (W.A[nxt]) note(W, nxt, 'diplo', `You are now the leader of ${b.name}.`); }
     W.bch = true;
   }
   // keep alliances consistent with the world: fallen nations leave, stale invitations expire, nations point at their real alliance
@@ -2042,6 +2066,7 @@ function Core(PD, CARDS) {
       if (!W.B[b.id]) continue;
       for (const [v, t] of Object.entries(b.invites || {})) if (W.now - t > BLOC.inviteH * HOUR || !W.A[v]) { delete b.invites[v]; W.bch = true; }
       for (const m of b.members) if (W.A[m] && W.A[m].bloc !== b.id) { W.A[m].bloc = b.id; touch(W, m); }
+      if (b.co && b.co.some(m => !b.members.includes(m) || m === b.leader)) { b.co = b.co.filter(m => b.members.includes(m) && m !== b.leader); W.bch = true; }
       blocGoalState(W, b);
     }
     for (const [u, n] of Object.entries(W.A)) if (n.bloc && !blocOf(W, u)) { n.bloc = null; touch(W, u); }

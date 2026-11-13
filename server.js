@@ -276,7 +276,7 @@ function councilCast() { if (!clients.size) return; const own = new Set(S.counci
 function blocRepair() { let fixed = 0; const blocs = S.blocs || {};
   for (const [id, b] of Object.entries(blocs)) b.members = (b.members || []).filter(m => { const n = S.docs['nations/' + m]; if (n && n.bloc && n.bloc !== id && blocs[n.bloc] && (blocs[n.bloc].members || []).includes(m)) { fixed++; return false; } return true; });
   if (fixed) { console.log('Removed', fixed, 'duplicate alliance memberships'); persist(); } }
-function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [] }; } return out; }
+function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
 const disView = () => S.dis.filter(d => Date.now() < d.until + 6 * HOUR);
 function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.uid)); }
@@ -932,7 +932,7 @@ function freshRestore(by, why) {
   const gone = Object.keys(snap.nations).filter(id => !S.users[id] && !BOTS.isBot(id)); // players who deleted their account during the season
   for (const [id, n] of Object.entries(snap.nations)) { if (gone.includes(id)) continue; n.lastTick = now; if (n.nextCard && n.nextCard < now) n.nextCard = now + 10 * 60e3; if (gone.length && n.rel) for (const g of gone) delete n.rel[g]; S.docs['nations/' + id] = n; }
   for (const k of FRESH_KEYS) S[k] = snap.keys[k] === null || snap.keys[k] === undefined ? (k === 'blocs' ? Object.create(null) : S[k]) : snap.keys[k];
-  S.blocs = Object.assign(Object.create(null), S.blocs || {}); if (gone.length) for (const [bid, b] of Object.entries(S.blocs)) { b.members = (b.members || []).filter(m => !gone.includes(m)); if (!b.members.length) { delete S.blocs[bid]; continue; } if (gone.includes(b.leader)) b.leader = b.members[0]; } if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
+  S.blocs = Object.assign(Object.create(null), S.blocs || {}); if (gone.length) for (const [bid, b] of Object.entries(S.blocs)) { b.members = (b.members || []).filter(m => !gone.includes(m)); if (!b.members.length) { delete S.blocs[bid]; continue; } b.co = (b.co || []).filter(m => !gone.includes(m) && b.members.includes(m)); if (gone.includes(b.leader)) { b.leader = b.co[0] || b.members[0]; b.co = b.co.filter(m => m !== b.leader); } } if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
   for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
   for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
   RH = Array.isArray(snap.rh) ? snap.rh : []; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
