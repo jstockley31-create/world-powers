@@ -43,6 +43,7 @@ if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1;
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
+const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'MMORPG50' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
@@ -284,7 +285,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -2011,12 +2012,14 @@ async function handle(req, res) {
     // ---- World Council ----
     if (p === '/api/council/propose' && req.method === 'POST') { const b = await readBody(req, 2048); touch(me.id, req); councilPropose(me.id, b); return send(res, 200, { ok: true }); }
     // daily thank-you for voting for the game: once every 24 hours per account, 1% of GDP ($1M to $25M). The vote itself can't be checked, so the daily limit keeps it fair.
-    if (p === '/api/vote-bonus' && req.method === 'POST') {
-      touch(me.id, req); const n = S.docs['nations/' + me.id]; if (!n) return send(res, 400, { error: 'Found a nation first, then vote to get your daily bonus.' });
-      const m = meta(me.id), now = Date.now(), wait = (m.voteT || 0) + 24 * HOUR - now;
-      if (wait > 0) return send(res, 200, { ok: false, next: m.voteT + 24 * HOUR, msg: `Thanks for voting! Your next bonus is ready in ${Math.floor(wait / HOUR)}h ${Math.floor(wait % HOUR / 60e3)}m.` });
-      const amt = voteBonus(n); n.cash = (n.cash || 0) + amt; m.voteT = now; (n.log = n.log || []).unshift({ t: now, x: `Thank you for voting for World Powers: +${WP.moneyS(amt)} daily bonus.` }); n.log = n.log.slice(0, 60);
-      setDoc('nations', me.id, n); stat('votes'); return send(res, 200, { ok: true, amt, next: now + 24 * HOUR, msg: `Thanks for voting! +${WP.moneyS(amt)} has been added to your treasury.` });
+    if (p === '/api/vote-bonus' && req.method === 'POST') { // every voting site pays its own bonus whenever its button is lit (6 hours after the last claim on that site)
+      touch(me.id, req); const n = S.docs['nations/' + me.id]; if (!n) return send(res, 400, { error: 'Found a nation first, then vote to get your bonus.' });
+      const bb = await readBody(req, 256), site = VOTE_SITES[bb.site] ? String(bb.site) : 'gt', m = meta(me.id), now = Date.now(); m.voteS = m.voteS || {};
+      if (!m.voteS.gt && m.voteT && !bb.site) m.voteS.gt = m.voteT; // an old page that does not say which site: count it as Gametoor
+      const wait = (m.voteS[site] || 0) + VOTE_GAP - now;
+      if (wait > 0) return send(res, 200, { ok: false, site, voteS: m.voteS, next: m.voteS[site] + VOTE_GAP, msg: `Thanks for voting! Your ${VOTE_SITES[site]} bonus is ready again in ${Math.floor(wait / HOUR)}h ${Math.floor(wait % HOUR / 60e3)}m.` });
+      const amt = voteBonus(n); n.cash = (n.cash || 0) + amt; m.voteS[site] = now; m.voteT = now; (n.log = n.log || []).unshift({ t: now, x: `Thank you for voting for World Powers on ${VOTE_SITES[site]}: +${WP.moneyS(amt)} bonus.` }); n.log = n.log.slice(0, 60);
+      setDoc('nations', me.id, n); stat('votes'); persist(); return send(res, 200, { ok: true, amt, site, voteS: m.voteS, next: now + VOTE_GAP, msg: `Thanks for voting on ${VOTE_SITES[site]}! +${WP.moneyS(amt)} has been added to your treasury.` });
     }
     if (p === '/api/bm' && req.method === 'GET') return send(res, 200, bmView(me.id));
     if (p.startsWith('/api/bm/') && req.method === 'POST') { if (limited('bm:' + me.id, 12, 60e3)) return send(res, 429, { error: 'Slow down: the black market is watching.' }); const b = await readBody(req, 1024); touch(me.id, req);
