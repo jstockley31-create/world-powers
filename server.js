@@ -923,15 +923,17 @@ function freshRestore(by, why) {
   try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `season-world-final-${snap.season}-${Date.now()}.json`), JSON.stringify(gameState())); } catch (e) {}
   const now = Date.now();
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
-  for (const [id, n] of Object.entries(snap.nations)) { n.lastTick = now; if (n.nextCard && n.nextCard < now) n.nextCard = now + 10 * 60e3; S.docs['nations/' + id] = n; }
+  const gone = Object.keys(snap.nations).filter(id => !S.users[id] && !BOTS.isBot(id)); // players who deleted their account during the season
+  for (const [id, n] of Object.entries(snap.nations)) { if (gone.includes(id)) continue; n.lastTick = now; if (n.nextCard && n.nextCard < now) n.nextCard = now + 10 * 60e3; if (gone.length && n.rel) for (const g of gone) delete n.rel[g]; S.docs['nations/' + id] = n; }
   for (const k of FRESH_KEYS) S[k] = snap.keys[k] === null || snap.keys[k] === undefined ? (k === 'blocs' ? Object.create(null) : S[k]) : snap.keys[k];
-  S.blocs = Object.assign(Object.create(null), S.blocs || {}); if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
+  S.blocs = Object.assign(Object.create(null), S.blocs || {}); if (gone.length) for (const [bid, b] of Object.entries(S.blocs)) { b.members = (b.members || []).filter(m => !gone.includes(m)); if (!b.members.length) { delete S.blocs[bid]; continue; } if (gone.includes(b.leader)) b.leader = b.members[0]; } if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
   for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
   for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
   RH = Array.isArray(snap.rh) ? snap.rh : []; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
+  S.fresh = null; SW = null; publicCache = null; persist(true); // the restored world is on disk before the save file is retired
+  try { blocRepair(); } catch (e) {}
   try { fs.renameSync(src, path.join(DATA_DIR, `season-realworld-restored-${snap.season}-${now}.json`)); } catch (e) {}
-  S.fresh = null; SW = null; publicCache = null; persist(true);
-  audit(by || 'System', 'Real world restored', `${snap.name || 'season'}: ${Object.keys(snap.nations).length} nations back${why ? ' (' + why + ')' : ''}`);
+  audit(by || 'System', 'Real world restored', `${snap.name || 'season'}: ${Object.keys(snap.nations).length - gone.length} nations back${gone.length ? `, ${gone.length} skipped (account deleted)` : ''}${why ? ' (' + why + ')' : ''}`);
   setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
   return snap;
 }
@@ -952,10 +954,10 @@ function seasonFinishFresh(W, by) {
     g.badges.push(i === 0 ? { s: se.n, k: 'champion', ic: '🏆', t: `${se.name} Champion` } : i === 1 ? { s: se.n, k: 'second', ic: '🥈', t: `${se.name} 2nd place` } : i === 2 ? { s: se.n, k: 'third', ic: '🥉', t: `${se.name} 3rd place` } : { s: se.n, k: 'top10', ic: '🎖', t: `${se.name} top 10 (${ord(i)})` });
     g.lines.push(`finished ${ord(i)} with ${W.A[x.u].name}${cash ? ` (+$${Math.round(cash).toLocaleString('en-US')})` : ''}${xp ? ` (+${xp} XP)` : ''}`); });
   for (const c of cats) { if (W.A[c.u].ai || !S.users[c.u]) continue; const g = G(c.u), aw = (se.award || {})[c.k] || {}; g.cash += aw.cash || 0; g.xp += aw.xp || 0; if (se.titles !== false) g.titles.push({ s: se.n, t: `${c.award} of ${se.name}` }); g.badges.push({ s: se.n, k: 'award', ic: '🏅', t: `${c.award} of ${se.name}` }); g.lines.push(`${c.award} (${c.metric}: ${c.shown})${aw.cash ? ` +$${Math.round(aw.cash).toLocaleString('en-US')}` : ''}${aw.xp ? ` +${aw.xp} XP` : ''}`); }
-  let veterans = 0; for (const u of Object.keys(W.A)) { const n = W.A[u]; if (n.ai || !S.users[u] || !seasonEligible(W, se, u)) continue; G(u).badges.push({ s: se.n, k: 'played', ic: '🎗', t: `Played ${se.name}` }); veterans++; }
-  const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, fresh: true, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10) };
-  try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); }
-  HOF.push(Object.freeze(entry));
+  // everyone who founded a season nation took part, even if it was conquered before the end
+  let veterans = 0; const took = new Set([...Object.keys(se.played || {}), ...Object.keys(W.A).filter(u => !W.A[u].ai && seasonEligible(W, se, u))]); for (const u of took) { if (!S.users[u]) continue; G(u).badges.push({ s: se.n, k: 'played', ic: '🎗', t: `Played ${se.name}` }); veterans++; }
+  const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, fresh: true, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10), recorded: now };
+  if (!HOF.some(h => h.season === se.n && h.fresh && h.start === se.start)) { try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); } HOF.push(Object.freeze(entry)); }
   const champ = top[0] ? W.A[top[0].u].name : null, t2 = top[1] ? W.A[top[1].u].name : null, t3 = top[2] ? W.A[top[2].u].name : null;
   freshDropW(W);
   try { freshRestore(by || 'System', 'season ended'); } catch (e) { logErr('Real world restore failed at season end: ' + (e.stack || e)); se.status = 'restorefail'; persist(true); return entry; }
@@ -1061,7 +1063,7 @@ function readyReminders(W) {
 { const lim = Date.now() + COUNCIL_H * HOUR; for (const p of (S.council && S.council.props) || []) if (p.status === 'open') { p.votes = playerVotes(p.votes); if (p.end > lim) p.end = lim; } }
 // ---------- rollback snapshots: the game world (nations, council, events) every 10 minutes, kept 26 hours ----------
 const SNAP_DIR = path.join(DATA_DIR, 'snaps'); let lastSnap = 0;
-function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), nations, council: S.council, blocs: S.blocs, crisis: S.crisis, games: S.games, dis: S.dis, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
+function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), world: S.fresh ? S.fresh.id : 'real', nations, council: S.council, blocs: S.blocs, crisis: S.crisis, games: S.games, dis: S.dis, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
 function takeSnap(tag) {
   try {
     fs.mkdirSync(SNAP_DIR, { recursive: true }); const t = Date.now(); lastSnap = t;
@@ -1074,6 +1076,7 @@ function listSnaps() { try { return fs.readdirSync(SNAP_DIR).map(f => { const m 
 function rollback(name, by) {
   const snaps = listSnaps(), sn = snaps.find(x => x.name === name); if (!sn) throw Object.assign(new Error('That snapshot no longer exists.'), { status: 404 });
   const st = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(SNAP_DIR, sn.name))));
+  if ((st.world || 'real') !== (S.fresh ? S.fresh.id : 'real')) throw Object.assign(new Error(S.fresh ? 'That snapshot is from the real world, and a fresh-start season is running. To bring the real world back, use Seasons → Restore the real world.' : 'That snapshot is from a fresh-start season world, not the real world, so it cannot be rolled back to.'), { status: 400 });
   takeSnap('undo'); const now = Date.now();
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
   for (const [id, n] of Object.entries(st.nations)) { n.lastTick = now; S.docs['nations/' + id] = n; }
@@ -1180,6 +1183,7 @@ const RESTORE_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 
 function restoreNation(id, snapName, by) {
   const sn = listSnaps().find(x => x.name === snapName); if (!sn) throw Object.assign(new Error('That snapshot no longer exists.'), { status: 404 });
   const st = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(SNAP_DIR, sn.name)))), old = (st.nations || {})[id];
+  if ((st.world || 'real') !== (S.fresh ? S.fresh.id : 'real')) throw Object.assign(new Error(S.fresh ? 'That snapshot is from the real world; this player\'s nation right now is their season nation.' : 'That snapshot is from the season world, not the real world.'), { status: 400 });
   if (!old) throw Object.assign(new Error('This player had no nation at that time.'), { status: 400 });
   const W = mkWorld(), cur = W.A[id], OWN = core.computeOwn(W.A), mine = h => !OWN[h] || OWN[h].u === id;
   if (cur && cur.created !== old.created) throw Object.assign(new Error(`They founded ${cur.name} after that time, so that is a different nation. To bring the old one back, reset their current nation first, then restore.`), { status: 400 });
@@ -1306,7 +1310,7 @@ async function adminRoute(p, req, res, me) {
   }
   if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
     const b = await readBody(req, 16384), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
-    if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title, fresh: !!v.fresh }])), awards: { fresh: FRESH_AWARDS, normal: NORMAL_AWARDS }, freshActive: S.fresh || null, freshFile: fs.existsSync(FRESH_FILE) });
+    if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined, played: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title, fresh: !!v.fresh }])), awards: { fresh: FRESH_AWARDS, normal: NORMAL_AWARDS }, freshActive: S.fresh || null, freshFile: fs.existsSync(FRESH_FILE) });
     if (op === 'create') {
       if (S.seasons.cur) return send(res, 400, { error: 'A season is already scheduled or running. End or cancel it first.' });
       const fresh = !!b.fresh; if (fresh && S.fresh) return send(res, 400, { error: 'A fresh season world is still active. Restore the real world first.' }); if (fresh && !(+b.days > 0)) return send(res, 400, { error: 'A fresh-start season needs an end date (number of days), so the real world comes back on time.' });
@@ -1776,7 +1780,7 @@ async function handle(req, res) {
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
       if (fair) { if (r.casino) r.casino.fair = { nonce: fair.nonce, hash: W.fairHash }; fair.nonce++; }
       actLog(me.id, W, b, true, r.msg); pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
-      if (b.c === 'found') { stat('nations'); inviteReward(W, me.id); }
+      if (b.c === 'found') { stat('nations'); if (!S.fresh) inviteReward(W, me.id); else if (S.seasons.cur && S.seasons.cur.fresh) { const pl = S.seasons.cur.played = S.seasons.cur.played || {}; pl[me.id] = 1; } }
       const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;
       if (W.casinoEv) casinoRecord(W);
       commit(W); if (pendFound) seasonPendingApply(me.id);
