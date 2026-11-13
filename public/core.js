@@ -86,6 +86,42 @@ const WONDERS = {
   olympics: { n: 'Olympic Games', d: '+6 approval and +4 stability for good, and +2% GDP from tourism.', stages: 3, cost: { cash: 3e6, goods: 600, food: 800 }, fx: { ap: 6, st: 4, gdp: 1.02 } },
   port: { n: 'Grand Global Port', d: 'Market fees cut in half for you, and trade bonuses count up to 7 partners instead of 5.', stages: 4, cost: { cash: 3.5e6, steel: 500, oil: 400 }, fx: { spread: .04, tcap: 2 } }
 };
+// WORLD WONDERS: one of each in the whole world. Hundreds of billions, built in four stages; the first nation to finish owns it
+// for good, and anyone else racing for it gets half of what they spent back.
+const UWONDERS = {
+  orbital: { n: 'Orbital Space Station', ic: '🛰', d: 'Research costs 20% less and operations earn 15% more XP.', cost: 3e11, fx: { research: .8, xp: 1.15 } },
+  worldbank: { n: 'World Bank Headquarters', ic: '🏦', d: '+8% tax revenue and +4% GDP.', cost: 4e11, fx: { tax: 1.08, gdp: 1.04 } },
+  greatwall: { n: 'Great Wall of Nations', ic: '🧱', d: 'Every province you hold defends 20% better.', cost: 2.5e11, fx: { def: 1.2 } },
+  fusion: { n: 'Fusion Power Grid', ic: '⚡', d: 'Burn 40% less oil and produce 8% more food, oil, steel and goods.', cost: 3e11, fx: { oil: .6, prod: 1.08 } },
+  plaza: { n: 'United Nations Plaza', ic: '🕊', d: '+8 approval and +6 stability for good.', cost: 2e11, fx: { ap: 8, st: 6 } },
+  silk: { n: 'New Silk Road', ic: '🐫', d: 'Market prices 5% better, and trade bonuses count 3 more partners.', cost: 3.5e11, fx: { spread: .05, tcap: 3 } }
+};
+const UW = { stages: 4, stageH: 6, rank: 4, refund: .5, score: 2000 };
+// GRAND PROJECTS: bold national gambles. Pay up front, wait, then they succeed or fail; a failure burns every dollar.
+const GRAND = {
+  genome: { n: 'Human Genome Project', ic: '🧬', p: .8, cost: 2e10, h: 6, pr: 8, d: 'Health drifts 10 higher for good.', fx: { health: 10 } },
+  collider: { n: 'Super Collider', ic: '🔬', p: .75, cost: 3e10, h: 8, pr: 10, d: 'Research costs 12% less for good.', fx: { research: .88 } },
+  moon: { n: 'Moon Landing', ic: '🌕', p: .7, cost: 6e10, h: 12, pr: 25, d: '+5 approval and +3 stability for good.', fx: { ap: 5, st: 3 } },
+  mars: { n: 'Mars Colony', ic: '🪐', p: .5, cost: 1.5e11, h: 24, pr: 40, d: '+5% GDP and research 10% cheaper for good.', fx: { gdp: 1.05, research: .9 } },
+  agi: { n: 'Artificial Superintelligence', ic: '🤖', p: .4, cost: 2.5e11, h: 24, pr: 50, d: '+6% GDP, +6% tax revenue and 10% more operation XP for good.', fx: { gdp: 1.06, tax: 1.06, xp: 1.1 } }
+};
+const GRANDC = { rank: 3, failCdH: 12, failAp: 5 };
+// PRESTIGE UNITS: the most expensive hardware in the world, with heavy upkeep every hour. If the treasury cannot pay, one is scrapped.
+const PUNITS = {
+  carrier: { n: 'Supercarrier', ic: '🚢', cost: 4e10, steel: 20000, oil: 8000, up: 5e8, max: 3, tech: 60, atk: .05, def: .03, d: '+5% attack and +3% defense each.' },
+  sub: { n: 'Nuclear Submarine', ic: '🌊', cost: 2.5e10, steel: 12000, oil: 4000, up: 3e8, max: 3, tech: 50, atk: .03, def: .04, d: '+3% attack and +4% defense each.' },
+  bomber: { n: 'Stealth Bomber Wing', ic: '🛩', cost: 1.5e10, steel: 6000, oil: 6000, up: 2e8, max: 3, tech: 40, atk: .05, def: 0, d: '+5% attack each.' }
+};
+// running a war costs money every hour: the nation that declared it pays in full, the defender a quarter
+const WARCOST = { base: 1e7, troop: 40, ship: 400, air: 500, defender: .25 };
+// a huge standing army costs more per soldier: no change up to 200,000 troops, then up to +50% per soldier at 2 million
+const ARMYUP = { from: 2e5, to: 2e6, max: .5 };
+// SHOW-OFF COSMETICS: no effect on the game, only on how you look to everyone else
+const COSMETICS = {
+  chat: { n: 'Chat name color', d: 'Your nation\'s name stands out in World Chat and your alliance chat.', items: { gold: { n: 'Gold', cost: 5e9 }, crimson: { n: 'Crimson', cost: 5e9 }, royal: { n: 'Royal purple', cost: 5e9 }, emerald: { n: 'Emerald', cost: 5e9 }, ice: { n: 'Ice blue', cost: 5e9 }, sunset: { n: 'Sunset fade', cost: 2.5e10 }, aurora: { n: 'Aurora shimmer', cost: 7.5e10 }, imperial: { n: 'Imperial gold shimmer', cost: 1.5e11 } } },
+  mon: { n: 'Capital monument', d: 'A monument in your capital, shown on the globe and on your nation card.', items: { obelisk: { n: 'Obelisk', ic: '🗿', cost: 1e10 }, arch: { n: 'Triumphal Arch', ic: '🏛', cost: 4e10 }, statue: { n: 'Colossal Statue', ic: '🗽', cost: 1e11 }, tower: { n: 'Sky Tower', ic: '🗼', cost: 2e11 }, palace: { n: 'Golden Palace', ic: '🏰', cost: 5e11 } } },
+  frame: { n: 'Flag frame', d: 'A frame around your flag on your nation card.', items: { silver: { n: 'Silver', cost: 5e9 }, gold: { n: 'Gold', cost: 2.5e10 }, diamond: { n: 'Diamond', cost: 1e11 }, inferno: { n: 'Inferno', cost: 2.5e11 } } }
+};
 // alliances: teams of nations with a shared treasury, a flag, joint projects and daily team goals
 const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 120, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3, coMax: 2, coGrant: .25 };
 const BPROJ = {
@@ -513,8 +549,8 @@ function Core(PD, CARDS) {
   let ROUTE_D = 7; // days for a route to reach full strength (2 in a fresh-start season)
   const routeW = (W, u, v) => 1 + Math.min(1, Math.max(0, W.now - routeStart(W, u, v)) / (ROUTE_D * 864e5));
   const tradeVal = (W, u) => { const n = W.A[u]; return traders(W, u).map(v => routeW(W, u, v)).sort((a, b) => b - a).slice(0, tcap(n)).reduce((s, x) => s + x, 0) * W.m.tradeMul; };
-  const power = (W, u) => { const n = W.A[u]; return ((n.troops || 0) + (n.ships || 0) * 25 + (n.air || 0) * 20) * techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n); };
-  const score = (W, u) => { const n = W.A[u]; return Math.round(hexesOf(W, u).length * 100 + (n.troops || 0) * .4 + (n.ships || 0) * 8 + (n.air || 0) * 6 + soft(n.tech, 10) * 60 + (n.xp || 0) * .1 + n.pop / 2000 + (n.gdp || 0) / 5e5 + devTotal(W, u) * DEV.score + (n.prestige || 0) * 50); };
+  const power = (W, u) => { const n = W.A[u]; return ((n.troops || 0) + (n.ships || 0) * 25 + (n.air || 0) * 20) * techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n) * (1 + (puF(n, 'atk') - 1 + puF(n, 'def') - 1) / 2); };
+  const score = (W, u) => { const n = W.A[u]; return Math.round(hexesOf(W, u).length * 100 + (n.troops || 0) * .4 + (n.ships || 0) * 8 + (n.air || 0) * 6 + soft(n.tech, 10) * 60 + (n.xp || 0) * .1 + n.pop / 2000 + (n.gdp || 0) / 5e5 + devTotal(W, u) * DEV.score + (n.prestige || 0) * 50 + Object.keys(n.uwon || {}).length * UW.score); };
   const isCoastal = h => !!(P[h] && P[h].co);
   const hasCoast = (W, u) => hexesOf(W, u).some(isCoastal);
 
@@ -524,7 +560,7 @@ function Core(PD, CARDS) {
   function rating(W, n) { if ((n.defaulted || 0) > W.now - 48 * HOUR) return 'D'; const r = debtRatio(n); return r < .3 ? 'AAA' : r < .6 ? 'AA' : r < .9 ? 'A' : r < 1.2 ? 'BBB' : r < 1.5 ? 'BB' : r < 2 ? 'B' : 'CCC'; }
   function interestRate(W, n) { return 3 + Math.max(0, debtRatio(n) - .4) * 12 + ((n.defaulted || 0) > W.now - 48 * HOUR ? 10 : 0) + W.m.rate; }
   // combined effect of a nation's laws and wonders: multipliers (gdp, tax, research, xp, def, spend, oil) and additions (ap, st, unemp, health, edu, spread, tcap)
-  const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); const bl = n.bloc && BL[n.bloc]; if (bl) for (const k of Object.keys(bl.done || {})) if (BPROJ[k]) o.push(BPROJ[k].fx); return o; };
+  const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); const bl = n.bloc && BL[n.bloc]; if (bl) for (const k of Object.keys(bl.done || {})) if (BPROJ[k]) o.push(BPROJ[k].fx); for (const k of Object.keys(n.uwon || {})) if (UWONDERS[k]) o.push(UWONDERS[k].fx); for (const k of Object.keys(n.gpdone || {})) if (GRAND[k]) o.push(GRAND[k].fx); return o; };
   const fxMul = (n, k) => { let v = 1; for (const f of fxOf(n)) if (f[k] != null) v *= f[k]; return v; };
   const fxAdd = (n, k) => { let v = 0; for (const f of fxOf(n)) if (f[k] != null) v += f[k]; return v; };
   const tcap = n => 5 + fxAdd(n, 'tcap');
@@ -553,7 +589,8 @@ function Core(PD, CARDS) {
   const overstretch = n => { const at = overAt(n), x = isFinite(at) ? Math.max(0, hexN(n) - at) : 0; return { at, extra: x, cost: x ? Math.round(Math.max(2e5, (n.gdp || 0) * OVER.cost) * x) : 0, st: x ? OVER.st : 0, since: n.overSince || 0, rebelAt: n.overSince ? n.overSince + OVER.graceH * HOUR : 0 }; };
   const inspectFee = n => Math.round(Math.min(INSPECT.cap, INSPECT.base + (n.gdp || 0) * INSPECT.pct) * (n.warhead ? INSPECT.warhead : 1));
   const radOn = (W, n) => !!(n && n.rad && n.rad.until > W.now);
-  const upkeep = (W, n) => ((n.troops || 0) * 8 + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + 0) * W.m.upkeep;
+  const armyF = n => 1 + ARMYUP.max * clamp(((n.troops || 0) - ARMYUP.from) / (ARMYUP.to - ARMYUP.from), 0, 1);
+  const upkeep = (W, n) => ((n.troops || 0) * 8 * armyF(n) + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + 0) * W.m.upkeep;
   function production(W, u) {
     const n = W.A[u]; const p = { food: 0, oil: 0, steel: 0, goods: 0, mun: 0 };
     for (const h of hexesOf(W, u)) {
@@ -702,12 +739,13 @@ function Core(PD, CARDS) {
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : 1) * genF(n, 'defense') * fxMul(n, 'def') * outpostDef(W, n, h) * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
+    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : 1) * genF(n, 'defense') * puF(n, 'def') * fxMul(n, 'def') * outpostDef(W, n, h) * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const bestGen = (n, type) => (n.gens || []).filter(g => g.type === type).reduce((b, g) => !b || g.stars > b.stars ? g : b, null);
   const genF = (n, type) => { const g = bestGen(n, type); return g ? 1 + g.stars * .04 : 1; };
-  const atkMult = n => techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n) * genF(n, 'attack') * ((n.ai && n.ai.boss && n.ai.atkX) || 1); // atkX/defX: the admins' Rising Power difficulty
+  const puF = (n, k) => { let f = 1; for (const [u_, c] of Object.entries((n && n.pu) || {})) if (PUNITS[u_]) f += (PUNITS[u_][k] || 0) * Math.min(c, PUNITS[u_].max); return f; };
+  const atkMult = n => puF(n, 'atk') * techF(n) * oilF(n) * GOV[n.gov].mil * moraleF(n) * genF(n, 'attack') * ((n.ai && n.ai.boss && n.ai.atkX) || 1); // atkX/defX: the admins' Rising Power difficulty
   function newGeneral(W, u, rng) {
     const n = W.A[u]; n.gens = n.gens || []; if (n.gens.length >= 3) return null;
     const r = rng(), type = r < .4 ? 'attack' : r < .7 ? 'defense' : 'logistics';
@@ -1637,6 +1675,9 @@ function Core(PD, CARDS) {
     const spend = spendPerTick(n), domeK = domeUpkeep(W, n); n.cash -= spend + domeK; n.spent = (n.spent || 0) * .993 + spend + domeK; n.rev = (n.rev || 0) * .993;
     // part of the tax take arrives on its own (about enough to cover normal spending); the Collect Taxes operation brings in the rest
     const autoTax = taxIncome(W, u) * AUTO_TAX; n.cash += autoTax; n.rev += autoTax;
+    // prestige units and wars cost money every hour
+    const puK = puUpkeepH(W, n) / 6; if (puK > 0) { if (n.cash >= puK) { n.cash -= puK; n.spent += puK; } else { const k = Object.keys(n.pu).filter(x => PUNITS[x]).sort((a, b) => PUNITS[b].up - PUNITS[a].up)[0]; if (k) { n.pu[k]--; if (!n.pu[k]) delete n.pu[k]; note(W, u, 'war', `${PUNITS[k].ic} Your treasury could not pay the upkeep, so a ${PUNITS[k].n} was scrapped.`); log(n, `A ${PUNITS[k].n} was scrapped: the treasury could not pay its upkeep.`, W); } } }
+    const warK = warCostH(W, u) / 6; if (warK > 0) { const pay = Math.max(0, Math.min(warK, n.cash)); n.cash -= pay; if (warK > pay) n.debt = (n.debt || 0) + (warK - pay); n.spent += warK; n.warSpent = (n.warSpent || 0) + warK; }
     const milFund = spend * b.mil / 100, need = upkeep(W, n), ratio = need > 0 ? milFund / need : 2;
     if (ratio >= 1) n.morale = clamp(n.morale + Math.min(2, (ratio - 1) * 4 + .5), 0, 100);
     else { n.morale = clamp(n.morale - 6 * (1 - ratio), 0, 100); if (n.morale < 30) { n.troops = Math.floor(n.troops * (1 - .02 * (1 - ratio))); } }
@@ -1739,6 +1780,7 @@ function Core(PD, CARDS) {
     if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + INSPECT.everyH * HOUR; changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + INSPECT.everyH * HOUR; n.iaeaPaid = fee;
       log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } }
     if (expedResolve(W, u, rng)) changed = true;
+    if (n.gp && Object.keys(n.gp).length && grandResolve(W, u, rng)) changed = true;
     if (autoBuyTick(W, u)) changed = true;
     if (n.dome && n.dome.up && n.dome.up.ready <= W.now) { n.dome.lvl = n.dome.up.lvl; delete n.dome.up; note(W, u, 'economy', `🛡 Your Golden Dome is now level ${n.dome.lvl}: it stops ${Math.round(domeMis(n) * 100)}% of missiles and has a ${Math.round(domeNuke(n) * 100)}% chance against a nuclear missile.`); changed = true; }
     if (offersExpire(W, u)) changed = true;
@@ -2369,6 +2411,66 @@ function Core(PD, CARDS) {
     for (const v of coop) if (cr.contrib[v] > 0) { gainXP(W, v, 25); note(W, v, 'event', `${K.ic} ${K.lose} You tried: +25 XP for your contribution.`); }
     return `${K.ic} ${K.lose}${extra}`;
   }
+  // ---------- world wonders, grand projects, prestige units, war costs, cosmetics ----------
+  const uwOwner = (W, k) => Object.keys(W.A).find(v => W.A[v] && W.A[v].uwon && W.A[v].uwon[k]) || null;
+  const uwStage = () => Math.round(UW.stageH * (NOADM ? .5 : 1) * HOUR);
+  function uwonder(W, u, k, abandon) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(UWONDERS, k)) fail('Unknown wonder.'); const Wd = UWONDERS[k]; n.uw = n.uw || {};
+    if (abandon) { const pr = n.uw[k]; if (!pr) fail('You are not building that.'); const back = Math.floor(pr.spent * UW.refund); n.cash += back; delete n.uw[k]; log(n, `Abandoned the ${Wd.n}: ${money(back)} recovered.`, W); touch(W, u); return { msg: `${Wd.n} abandoned. ${money(back)} (half of what you spent) is back in your treasury.` }; }
+    if (rankOf(n.xp) < UW.rank) fail(`World Wonders need the rank of ${RANKS[UW.rank][1]}.`);
+    const own = uwOwner(W, k); if (own) fail(own === u ? `You already own the ${Wd.n}.` : `${W.A[own].name} already owns the ${Wd.n}. There is only one in the world.`);
+    const busy = Object.keys(n.uw).find(x => x !== k && UWONDERS[x]); if (busy) fail(`You are already building the ${UWONDERS[busy].n}. One World Wonder at a time.`);
+    const pr = n.uw[k]; if (pr && pr.next > W.now) fail(`Stage ${pr.stage} is still being built: next stage in ${fmtT(pr.next - W.now)}.`);
+    const cost = Math.round(Wd.cost / UW.stages); if (n.cash < cost) fail(`Each stage of the ${Wd.n} costs ${money(cost)}.`);
+    n.cash -= cost; const P_ = n.uw[k] = pr || { stage: 0, spent: 0, t: W.now }; P_.stage++; P_.spent += cost; P_.next = W.now + uwStage(); gainXP(W, u, 50);
+    if (P_.stage === 1) { news(W, u, `${n.name} has begun building the ${Wd.n}, a World Wonder only one nation can own.`); for (const v of Object.keys(W.A)) if (v !== u && W.A[v].uw && W.A[v].uw[k]) { note(W, v, 'economy', `🏁 ${n.name} is racing you for the ${Wd.n}!`); touch(W, v); } }
+    if (P_.stage >= UW.stages) {
+      delete n.uw[k]; n.uwon = { ...(n.uwon || {}), [k]: W.now }; gainXP(W, u, 500);
+      news(W, u, `🏆 ${n.name} completed the ${Wd.n}, the only one in the world.`);
+      for (const v of Object.keys(W.A)) { const o = W.A[v]; if (v !== u && o.uw && o.uw[k]) { const back = Math.floor(o.uw[k].spent * UW.refund); o.cash += back; delete o.uw[k]; note(W, v, 'economy', `${n.name} finished the ${Wd.n} first. Your construction stops and ${money(back)}, half of what you spent, comes back to your treasury.`); touch(W, v); } }
+      note(W, u, 'economy', `${Wd.ic} The ${Wd.n} is yours, and only yours: ${Wd.d}`); touch(W, u); return { msg: `${Wd.ic} The ${Wd.n} is complete and yours alone: ${Wd.d}` };
+    }
+    touch(W, u); return { msg: `Stage ${P_.stage} of ${UW.stages} of the ${Wd.n} built. Next stage in ${fmtT(uwStage())}.` };
+  }
+  function grand(W, u, k) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(GRAND, k)) fail('Unknown project.'); const G = GRAND[k]; n.gp = n.gp || {}; n.gpdone = n.gpdone || {}; n.gpfail = n.gpfail || {};
+    if (n.gpdone[k]) fail(`Your ${G.n} already succeeded.`);
+    if (n.gp[k]) fail(`The ${G.n} is under way: the result comes in ${fmtT(n.gp[k].until - W.now)}.`);
+    if (Object.keys(n.gp).length) fail('Your scientists can run one grand project at a time.');
+    if ((n.gpfail[k] || 0) > W.now) fail(`After the last failure your scientists need ${fmtT(n.gpfail[k] - W.now)} before trying again.`);
+    if (rankOf(n.xp) < GRANDC.rank) fail(`Grand projects need the rank of ${RANKS[GRANDC.rank][1]}.`);
+    if (n.cash < G.cost) fail(`The ${G.n} costs ${money(G.cost)}.`);
+    n.cash -= G.cost; const h = G.h * (NOADM ? .5 : 1); n.gp[k] = { until: W.now + h * HOUR, spent: G.cost, t: W.now };
+    news(W, u, `${G.ic} ${n.name} has launched the ${G.n}. Its chance of success: ${Math.round(G.p * 100)}%.`); gainXP(W, u, 40); touch(W, u);
+    return { msg: `${G.ic} The ${G.n} is under way. The result comes in ${fmtT(h * HOUR)}: a ${Math.round(G.p * 100)}% chance of success.` };
+  }
+  function grandResolve(W, u, rng) {
+    const n = W.A[u]; let ch = false;
+    for (const [k, g] of Object.entries(n.gp || {})) { if (g.until > W.now) continue; delete n.gp[k]; ch = true; const G = GRAND[k]; if (!G) continue;
+      if ((rng || Math.random)() < G.p) { n.gpdone = { ...(n.gpdone || {}), [k]: W.now }; n.prestige = (n.prestige || 0) + G.pr; gainXP(W, u, 200); news(W, u, `${G.ic} Success! ${n.name}'s ${G.n} worked.`); note(W, u, 'economy', `${G.ic} Your ${G.n} succeeded! +${G.pr} prestige, and ${G.d.charAt(0).toLowerCase() + G.d.slice(1)}`); }
+      else { n.gpfail = n.gpfail || {}; n.gpfail[k] = W.now + GRANDC.failCdH * HOUR; n.approval = clamp(n.approval - GRANDC.failAp, 0, 100); news(W, u, `💥 ${n.name}'s ${G.n} failed. ${money(g.spent)} went up in smoke.`); note(W, u, 'economy', `💥 Your ${G.n} failed. The ${money(g.spent)} is gone and approval fell by ${GRANDC.failAp}. You can try again in ${GRANDC.failCdH} hours.`); } }
+    if (ch) touch(W, u); return ch;
+  }
+  function prestigeUnit(W, u, k, sell) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(PUNITS, k)) fail('Unknown unit.'); const U = PUNITS[k]; n.pu = n.pu || {};
+    if (sell) { if (!n.pu[k]) fail(`You have no ${U.n}.`); n.pu[k]--; if (!n.pu[k]) delete n.pu[k]; const back = Math.floor(U.cost * .25); n.cash += back; log(n, `Decommissioned a ${U.n}: ${money(back)} recovered.`, W); touch(W, u); return { msg: `${U.n} decommissioned. ${money(back)} recovered, and its upkeep stops.` }; }
+    if ((n.tech || 0) < U.tech) fail(`The ${U.n} needs tech level ${U.tech}.`);
+    if ((n.pu[k] || 0) >= U.max) fail(`You can have at most ${U.max} of these.`);
+    if (n.cash < U.cost || (n.res.steel || 0) < U.steel || (n.res.oil || 0) < U.oil) fail(`A ${U.n} costs ${money(U.cost)}, ${num(U.steel)} steel and ${num(U.oil)} oil.`);
+    n.cash -= U.cost; n.res.steel -= U.steel; n.res.oil -= U.oil; n.pu[k] = (n.pu[k] || 0) + 1; gainXP(W, u, 60);
+    news(W, u, `${U.ic} ${n.name} commissioned a ${U.n}.`); touch(W, u);
+    return { msg: `${U.ic} ${U.n} commissioned: ${U.d} Upkeep is ${money(U.up)} every hour.` };
+  }
+  const puUpkeepH = (W, n) => Math.round(Object.entries((n && n.pu) || {}).reduce((a, [k, c]) => a + (PUNITS[k] ? PUNITS[k].up * c : 0), 0) * ((W && W.m && W.m.upkeep) || 1));
+  const warCostH = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 0; let t = 0; const c = WARCOST.base + (n.troops || 0) * WARCOST.troop + (n.ships || 0) * WARCOST.ship + (n.air || 0) * WARCOST.air;
+    for (const v of wars(W, u)) t += (R(W, u, v).war || 0) >= (R(W, v, u).war || 0) ? c : c * WARCOST.defender; return Math.round(t); };
+  function cosmetic(W, u, slot, k) {
+    const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(COSMETICS, slot)) fail('Unknown item.'); n.cos = n.cos || {}; n.cosOwn = n.cosOwn || {}; const C_ = COSMETICS[slot];
+    if (k == null || k === '') { delete n.cos[slot]; touch(W, u); return { msg: `${C_.n} hidden. You still own it and can show it again for free.` }; }
+    if (!has(C_.items, k)) fail('Unknown item.'); const it = C_.items[k], own = n.cosOwn[slot] || [];
+    if (!own.includes(k)) { if (n.cash < it.cost) fail(`${it.n} costs ${money(it.cost)}.`); n.cash -= it.cost; n.cosOwn[slot] = [...own, k]; if (slot === 'mon') news(W, u, `${it.ic} ${n.name} unveiled a ${it.n} in its capital.`); }
+    n.cos[slot] = k; touch(W, u); return { msg: own.includes(k) ? `${it.n} is on show again.` : `${it.n} bought and on show for everyone.` };
+  }
   function exec0(W, u, cmd, rng) {
     const c = cmd || {};
     switch (c.c) {
@@ -2412,6 +2514,10 @@ function Core(PD, CARDS) {
       case 'outpost': return buildOutpost(W, u, c.h);
       case 'outpostrm': return dropOutpost(W, u, Number(c.h));
       case 'bloc': return blocCmd(W, u, String(c.op || ''), c);
+      case 'uwonder': return uwonder(W, u, String(c.k), !!c.abandon);
+      case 'grand': return grand(W, u, String(c.k));
+      case 'pu': return prestigeUnit(W, u, String(c.k), !!c.sell);
+      case 'cosmetic': return cosmetic(W, u, String(c.slot), c.k == null ? null : String(c.k));
       case 'crisis': return crisisCmd(W, u, String(c.op || ''), c.amt, rng);
       case 'develop': return develop(W, u, c.h);
       case 'movecap': return moveCap(W, u, c.h, c.name);
@@ -2440,9 +2546,9 @@ function Core(PD, CARDS) {
 
 
   return { AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
-    noLimit: () => NOADM, routeDays: () => ROUTE_D, budget, domeUpkeep, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
+    noLimit: () => NOADM, routeDays: () => ROUTE_D, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { UWONDERS, UW, GRAND, GRANDC, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });
