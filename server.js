@@ -27,7 +27,7 @@ const SESSION_DAYS = 30;
 const MAP_VERSION = 4;
 const START = Date.now();
 // World Council votes: players only (AI nations don't vote), 3 hours, a majority of the votes cast wins (at least 2 yes), and a vote closes early once the result is certain
-const COUNCIL_H = 3, COUNCIL_MIN_YES = 2;
+const COUNCIL_H = 3, COUNCIL_MIN_YES = 3; // a resolution needs at least 3 yes votes and more yes than no
 const HOUR = 36e5;
 const ACTIVE_WINDOW = 2 * HOUR; // nations keep producing for 2 hours after their leader was last seen
 const NOTE_KINDS = ['ready', 'attack', 'war', 'diplo', 'mail', 'election', 'event', 'council', 'covert', 'economy', 'rank', 'mention', 'admin'];
@@ -315,6 +315,7 @@ function effCfg() {
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
   c.noAdmin = !!S.fresh; // no province limit inside a fresh-start season world
+  if (S.fresh) { c.protectH = Math.min(c.protectH || 48, 24); if (now - (S.fresh.t || 0) < 48 * HOUR) c.aiBoss = false; } // season: 24 h new-nation protection, no Rising Power in the first 2 days
   { const se = S.seasons && S.seasons.cur; c.fresh = S.fresh && se && se.fresh ? { name: se.name, end: se.end || 0, n: se.n } : S.fresh ? { name: 'Season', end: 0 } : null; }
   c.countdown = S.countdown && S.countdown.at + 2 * HOUR > now ? { id: S.countdown.id, text: S.countdown.text, at: S.countdown.at } : null;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
@@ -571,6 +572,7 @@ function bmBuy(uid, b) {
   if (!bmShut(W, n)) throw bmErr('Only nations shut out of the world market (rogue states, trade embargoes or naval blockades) deal on the black market. Use the world market on the Economy page.');
   const x = S.bm.list.find(y => y.id === String(b.id || '')); if (!x || !(x.q > 0) || x.exp <= now) throw bmErr('That listing is gone.');
   if (x.seller === uid) throw bmErr('That is your own listing.');
+  if (S.fresh && sharesNetwork(uid, x.seller)) throw bmErr('You can\'t buy this listing during the season.'); // no feeding a second account through the black market
   const q = Math.min(x.q, Math.floor(+b.q || x.q)); if (!(q >= 1)) throw bmErr('Enter how many units to buy.');
   const value = q * x.price; if ((n.cash || 0) < value) throw bmErr(`That costs ${WP.money(value)}; your treasury doesn't cover it.`);
   const seller = W.A[x.seller], risk = bmRisk(BM.buyRisk, BM.buyRiskMax, value);
@@ -615,6 +617,8 @@ function councilPropose(uid, b) {
   if (isTargeted(type)) {
     target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || (target === uid && !plea)) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
     const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
+    // a nation can face a sanction or embargo vote at most once a day, so a group can't keep piling on the same target
+    if (['sanction', 'embargo'].includes(type)) { const last = S.council.props.filter(p => !p.auto && ['sanction', 'embargo'].includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a sanction or embargo vote today. It can be proposed again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
   }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
@@ -654,16 +658,18 @@ function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of
 // a vote closes early once the outcome is certain: it passes when yes leads by more than the votes still out (and has at least 3), and fails when yes can no longer win
 function decideEarly(W, p) {
   if (p.status !== 'open' || Date.now() >= p.end) return false;
-  const pv = Object.values(playerVotes(p.votes)), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length, left = canStillVote(W, p);
+  const pv = netVotes(p), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length, left = canStillVote(W, p);
   if ((ys >= COUNCIL_MIN_YES && ys > ns + left) || ys + left <= ns || ys + left < COUNCIL_MIN_YES) { p.end = Date.now(); p.early = true; return true; }
   return false;
 }
+// players on the same network count as one voter: only the first of them to vote counts
+function netVotes(p) { const kept = []; for (const [u, v] of Object.entries(playerVotes(p.votes))) { if (kept.some(([k]) => sharesNetwork(u, k))) continue; kept.push([u, v]); } return kept.map(x => x[1]); }
 function councilResolve(W) {
   const now = Date.now(); let changed = false;
   for (const p of S.council.props) { if (decideEarly(W, p)) changed = true; }
   for (const p of S.council.props) {
     if (p.status !== 'open' || now < p.end) continue;
-    const pv = Object.values(playerVotes(p.votes)), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length;
+    const pv = netVotes(p), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length;
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
     p.status = ys > ns && ys >= COUNCIL_MIN_YES ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
@@ -1768,6 +1774,8 @@ async function handle(req, res) {
       const b = await readBody(req, 8 * 1024);
       touch(me.id, req); health.cmds++; stat('cmds');
       const W = mkWorld();
+      if (S.fresh && ['aid', 'offer'].includes(b.c) && typeof b.v === 'string' && b.v !== me.id && sharesNetwork(me.id, b.v)) return send(res, 400, { error: 'During the season you can\'t send aid or trade offers to an account on the same network as yours.' });
+      if (S.fresh && b.c === 'relief') { const d = (S.dis || []).find(x => x.id === String(b.id)); if (d && d.u !== me.id && sharesNetwork(me.id, d.u)) return send(res, 400, { error: 'During the season you can\'t send relief to an account on the same network as yours.' }); }
       if (b.c === 'aid' && typeof b.v === 'string' && sharesNetwork(me.id, b.v)) flag(me.id, `Sent aid to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       if (b.c === 'found' && typeof b.name === 'string' && MOD.isProfane(b.name)) return send(res, 400, { error: 'Please choose a different name for your nation.' });
       if (b.c === 'flag' && typeof b.motto === 'string' && MOD.isProfane(b.motto)) return send(res, 400, { error: 'Please choose a different motto.' });
