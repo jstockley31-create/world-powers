@@ -824,6 +824,160 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .czfprev{display:flex;flex-direction:column;gap:10px;margin-top:8px;font-size:12.5px}.czfprev>div{border-top:1px solid var(--bd);padding-top:8px}
 .czbn{font-size:11px;margin-left:4px}.czbn a{color:#a8f0c6}
 @media (max-width:760px){.czfdl{grid-template-columns:1fr}.czpf{top:auto;bottom:auto;right:12px;top:14px;font-size:11px;padding:3px 8px}}
+/* ---- casino tables v2: wood-railed tables, chips on the rail ---- */
+.cztable{position:relative;border-radius:24px;padding:14px 14px 0;background:radial-gradient(120% 90% at 50% 0%,#2a1d12 0%,#140e09 60%,#0a0705 100%);box-shadow:0 20px 50px rgba(0,0,0,.6),inset 0 0 0 1px rgba(233,196,106,.12)}
+.cztable .czfelt{border:14px solid #3a2313;border-radius:20px;padding:64px 22px 24px;overflow:hidden;outline:2px solid #1a0f07;
+ background:radial-gradient(90% 75% at 50% 30%,#1f6b47 0%,#0f4a30 55%,#08301f 100%);
+ box-shadow:inset 0 0 80px rgba(0,0,0,.55),inset 0 -10px 18px rgba(0,0,0,.45),0 2px 0 #6e4a2c,0 10px 24px rgba(0,0,0,.6)}
+.cztable .czfelt::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.02) 0 2px,transparent 2px 4px);pointer-events:none;z-index:0}
+.cztable .czbrand{top:14px;left:18px}
+.cztable .czpf{top:14px;right:16px}
+/* chips: striped edge, white inlay ring */
+.czchip,.czpc{--c:#d6d6d6;--t:#222;background:radial-gradient(circle,var(--c) 0 42%,#fff 42% 46%,var(--c) 46% 100%);box-shadow:0 3px 0 rgba(0,0,0,.4),0 6px 10px rgba(0,0,0,.4)}
+.czchip::before,.czpc::before{content:'';position:absolute;inset:0;border-radius:50%;background:repeating-conic-gradient(rgba(255,255,255,.95) 0 12deg,transparent 12deg 45deg);-webkit-mask:radial-gradient(circle,transparent 62%,#000 63% 100%);mask:radial-gradient(circle,transparent 62%,#000 63% 100%);pointer-events:none}
+.czchip span{inset:0;border:0;font-size:10px;letter-spacing:-.02em;font-weight:800;color:var(--t);text-shadow:0 1px 1px rgba(0,0,0,.25);z-index:1}
+.czchip.c1,.czpc.c1{--c:#d6d6d6;--t:#222}.czchip.c2,.czpc.c2{--c:#c0303a;--t:#fff}.czchip.c3,.czpc.c3{--c:#2b62c4;--t:#fff}.czchip.c4,.czpc.c4{--c:#2f9a5a;--t:#fff}.czchip.c5,.czpc.c5{--c:#1d1d1d;--t:#f2d27a}.czchip.c6,.czpc.c6{--c:#d6a32a;--t:#1a1204}
+.czchip.on{transform:translateY(-4px);box-shadow:0 3px 0 rgba(0,0,0,.4),0 8px 14px rgba(0,0,0,.5);outline:3px solid #e9c46a;outline-offset:3px}
+.czstack{position:relative;display:inline-block;width:40px;height:40px;pointer-events:none}
+.czstack .czpc{position:absolute;left:0;top:calc(var(--k) * -4px);width:100%;height:100%;border-radius:50%;display:grid;place-items:center;font-style:normal}
+.czstack .czpl{position:relative;z-index:1;font:800 10px/1 Inter,system-ui,sans-serif;color:var(--t);letter-spacing:0;text-transform:none}
+/* the rail under the felt */
+.czdock{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px 18px;flex-wrap:wrap;padding:16px 6px 18px}
+.czdock .czchips{gap:8px}
+.czdock .czstake label{color:#b9a98a}
+.czdock .czamt{background:rgba(0,0,0,.35);border-color:rgba(233,196,106,.35)}
+.czdock .czamt input{color:#fff}
+.czdock .czstep{background:rgba(255,255,255,.04)}
+.czdock .czact{margin:0;flex-wrap:nowrap}
+.czdock .czbtn{background:rgba(255,255,255,.05);border-color:rgba(233,196,106,.35);min-width:96px}
+.czdock .czbtn.pri{background:linear-gradient(180deg,#f2d27a,#c99a33);border-color:#f2d27a;color:#1a1305;box-shadow:0 6px 18px rgba(201,154,51,.33)}
+.czhint{font-size:13px;color:rgba(241,236,224,.6)}
+.czunder{margin-top:14px}.czunder .czscore{margin:0}.czunder .czrule{margin-top:10px}
+/* result banner */
+.czbanner{display:flex;flex-direction:column;align-items:center;gap:3px;margin:12px auto;max-width:540px;padding:10px 22px;border-radius:14px;background:rgba(7,18,12,.86);border:1.5px solid rgba(233,196,106,.4);text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:czpop .45s cubic-bezier(.2,.9,.3,1.25) both}
+.czbanner b{font:800 21px/1.15 Georgia,'Times New Roman',serif;letter-spacing:.05em;text-transform:uppercase;color:#f1ece0}
+.czbanner small{font-size:13px;color:rgba(241,236,224,.75)}
+.czbanner.w{border-color:#e9c46a;box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 26px rgba(233,196,106,.28)}.czbanner.w b{color:#e9c46a}
+.czbanner.l b{color:#f2c2bd}
+@keyframes czpop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
+/* blackjack: half-moon table */
+.cztable .czfelt.bj{height:540px;padding:0;border-top:0;border-radius:0 0 50% 50%/0 0 30% 30%}
+.czfelt.bj.has-result .czprint{opacity:.18}
+.czfelt .czprint{position:absolute;left:0;right:0;top:206px;width:100%;height:150px;pointer-events:none;z-index:0;transition:opacity .4s}
+.czprint text{fill:#e9d79a;opacity:.85;font-family:Georgia,serif;letter-spacing:.18em}
+.czfelt .cztray{position:absolute;top:30px;left:200px;width:56px;height:38px;border-radius:5px;background:linear-gradient(160deg,#c89b3c,#7a5718);box-shadow:0 6px 14px rgba(0,0,0,.5),inset 0 0 0 2px rgba(226,184,92,.35);transform:skewX(12deg)}
+.czfelt .czshoe{position:absolute;top:26px;right:150px;width:70px;height:46px;border-radius:6px 14px 6px 6px;background:linear-gradient(160deg,#3b3b3b,#151515);box-shadow:0 6px 14px rgba(0,0,0,.5),inset 0 0 0 2px #555;transform:skewX(-14deg)}
+.czfelt .czshoe::after{content:'';position:absolute;left:6px;bottom:6px;width:46px;height:8px;background:repeating-linear-gradient(90deg,#f3f0e8 0 2px,#c9c3b5 2px 3px);border-radius:1px}
+.czfelt .czrack{position:absolute;top:0;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:6px 10px;border-radius:0 0 12px 12px;background:linear-gradient(180deg,#1a1a1a,#0d0d0d);box-shadow:0 4px 10px rgba(0,0,0,.55)}
+.czrack span{width:16px;height:34px;border-radius:3px;background:repeating-linear-gradient(180deg,var(--c) 0 3px,rgba(0,0,0,.2) 3px 4px)}
+.czfelt .czh{position:absolute;left:50%;transform:translateX(-50%);display:flex;--dx:340px;perspective:800px}
+.czfelt .czh.d{top:64px;--dy:-30px}.czfelt .czh.p{top:318px;--dy:-280px}
+.czfelt.bj .czcard{width:70px;height:98px;border-radius:7px;flex:none;margin-left:-24px;animation:czdeal2 .45s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i) * .12s)}
+.czfelt.bj .czcard:first-child{margin-left:0}
+.czfelt.bj .czcard.flip{animation:czflip .6s ease-out both}
+.czfelt.bj .czslot{width:70px;height:98px;border-radius:7px;border:1.5px dashed rgba(233,215,154,.3);margin-left:10px}.czfelt.bj .czslot:first-child{margin-left:0}
+.czfelt.bj .czpips{inset:13px 12px}.czfelt.bj .czpips span{width:13px;height:13px}.czfelt.bj .czface{inset:16px 13px}.czfelt.bj .czface b{font-size:25px}.czfelt.bj .czace .czs{width:32px;height:32px}.czfelt.bj .czix b{font-size:15px}.czfelt.bj .czix .czs{width:10px;height:10px}
+@keyframes czdeal2{from{opacity:0;transform:translate(var(--dx),var(--dy)) rotate(24deg)}to{opacity:1;transform:none}}
+.czfelt .cztot{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(11,16,22,.85);border:1px solid rgba(233,196,106,.55);color:#fff;font-weight:700;border-radius:14px;padding:3px 11px;font-size:13px}
+.czfelt .cztot.idle{background:transparent;border-color:rgba(233,215,154,.3);color:rgba(233,215,154,.7);font-weight:600}
+.czfelt .cztot.d{top:170px}.czfelt .cztot.p{top:424px}
+.czfelt .czcircle{position:absolute;left:50%;top:454px;transform:translateX(-50%);width:76px;height:76px;border-radius:50%;border:2px solid rgba(233,215,154,.5);display:grid;place-items:center;box-shadow:inset 0 0 0 5px rgba(0,0,0,.08)}
+.czcircle>.czbetlbl{font:600 11px/1 Georgia,serif;letter-spacing:.2em;text-transform:uppercase;color:rgba(233,215,154,.6)}
+.czcircle .czstack{margin-top:4px}
+.czfelt.bj .czbanner{position:absolute;top:228px;left:50%;margin:0;z-index:3;white-space:nowrap;max-width:none;animation:czpop2 .5s .55s cubic-bezier(.2,.9,.3,1.25) both;transform:translateX(-50%)}
+.czfelt.bj .czbanner b{font-size:26px}
+@keyframes czpop2{from{opacity:0;transform:translateX(-50%) scale(.6)}to{opacity:1;transform:translateX(-50%) scale(1)}}
+/* roulette: wooden bowl, polished ball track, deflectors */
+.cztable .czwheel{--s:300px;background:radial-gradient(circle closest-side,#120b06 0 91.6%,#d9b45a 91.6% 92.4%,#3e2615 92.4%,#7a5232 95.5%,#4a2e18 98.6%,#1a0f07 99.2%);box-shadow:0 0 0 3px #c9a24a,0 0 0 15px #3a2313,0 0 0 16px rgba(201,162,74,.55),0 22px 44px rgba(0,0,0,.65)}
+.czdefl{position:absolute;inset:0;z-index:2;pointer-events:none}
+.czdefl i{position:absolute;left:50%;top:50%;width:9px;height:9px;margin:-4.5px;border-radius:1px;background:linear-gradient(135deg,#fff6d6,#c9a24a 60%,#7a5718);box-shadow:0 1px 2px rgba(0,0,0,.6);transform:rotate(calc(var(--k) * 45deg + 22.5deg)) translateY(calc(var(--s) * -.47)) rotate(45deg)}
+.czdefl i:nth-child(2){--k:1}.czdefl i:nth-child(3){--k:2}.czdefl i:nth-child(4){--k:3}.czdefl i:nth-child(5){--k:4}.czdefl i:nth-child(6){--k:5}.czdefl i:nth-child(7){--k:6}.czdefl i:nth-child(8){--k:7}.czdefl i:nth-child(1){--k:0}
+.cztable .czcar{z-index:3}
+.cztable .czball{width:12px;height:12px;transform:translate(-50%,-50%) translateY(calc(var(--s) * -.295))}
+.czfelt.rl .czrlwrap{gap:44px;margin:10px 0 26px}
+.czfelt.rl .czwin .czbanner{margin:0;align-items:flex-start;text-align:left}
+.czfelt.rl .czn,.czfelt.rl .czo{border:1px solid rgba(255,255,255,.6);border-radius:2px}
+.czfelt.rl .czn.z{border-radius:24px 2px 2px 24px}
+.czfelt.rl .czn.r{background:#a51d1d}.czfelt.rl .czn.b{background:#131416}.czfelt.rl .czn.g{background:#0f6b43}
+.czfelt.rl .czlayout{padding:10px;border-radius:8px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+.czn.pk::after,.czo.pk::after{display:none}
+.czn .czstack,.czo .czstack{position:absolute;left:50%;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;z-index:2}
+.czn .czpc,.czo .czpc{top:calc(var(--k) * -3px)}.czn .czpl,.czo .czpl{font-size:7.5px!important}
+.czn.hit{z-index:2;box-shadow:0 0 0 2px #fff,0 0 16px 2px rgba(255,236,170,.85)}
+/* slots: a real cabinet with a lever */
+.czfelt.sl{padding-bottom:26px}
+.czcabwrap{display:flex;justify-content:center;align-items:center}
+.czcab{position:relative;width:min(calc(100% - 40px),480px);border-radius:30px 30px 18px 18px;padding:12px 16px 16px;background:linear-gradient(180deg,#6a1218,#2e080b 62%,#1a0405);box-shadow:inset 0 0 0 2px #c9a24a,inset 0 0 0 6px #3a0a0d,inset 0 0 0 7px rgba(233,196,106,.45),0 18px 40px rgba(0,0,0,.6)}
+.czmarq{border-radius:20px 20px 8px 8px;background:linear-gradient(180deg,#1f1206,#0b0703);padding:4px 10px;box-shadow:inset 0 0 0 1px rgba(233,196,106,.5);text-align:center}
+.czmarqt b{display:block;font:700 26px/1.1 Cinzel,Georgia,serif;letter-spacing:.08em;background:linear-gradient(180deg,#fff3c4,#e9c46a 50%,#a8781f);-webkit-background-clip:text;background-clip:text;color:transparent}
+.czmarqt span{display:block;font-size:12px;color:#f2d27a;letter-spacing:.06em;margin-top:1px}
+.czbulbs{display:flex;justify-content:space-between;padding:4px 2px}
+.czbulbs i{width:8px;height:8px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fffbe6,#f2c94c 55%,#8a6414);box-shadow:0 0 6px rgba(255,214,102,.8)}
+.czbulbs i:nth-child(even){opacity:.4;box-shadow:none}
+.czcab.spin .czbulbs i,.czcab.won .czbulbs i{animation:czbulb .5s steps(1) infinite}
+.czcab .czbulbs i:nth-child(even){animation-delay:.25s}
+@keyframes czbulb{0%{opacity:1;box-shadow:0 0 9px #ffd666}50%{opacity:.3;box-shadow:none}}
+.czwindow{position:relative;width:max-content;max-width:100%;margin:12px auto 4px;padding:9px;border-radius:14px;background:linear-gradient(180deg,#e4e4e8,#9a9ca2 40%,#5b5d63);box-shadow:inset 0 1px 0 #fff,0 4px 10px rgba(0,0,0,.5)}
+.czglass{position:absolute;inset:17px;border-radius:8px;background:linear-gradient(160deg,rgba(255,255,255,.24),rgba(255,255,255,0) 40%);pointer-events:none;z-index:2}
+.czcab.won .czwindow{box-shadow:inset 0 1px 0 #fff,0 0 0 3px rgba(233,196,106,.6),0 0 28px rgba(233,196,106,.5)}
+.czcabmsg .czbanner{margin:10px auto}
+.czcab .czpay{margin:4px auto 0;padding:8px;border-radius:10px;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(233,196,106,.3);grid-template-columns:repeat(auto-fill,minmax(118px,1fr))}
+.czlever{position:relative;width:36px;height:210px;flex:none;margin-left:-2px;border:0;background:none;padding:0;cursor:pointer}
+.czlever b{position:absolute;left:0;bottom:30px;width:30px;height:50px;border-radius:0 10px 10px 0;background:linear-gradient(90deg,#55575c,#d9dadf 45%,#6b6d72)}
+.czlever i{position:absolute;left:11px;bottom:62px;width:8px;height:132px;border-radius:4px;background:linear-gradient(90deg,#77797e,#f1f1f4 45%,#77797e);transform-origin:50% 100%}
+.czlever i::after{content:'';position:absolute;top:-18px;left:-10px;width:28px;height:28px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff9a90,#c0252e 55%,#6e0f14);box-shadow:0 3px 6px rgba(0,0,0,.5)}
+.czlever:disabled{cursor:default}
+.czlever:hover:not(:disabled) i{transform:scaleY(.94)}
+.czlever.pulled i{animation:czpull .9s ease-in-out}
+@keyframes czpull{0%{transform:scaleY(1)}35%{transform:scaleY(-.55)}100%{transform:scaleY(1)}}
+.czlever:focus-visible{outline:2px solid #c9a24a;outline-offset:2px;border-radius:6px}
+/* dice: craps-style felt, back wall, printed bet boxes */
+.cztable .czfelt.dc{padding-top:84px}
+.czfelt.dc .czbrand{top:30px}.czfelt.dc .czpf{top:32px}
+.czfelt .czwall{position:absolute;left:0;right:0;top:0;height:18px;z-index:0;background-color:#5a3a22;
+ background-image:linear-gradient(135deg,#2e1b0d 25%,transparent 25%),linear-gradient(225deg,#2e1b0d 25%,transparent 25%),linear-gradient(315deg,#2e1b0d 25%,transparent 25%),linear-gradient(45deg,#2e1b0d 25%,transparent 25%);background-size:16px 16px;background-position:-8px 0,-8px 0,0 0,0 0;box-shadow:0 3px 6px rgba(0,0,0,.5)}
+.czfelt .czdprint{position:absolute;left:0;right:0;top:118px;text-align:center;font:700 40px/1 Cinzel,Georgia,serif;letter-spacing:.22em;text-transform:uppercase;color:rgba(233,215,154,.1);pointer-events:none;z-index:0;white-space:nowrap}
+.czfelt.dc .czdice{gap:40px;padding:22px 0 18px;min-height:150px}
+.czdw{position:relative}
+.czdsh{position:absolute;left:6px;right:-8px;bottom:-6px;height:18px;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.55),transparent)}
+.czfelt.dc .czdbets{gap:12px;max-width:620px}
+.czfelt.dc .czdb{background:transparent;border:2px solid rgba(255,255,255,.7);border-radius:8px;padding:14px 6px 12px}
+.czfelt.dc .czdb b{font:700 16px/1.1 Georgia,serif;letter-spacing:.08em;text-transform:uppercase}
+.czfelt.dc .czdb.won{border-color:#e9c46a;box-shadow:0 0 0 1px #e9c46a,0 0 20px rgba(233,196,106,.35)}
+.czfelt.dc .czdb.lost{opacity:.75}
+.czdb.pk::after{display:none}
+.czdb .czstack{position:absolute;right:10px;bottom:10px;width:30px;height:30px}.czdb .czpl{font-size:8px!important}
+@media (max-width:760px){
+ .cztable{border-radius:18px;padding:8px 8px 0}
+ .cztable .czfelt{border-width:10px;padding:56px 10px 18px}
+ .cztable .czbrand div{display:none}
+ .cztable .czfelt.bj{height:470px;border-width:0 10px 12px;padding:0;border-radius:0 0 40% 40%/0 0 16% 16%}
+ .czfelt .czrack span{width:7px;height:22px}.czfelt .czrack{padding:4px 7px;gap:3px}
+ .czfelt .cztray{top:62px;left:12px;width:40px;height:30px}.czfelt .czshoe{top:62px;right:12px;width:50px;height:36px}.czfelt .czshoe::after{width:32px}
+ .czfelt .czh{--dx:120px}.czfelt .czh.d{top:60px}.czfelt .czh.p{top:254px;--dy:-220px}
+ .czfelt.bj .czcard,.czfelt.bj .czslot{width:56px;height:80px}.czfelt.bj .czcard{margin-left:-20px}
+ .czfelt.bj .czpips{inset:10px 9px}.czfelt.bj .czpips span{width:10px;height:10px}.czfelt.bj .czface{inset:12px 10px}.czfelt.bj .czface b{font-size:19px}.czfelt.bj .czace .czs{width:26px;height:26px}.czfelt.bj .czix{top:4px;left:4px}.czfelt.bj .czix.br{top:auto;left:auto;bottom:4px;right:4px}.czfelt.bj .czix b{font-size:13px}
+ .czfelt .cztot.d{top:146px}.czfelt .cztot.p{top:340px}.czfelt .cztot{font-size:12px}
+ .czfelt .czprint{top:170px;height:110px}
+ .czfelt.bj .czbanner{top:196px;padding:8px 14px;white-space:normal;width:max-content;max-width:calc(100% - 24px)}.czfelt.bj .czbanner b{font-size:18px}.czfelt.bj .czbanner small{font-size:12px}
+ .czfelt .czcircle{top:378px;width:62px;height:62px}.czcircle .czstack{transform:scale(.85)}
+ .czdock{padding:12px 2px 14px;gap:10px;justify-content:center}
+ .czdock .czchips{width:100%;justify-content:center;gap:7px}.czdock .czchip{width:42px;height:42px}
+ .czdock .czstake{width:100%;justify-content:center}
+ .czdock .czact{width:100%}.czdock .czact .czbtn{flex:1;min-width:0;padding:12px 8px}.czdock .czbtn.wide{min-width:0}
+ .czhint{width:100%;text-align:center}
+ .cztable .czwheel{--s:240px}.czfelt.rl .czrlwrap{gap:22px;margin:16px 0 20px}
+ .czfelt.rl .czn.z{border-radius:22px 22px 2px 2px}
+ .czcab{width:calc(100% - 26px);padding:10px 8px 12px;border-radius:22px 22px 14px 14px}.czmarqt b{font-size:20px}
+ .czlever{width:28px;height:170px;margin-left:-4px}.czlever b{width:24px;height:40px}.czlever i{left:8px;height:100px;bottom:52px;width:7px}.czlever i::after{width:22px;height:22px;left:-8px;top:-14px}
+ .czcab .czreel{width:64px;height:186px}.czcab .czsym{height:62px}.czcab .czsym svg{width:42px;height:42px}.czcab .czreels{gap:6px;padding:6px}.czwindow{padding:6px}.czglass{inset:12px}
+ .czcab .czpay{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;font-size:11px;padding:6px}.czcab .czpay div{padding:3px 4px;flex-direction:column;gap:1px}.czcab .czpay svg{width:13px;height:13px}
+ .cztable .czfelt.dc{padding-top:74px}.czfelt.dc .czbrand{top:26px}.czfelt.dc .czpf{top:28px}
+ .czfelt .czdprint{font-size:22px;top:100px}
+ .czfelt.dc .czdice{gap:30px}.czfelt.dc .czdbets{gap:6px}.czfelt.dc .czdb b{font-size:13px}.czdb .czstack{right:3px;bottom:3px;transform:scale(.75)}
+ .czbanner b{font-size:17px}
+}
+@media (prefers-reduced-motion:reduce){.czbanner,.czfelt.bj .czbanner,.czfelt.bj .czcard,.czcab .czbulbs i,.czlever.pulled i{animation:none!important}}
 
 /* ---- upgraded panels and menus ---- */
 :root{--s1:#0e151d;--s2:#131c26;--s3:#1b2633;--bd:#223041;--bd2:#2e3f52;--r:12px}
@@ -2652,19 +2806,26 @@ const CZ_SYM={cherry:'<svg viewBox="0 0 64 64"><path d="M34 10c-6 6-11 16-12 26M
 const CZ_ORDER=[0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
 const czCol=v=>v===0?'g':C.CASINO.reds.includes(v)?'r':'b';
 let czWheelSvg=null;function czWheel(){if(czWheelSvg)return czWheelSvg;const n=37,th=360/n,rad=d=>(d-90)*Math.PI/180,pt=(r,d)=>[100+r*Math.cos(rad(d)),100+r*Math.sin(rad(d))];let g='';
- CZ_ORDER.forEach((v,i)=>{const a0=i*th-th/2,a1=a0+th,[x0,y0]=pt(86,a0),[x1,y1]=pt(86,a1),[x2,y2]=pt(58,a1),[x3,y3]=pt(58,a0),f=v===0?'#0f6b43':czCol(v)==='r'?'#9b1c1c':'#16181b';
-  g+=`<path d="M${x0} ${y0}A86 86 0 0 1 ${x1} ${y1}L${x2} ${y2}A58 58 0 0 0 ${x3} ${y3}Z" fill="${f}" stroke="#c9a24a" stroke-width=".5"/>`;const [tx,ty]=pt(78,i*th);g+=`<text x="${tx}" y="${ty}" transform="rotate(${i*th} ${tx} ${ty})" text-anchor="middle" dominant-baseline="central" font-size="7.2" font-weight="700" fill="#f3efe4" font-family="Inter,system-ui,sans-serif">${v}</text>`});
- let spokes='';for(let k=0;k<8;k++){const [x,y]=pt(52,k*45);spokes+=`<line x1="100" y1="100" x2="${x}" y2="${y}" stroke="#c9a24a" stroke-width="1.6" stroke-linecap="round"/>`}
- czWheelSvg=`<svg viewBox="0 0 200 200" class="czwsvg"><defs><radialGradient id="czcone" cx="50%" cy="45%" r="55%"><stop offset="0" stop-color="#3a2b1f"/><stop offset="1" stop-color="#140e09"/></radialGradient></defs><circle cx="100" cy="100" r="86" fill="#111"/>${g}<circle cx="100" cy="100" r="58" fill="url(#czcone)" stroke="#c9a24a" stroke-width="1"/>${spokes}<circle cx="100" cy="100" r="9" fill="#c9a24a"/><circle cx="100" cy="100" r="4" fill="#f3e2b0"/></svg>`;return czWheelSvg}
+ const seg=(r0,r1,a0,a1,f)=>{const [x0,y0]=pt(r1,a0),[x1,y1]=pt(r1,a1),[x2,y2]=pt(r0,a1),[x3,y3]=pt(r0,a0);return`<path d="M${x0} ${y0}A${r1} ${r1} 0 0 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 0 0 ${x3} ${y3}Z" fill="${f}"/>`};
+ CZ_ORDER.forEach((v,i)=>{const a0=i*th-th/2,a1=a0+th,c=czCol(v),f=c==='g'?'#0f6b43':c==='r'?'#a51d1d':'#16181b',fp=c==='g'?'#0a4d30':c==='r'?'#6e1212':'#0b0c0e';
+  g+=seg(71,87,a0,a1,f)+seg(57,71,a0,a1,fp);const [fx0,fy0]=pt(57,a0),[fx1,fy1]=pt(87,a0);g+=`<line x1="${fx0}" y1="${fy0}" x2="${fx1}" y2="${fy1}" stroke="#d9b45a" stroke-width=".7"/>`;
+  const [tx,ty]=pt(79,i*th);g+=`<text x="${tx}" y="${ty}" transform="rotate(${i*th} ${tx} ${ty})" text-anchor="middle" dominant-baseline="central" font-size="7.4" font-weight="700" fill="#f6f1e4" font-family="Inter,system-ui,sans-serif">${v}</text>`});
+ let spokes='';for(let k=0;k<4;k++){const [x,y]=pt(46,k*90),[x2,y2]=pt(46,k*90+180);spokes+=`<line x1="${x}" y1="${y}" x2="${x2}" y2="${y2}" stroke="url(#czgold)" stroke-width="3.2" stroke-linecap="round"/><circle cx="${x}" cy="${y}" r="3.6" fill="url(#czgold)"/>`}
+ czWheelSvg=`<svg viewBox="0 0 200 200" class="czwsvg"><defs><radialGradient id="czcone" cx="50%" cy="42%" r="60%"><stop offset="0" stop-color="#6b4a2c"/><stop offset=".55" stop-color="#3a2614"/><stop offset="1" stop-color="#1a1009"/></radialGradient><linearGradient id="czgold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6e2a4"/><stop offset=".5" stop-color="#c99a3a"/><stop offset="1" stop-color="#7a5718"/></linearGradient></defs>
+  <circle cx="100" cy="100" r="88" fill="#0b0c0e"/>${g}<circle cx="100" cy="100" r="87" fill="none" stroke="#d9b45a" stroke-width="1.2"/><circle cx="100" cy="100" r="71" fill="none" stroke="#d9b45a" stroke-width=".8"/><circle cx="100" cy="100" r="57" fill="url(#czcone)" stroke="#d9b45a" stroke-width="1.2"/>
+  <circle cx="100" cy="100" r="40" fill="none" stroke="rgba(233,210,154,.18)" stroke-width="1"/>${spokes}<circle cx="100" cy="100" r="11" fill="url(#czgold)"/><circle cx="100" cy="100" r="5" fill="#fbefc8"/></svg>`;return czWheelSvg}
 const CZ_DIE=[[],[[50,50]],[[27,27],[73,73]],[[27,27],[50,50],[73,73]],[[27,27],[73,27],[27,73],[73,73]],[[27,27],[73,27],[50,50],[27,73],[73,73]],[[27,24],[73,24],[27,50],[73,50],[27,76],[73,76]]];
 const CZ_FACE={1:'rotateX(0deg) rotateY(0deg)',6:'rotateY(180deg)',3:'rotateY(-90deg)',4:'rotateY(90deg)',2:'rotateX(-90deg)',5:'rotateX(90deg)'};
 const czDie=v=>`<div class="czdie"><div class="czcube" style="transform:${CZ_FACE[v]}">${[1,6,3,4,2,5].map(f=>`<div class="czf f${f}">${CZ_DIE[f].map(([x,y])=>`<i style="left:${x}%;top:${y}%"></i>`).join('')}</div>`).join('')}</div></div>`;
 function czRun(g,R_){const rm=CZ_RM(),ease='cubic-bezier(.12,.62,.2,1)';
  if(g==='roulette'){const wl=document.querySelector('.czwheel .czrot'),car=document.querySelector('.czwheel .czcar'),ball=document.querySelector('.czwheel .czball');if(!wl)return 0;const D=rm?600:5200,from=+wl.dataset.from,to=csRot,s=wl.offsetWidth;
   wl.animate([{transform:`rotate(${from}deg)`},{transform:`rotate(${to}deg)`}],{duration:D,easing:ease});
-  if(car&&ball){car.animate([{transform:'rotate(-1260deg)'},{transform:'rotate(0deg)'}],{duration:D,easing:'cubic-bezier(.2,.55,.25,1)'});ball.animate([{transform:`translate(-50%,-50%) translateY(${-s*.465}px)`,offset:0},{transform:`translate(-50%,-50%) translateY(${-s*.465}px)`,offset:.62},{transform:`translate(-50%,-50%) translateY(${-s*.36}px)`,offset:.8},{transform:`translate(-50%,-50%) translateY(${-s*.385}px)`,offset:.88},{transform:`translate(-50%,-50%) translateY(${-s*.36}px)`,offset:1}],{duration:D,easing:'ease-in-out'})}return D}
+  if(car&&ball){car.animate([{transform:'rotate(-1260deg)'},{transform:'rotate(0deg)'}],{duration:D,easing:'cubic-bezier(.2,.55,.25,1)'});ball.animate([{transform:`translate(-50%,-50%) translateY(${-s*.455}px)`,offset:0},{transform:`translate(-50%,-50%) translateY(${-s*.455}px)`,offset:.6},{transform:`translate(-50%,-50%) translateY(${-s*.36}px)`,offset:.72},{transform:`translate(-50%,-50%) translateY(${-s*.33}px)`,offset:.8},{transform:`translate(-50%,-50%) translateY(${-s*.36}px)`,offset:.86},{transform:`translate(-50%,-50%) translateY(${-s*.295}px)`,offset:.93},{transform:`translate(-50%,-50%) translateY(${-s*.295}px)`,offset:1}],{duration:D,easing:'ease-in-out'})}return D}
  if(g==='slots'){const strips=[...document.querySelectorAll('.czreel .czstrip')];let D=0;strips.forEach((st,i)=>{const h=st.firstElementChild.offsetHeight,n=st.children.length,d=rm?400:1500+i*450;D=Math.max(D,d);st.animate([{transform:`translateY(${-(n-3)*h}px)`},{transform:'translateY(0)',offset:.94},{transform:`translateY(${h*.06}px)`,offset:.97},{transform:'translateY(0)'}],{duration:d,easing:'cubic-bezier(.25,.1,.2,1)'})});return D+150}
- if(g==='dice'){const cubes=[...document.querySelectorAll('.czdice .czcube')];const D=rm?400:1800;cubes.forEach((c,i)=>{const fin=c.style.transform,sx=720+Math.floor(Math.random()*4)*90,sy=900+Math.floor(Math.random()*4)*90;c.animate([{transform:`translateY(-40px) rotateX(${sx}deg) rotateY(${sy}deg)`},{transform:`translateY(0) ${fin}`,offset:.75},{transform:`translateY(-6px) ${fin}`,offset:.86},{transform:`translateY(0) ${fin}`}],{duration:D+i*140,easing:'cubic-bezier(.33,.45,.35,1)'})});return D+150}
+ if(g==='dice'){const ws=[...document.querySelectorAll('.czdice .czdw')];const D=rm?400:1900;const ez='cubic-bezier(.3,.55,.35,1)';ws.forEach((w,i)=>{const c=w.querySelector('.czcube');if(!c)return;const fin=c.style.transform,sx=720+Math.floor(Math.random()*4)*90,sy=900+Math.floor(Math.random()*4)*90,d=D+i*160,fw=w.parentElement.offsetWidth;
+  if(rm){c.animate([{opacity:.3},{opacity:1}],{duration:d});return}
+  w.animate([{transform:`translate(${-fw*.55}px,70px)`,opacity:0},{transform:`translate(${-fw*.42}px,40px)`,opacity:1,offset:.08},{transform:`translate(${30-i*24}px,-46px)`,offset:.46},{transform:`translate(${-8+i*6}px,8px)`,offset:.7},{transform:'translate(0,0)',offset:.86},{transform:'translate(0,0)'}],{duration:d,easing:ez});
+  c.animate([{transform:`rotateX(${sx}deg) rotateY(${sy}deg) rotateZ(${90+i*90}deg)`},{transform:`rotateX(${sx/3}deg) rotateY(${sy/3}deg)`,offset:.46},{transform:fin,offset:.86},{transform:fin}],{duration:d,easing:ez})});return D+310}
  return 0}
 function csPlay(body){if(csBusy)return;csBusy=true;const g=body.g;const fromRot=csRot;cmd({c:'casino',...body},false).then(r=>{csBusy=false;if(!r||!r.casino){render();return}const R_=r.casino;
  if(g==='roulette'){const i=CZ_ORDER.indexOf(R_.x),th=360/37;csRot=fromRot-1440-((((fromRot+i*th)%360)+360)%360)}
@@ -2711,51 +2872,84 @@ function pBlack(){bmLoad();const V=BMV;if(!V)return'<h1 class="pg">Black Market<
  const rules=panel('The risks',`<ul class="bmrules"><li><b>Listing:</b> ${+(R.sellRisk*100).toFixed(1)}–${+(R.sellRiskMax*100).toFixed(1)}% chance customs catches you, higher for bigger listings. If caught, the goods are seized, you're fined half their value (at least ${moneyS(R.fineMin)}), your aggression rises, and World Chat names you.</li><li><b>Buying:</b> ${+(R.buyRisk*100).toFixed(1)}–${+(R.buyRiskMax*100).toFixed(1)}% chance the shipment is intercepted. If so, it's seized, the buyer is fined half its value and named. The seller isn't paid but stays anonymous.</li><li>A fine bigger than your treasury goes on your national debt.</li><li>Nobody, including the buyer, ever learns who a seller is unless that seller is caught.</li></ul>`,'','alert');
  return head+status+`<div class="cols"><div>${market}${minePanel}</div><div>${form}${rules}</div></div>`}
 function bmSum(val,risk,fine,wp,pv){if(!val)return`Pick how much to sell and your price. World price is ${money(wp)} each; rogue states often pay more.`;return`Total ${money(val)}${pv?` (${(pv/wp).toFixed(1)}× world price)`:''}. <b>${risk}% chance of being caught when you list it</b>: you'd lose the goods and pay a ${money(fine)} fine.`}
+// ---------- casino tables: every game sits on a real table, with its controls on the rail ----------
+const CZ_CH=[[1e4,'10K','c1'],[1e5,'100K','c2'],[1e6,'1M','c3'],[1e7,'10M','c4'],[1e8,'100M','c5'],[1e9,'1B','c6']];
+const czShort=v=>moneyS(v).replace('$','').replace(/\.00(?=[A-Za-z]|$)/,'').replace(/(\.\d)0(?=[A-Za-z]|$)/,'$1');
+const czNet=v=>v>0?'+$'+czShort(v):v<0?'−$'+czShort(-v):'';
+// a short stack of real chips for a bet lying on the felt
+function czStack(v){const d=[...CZ_CH].reverse().find(c=>c[0]<=v)||CZ_CH[0],k=Math.min(4,Math.max(1,Math.floor(v/d[0])));
+ return`<span class="czstack" aria-label="Bet ${moneyS(v)}">${Array.from({length:k},(_,i)=>`<span class="czpc ${d[2]}" style="--k:${i}">${i===k-1?`<span class="czpl">${czShort(v)}</span>`:''}</span>`).join('')}</span>`}
+const CZ_PICK={red:'red',black:'black',odd:'odd',even:'even',low:'1 to 18',high:'19 to 36',seven:'seven'};
+const czPickName=(g,p)=>g==='dice'?({low:'under 7',seven:'seven',high:'over 7'})[p]||p:CZ_PICK[p]||p;
+function czBanner(cls,head,sub){return`<div class="czbanner ${cls}" role="status"><b>${head}</b>${sub?`<small>${esc(sub)}</small>`:''}</div>`}
+const CZ_RACK=['#d6d6d6','#c0303a','#2b62c4','#2f9a5a','#1d1d1d','#7d3fb8','#d6a32a'].map(c=>`<span style="--c:${c}"></span>`).join('');
+// the rules printed on the felt, in arcs, like a real blackjack table
+const CZ_PRINT=`<svg class="czprint" viewBox="0 0 1000 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><path id="czp1" d="M150,40 Q500,150 850,40"/><path id="czp2" d="M210,72 Q500,170 790,72"/><path id="czp3" d="M270,102 Q500,190 730,102"/></defs>
+ <text font-size="30" font-weight="700"><textPath href="#czp1" startOffset="50%" text-anchor="middle">BLACKJACK PAYS 3 TO 2</textPath></text><text font-size="15"><textPath href="#czp2" startOffset="50%" text-anchor="middle">DEALER STANDS ON 17 · DRAWS TO 16</textPath></text><text font-size="13"><textPath href="#czp3" startOffset="50%" text-anchor="middle">DOUBLE DOWN ON ANY FIRST TWO CARDS</textPath></text></svg>`;
+const CZ_BULBS=n=>`<div class="czbulbs" aria-hidden="true">${'<i></i>'.repeat(n)}</div>`;
 function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,best:0,hist:[],wagered:0};csBet=Math.max(C.CASINO.min,Math.min(csBet,mx));
- const tabs=CSG.map(([k,t])=>`<button class="${csGame===k?'on':''}" data-act="csgame" data-a="${k}">${t}</button>`).join('');
- const CH=[[1e4,'10K','c1'],[1e5,'100K','c2'],[1e6,'1M','c3'],[1e7,'10M','c4'],[1e8,'100M','c5'],[1e9,'1B','c6']];
- const chips=CH.map(([v,l,c])=>`<button class="czchip ${c}${csBet===v?' on':''}" data-act="csbet" data-a="${v}" ${v>mx?'disabled':''} aria-label="Bet ${l}"><span>${l}</span></button>`).join('');
- const inHand=!!n.bj,L=csLast[csGame],busy=csBusy||!!csAnim;let game='';
- const res=(cls,txt)=>`<div class="czres ${cls}">${txt}</div>`;
+ const tabs=CSG.map(([k,t])=>`<button class="${csGame===k?'on':''}" data-act="csgame" data-a="${k}" role="tab" aria-selected="${csGame===k}">${t}</button>`).join('');
+ const inHand=!!n.bj,L=csLast[csGame],busy=csBusy||!!csAnim,dis=busy?'disabled':'';
+ const chips=CZ_CH.map(([v,l,c])=>`<button class="czchip ${c}${csBet===v?' on':''}" data-act="csbet" data-a="${v}" ${v>mx||inHand?'disabled':''} aria-label="Bet ${l}" aria-pressed="${csBet===v}"><span>${l}</span></button>`).join('');
+ const stake=`<div class="czstake"><label for="csBetIn">Stake</label><div class="czamt"><button class="czstep" data-act="csbet" data-a="half" aria-label="Halve the stake" ${inHand?'disabled':''}>−</button><input id="csBetIn" value="${moneyS(csBet).replace('$','')}" inputmode="decimal" autocomplete="off" ${inHand?'disabled':''}><button class="czstep" data-act="csbet" data-a="dbl" aria-label="Double the stake" ${inHand?'disabled':''}>+</button></div></div>`;
+ const fair='<a class="czpf" href="#czFair" data-act="czfgo" title="How you can check every result">✓ Provably fair</a>';
+ const table=(cls,felt,acts)=>`<div class="cztable t-${cls}"><div class="czfelt ${cls}">${CZ_BRAND}${fair}${felt}</div><div class="czdock"><div class="czchips" role="group" aria-label="Chip value">${chips}</div>${stake}<div class="czact">${acts}</div></div></div>`;
+ let game='',rule='';
  if(csGame==='bj'){const h=n.bj||(L&&L.bj)||null,done=!n.bj&&L&&L.res;
-  const dCards=h?h.d.map((c,i)=>czCard(c,{i,cls:done&&csHole&&i===1?'flip':''})).join('')+(!done?czCard(null,{i:1}):''):'';
-  const pCards=h?h.p.map((c,i)=>czCard(c,{i})).join(''):'';
-  game=`<div class="czfelt bj"><div class="czarc">Blackjack pays 3 to 2 · Dealer stands on 17</div>
-   <div class="czhand"><div class="czhl">Dealer${h?`<span>${done?L.dv:C.bjVal(h.d)}</span>`:''}</div><div class="czcards">${dCards||'<div class="czslot"></div><div class="czslot"></div>'}</div></div>
-   <div class="czhand"><div class="czhl">You${h?`<span>${C.bjVal(h.p)}</span>`:''}${h&&h.bet?`<em>${moneyS(h.bet)}${h.dbl?' · doubled':''}</em>`:''}</div><div class="czcards">${pCards||'<div class="czslot"></div><div class="czslot"></div>'}</div></div>
-   ${done?res(L.net>0?'w':L.res==='push'?'p':'l',esc(L.msg)):''}
-   <div class="czact">${inHand?`<button class="czbtn pri" data-act="bj" data-a="hit" ${busy?'disabled':''}>Hit</button><button class="czbtn" data-act="bj" data-a="stand" ${busy?'disabled':''}>Stand</button>${n.bj.p.length===2&&n.cash>=n.bj.bet?`<button class="czbtn" data-act="bj" data-a="double" ${busy?'disabled':''}>Double</button>`:''}`:`<button class="czbtn pri wide" data-act="bj" data-a="deal" ${busy?'disabled':''}>Deal ${moneyS(csBet)}</button>`}</div></div>
-   <p class="czrule">Get closer to 21 than the dealer without going over. Double down on your first two cards to double your bet and take exactly one more card.</p>`}
- else if(csGame==='roulette'){const sp=csAnim&&csAnim.g==='roulette',x=sp?csAnim.r:L&&L.x!=null?L:null,showBall=!!x,pick=sp?csAnim.r.pick:L?L.pick:null;
+  const dCards=h?h.d.map((c,i)=>czCard(c,{i,cls:done&&csHole&&i===1?'flip':''})).join('')+(!done?czCard(null,{i:1}):''):'<div class="czslot"></div><div class="czslot"></div>';
+  const pCards=h?h.p.map((c,i)=>czCard(c,{i})).join(''):'<div class="czslot"></div><div class="czslot"></div>';
+  const pv=h?C.bjVal(h.p):0,dv=h?(done?L.dv:C.bjVal(h.d)):0,bet=h&&h.bet?h.bet:csBet;
+  const dLab=h?(done?`Dealer: ${dv}${dv>21?' · bust':''}`:`Dealer shows ${dv}`):'Dealer';
+  const pLab=h?`You: ${pv}${pv>21?' · bust':h.p.length===2&&pv===21?' · Blackjack!':''}${h.dbl?' · doubled':''}`:'Your hand';
+  const head=done?({blackjack:'Blackjack',win:'You win',push:'Push',bust:'Bust',lose:'Dealer wins'})[L.res]||'Hand over':'',cls=done?(L.net>0?'w':L.res==='push'?'p':'l'):'';
+  const felt=`<div class="cztray" title="Discard tray"></div><div class="czrack" aria-hidden="true">${CZ_RACK}</div><div class="czshoe" title="Card shoe"></div>${CZ_PRINT}
+   <div class="czh d" aria-label="Dealer's cards">${dCards}</div><div class="cztot d${h?'':' idle'}">${dLab}</div>
+   <div class="czh p" aria-label="Your cards">${pCards}</div><div class="cztot p${h?'':' idle'}">${pLab}</div>
+   <div class="czcircle${h?' on':''}">${h?czStack(bet):'<span class="czbetlbl">Bet</span>'}</div>
+   ${done?czBanner(cls,`${head}${L.net?' · '+czNet(L.net):''}`,L.msg):''}`;
+  const acts=inHand?`<button class="czbtn" data-act="bj" data-a="stand" ${dis}>Stand</button><button class="czbtn pri" data-act="bj" data-a="hit" ${dis}>Hit</button>${n.bj.p.length===2&&n.cash>=n.bj.bet?`<button class="czbtn" data-act="bj" data-a="double" ${dis}>Double</button>`:''}`:`<button class="czbtn pri wide" data-act="bj" data-a="deal" ${dis}>${done?'Deal again':'Deal'} · $${czShort(csBet)}</button>`;
+  game=table('bj'+(done?' has-result':''),felt,acts);
+  rule='Get closer to 21 than the dealer without going over. Double down on your first two cards to double your bet and take exactly one more card.'}
+ else if(csGame==='roulette'){const sp=csAnim&&csAnim.g==='roulette',x=sp?csAnim.r:L&&L.x!=null?L:null,showBall=!!x,pick=sp?csAnim.r.pick:L?L.pick:null,hit=!sp&&L&&L.x!=null?L.x:null;
   const recent=(cs.hist||[]).filter(q=>q.g==='roulette').slice(0,12).map(q=>{const v=parseInt(q.d,10);return isNaN(v)?'':`<span class="czmk ${czCol(v)}">${v}</span>`}).join('');
-  const cell=(v)=>`<button class="czn ${czCol(v)}${pick===String(v)?' pk':''}" style="--o:${v}" data-act="rl" data-a="${v}" ${busy?'disabled':''} aria-label="Bet on ${v}">${v}</button>`;
+  const chipOn=k=>pick===k?czStack(csBet):'';
+  const cell=(v)=>`<button class="czn ${czCol(v)}${pick===String(v)?' pk':''}${hit===v?' hit':''}" style="--o:${v}" data-act="rl" data-a="${v}" ${dis} aria-label="Bet on ${v}">${v}${chipOn(String(v))}</button>`;
   const rows=Array.from({length:12},(_,c)=>[3,2,1].map(r=>cell(c*3+r)).join('')).join('');
-  const ob=[['low','1 to 18'],['even','Even'],['red',''],['black',''],['odd','Odd'],['high','19 to 36']].map(([k,t])=>`<button class="czo ${k}${pick===k?' pk':''}" data-act="rl" data-a="${k}" ${busy?'disabled':''} aria-label="Bet on ${k}">${k==='red'||k==='black'?'<i></i>':t}</button>`).join('');
-  game=`<div class="czfelt rl"><div class="czrlwrap"><div class="czwheel"><div class="czrot" data-from="${sp?csAnim.from:csRot}" style="transform:rotate(${csRot}deg)">${czWheel()}</div><div class="czptr"></div><div class="czcar">${showBall?'<div class="czball"></div>':''}</div></div>
-   <div class="czrlside">${x&&!sp?`<div class="czwin"><span class="czmk big ${czCol(x.x)}">${x.x}</span><div>${res(x.win?'w':'l',esc(L.msg))}</div></div>`:sp?`<div class="czwin"><span class="czmk big q">·</span><div>${res('p','No more bets')}</div></div>`:`<div class="czwin"><span class="czmk big q">?</span><div>${res('p','Choose a bet to spin')}</div></div>`}
-   ${recent?`<div class="czrecent"><small>Last results</small><div>${recent}</div></div>`:''}</div></div>
-   <div class="czlayout"><button class="czn g z${pick==='0'?' pk':''}" data-act="rl" data-a="0" ${busy?'disabled':''} aria-label="Bet on 0">0</button><div class="cznums">${rows}</div><div class="czouts">${ob}</div></div></div>
-   <p class="czrule">European single-zero wheel. Outside bets return 2× your stake; a single number returns 36×. Every bet is ${moneyS(csBet)}.</p>`}
+  const ob=[['low','1 to 18'],['even','Even'],['red',''],['black',''],['odd','Odd'],['high','19 to 36']].map(([k,t])=>`<button class="czo ${k}${pick===k?' pk':''}" data-act="rl" data-a="${k}" ${dis} aria-label="Bet on ${CZ_PICK[k]}">${k==='red'||k==='black'?'<i></i>':t}${chipOn(k)}</button>`).join('');
+  const side=x&&!sp?`<div class="czwin"><span class="czmk big ${czCol(x.x)}">${x.x}</span><div>${czBanner(x.win?'w':'l',x.win?`You win · ${czNet(L.net)}`:'No win',L.msg)}</div></div>`:sp?`<div class="czwin"><span class="czmk big q">·</span><div>${czBanner('p','No more bets','The ball is rolling')}</div></div>`:`<div class="czwin"><span class="czmk big q">?</span><div>${czBanner('p','Place your bet','Tap a number or an outside bet to spin')}</div></div>`;
+  const felt=`<div class="czrlwrap"><div class="czwheel"><div class="czdefl" aria-hidden="true">${'<i></i>'.repeat(8)}</div><div class="czrot" data-from="${sp?csAnim.from:csRot}" style="transform:rotate(${csRot}deg)">${czWheel()}</div><div class="czcar">${showBall?'<div class="czball"></div>':''}</div></div>
+   <div class="czrlside">${side}${recent?`<div class="czrecent"><small>Last results</small><div>${recent}</div></div>`:''}</div></div>
+   <div class="czlayout"><button class="czn g z${pick==='0'?' pk':''}${hit===0?' hit':''}" data-act="rl" data-a="0" ${dis} aria-label="Bet on 0">0${chipOn('0')}</button><div class="cznums">${rows}</div><div class="czouts">${ob}</div></div>`;
+  const acts=pick!=null?`<button class="czbtn pri wide" data-act="rl" data-a="${pick}" ${dis}>Spin again on ${czPickName('roulette',pick)}</button>`:`<span class="czhint">Tap the layout to place your bet and spin</span>`;
+  game=table('rl',felt,acts);
+  rule=`European single-zero wheel. Outside bets return 2× your stake; a single number returns 36×. Every bet is ${moneyS(csBet)}.`}
  else if(csGame==='slots'){const sp=csAnim&&csAnim.g==='slots',S_=C.CASINO.slots,rand=()=>S_.sym[Math.floor(Math.random()*S_.sym.length)],fin=sp?csAnim.r.reels:L&&L.reels?L.reels:['seven','seven','seven'];
   const reel=(k,i)=>{const top3=[S_.sym[(S_.sym.indexOf(k)+1)%6],k,S_.sym[(S_.sym.indexOf(k)+5)%6]],strip=sp?[...top3,...Array.from({length:18+i*6},rand)]:top3;return`<div class="czreel"><div class="czstrip">${strip.map(x=>`<div class="czsym">${CZ_SYM[x]}</div>`).join('')}</div></div>`};
   const win=!sp&&L&&L.reels&&L.mult;
-  game=`<div class="czfelt sl"><div class="czmachine${win?' won':''}"><div class="czreels">${fin.map(reel).join('')}<div class="czline"></div></div></div>
-   ${L&&L.reels&&!sp?res(L.mult?'w':'l',esc(L.msg)):sp?res('p','Reels spinning'):res('p','Three of a kind on the line wins')}
-   <div class="czact"><button class="czbtn pri wide" data-act="slots" ${busy?'disabled':''}>Spin ${moneyS(csBet)}</button></div>
-   <div class="czpay">${S_.sym.map((x,i)=>`<div><span>${CZ_SYM[x]}${CZ_SYM[x]}${CZ_SYM[x]}</span><b>${S_.three[i]}×</b></div>`).reverse().join('')}<div><span>${CZ_SYM.cherry}${CZ_SYM.cherry}</span><b>${S_.two.cherry}×</b></div></div></div>
-   <p class="czrule">Three matching symbols on the centre line pay the multiplier shown. Two cherries return 1.5× your stake.</p>`}
- else{const sp=csAnim&&csAnim.g==='dice',d=sp?csAnim.r.d:L&&L.d?L.d:[5,2],D_=C.CASINO.dice,pick=sp?csAnim.r.pick:L?L.pick:null;
-  game=`<div class="czfelt dc"><div class="czdice">${czDie(d[0])}${czDie(d[1])}</div>
-   ${L&&L.d&&!sp?res(L.win?'w':'l',esc(L.msg)):sp?res('p','Rolling'):res('p','Bet on the total of two dice')}
-   <div class="czdbets">${[['low','Under 7','2 to 6',D_.hl],['seven','Seven','exactly 7',D_.seven],['high','Over 7','8 to 12',D_.hl]].map(([k,t,s_,p])=>`<button class="czdb${pick===k?' pk':''}" data-act="dice" data-a="${k}" ${busy?'disabled':''}><b>${t}</b><small>${s_}</small><em>${p}×</em></button>`).join('')}</div></div>
-   <p class="czrule">Under 7 and over 7 each come up about 42% of the time and return ${D_.hl}×. A seven comes up one roll in six and returns ${D_.seven}×.</p>`}
- game=game.replace(/<div class="czfelt([^"]*)">/,m=>m+CZ_BRAND+'<a class="czpf" href="#czFair" data-act="czfgo" title="How you can check every result">✓ Provably fair</a>');
- {const i=game.indexOf('<p class="czrule">');if(i>0){const j=game.lastIndexOf('</div>',i);game=game.slice(0,j)+czScore(csGame)+game.slice(j)}}
+  const pay=`<div class="czpay">${S_.sym.map((x,i)=>`<div><span>${CZ_SYM[x]}${CZ_SYM[x]}${CZ_SYM[x]}</span><b>${S_.three[i]}×</b></div>`).reverse().join('')}<div><span>${CZ_SYM.cherry}${CZ_SYM.cherry}</span><b>${S_.two.cherry}×</b></div></div>`;
+  const msg=L&&L.reels&&!sp?czBanner(L.mult?'w':'l',L.mult?`${L.mult>=5?'Winner':'Cherries'} · ${czNet(L.net)}`:'No win',L.msg):sp?czBanner('p','Good luck','Reels spinning'):czBanner('p','Line up three','Three of a kind on the line wins');
+  const felt=`<div class="czcabwrap"><div class="czcab${win?' won':''}${sp?' spin':''}">
+    <div class="czmarq">${CZ_BULBS(13)}<div class="czmarqt"><b>Lucky Sevens</b><span>777 pays ${S_.three[5]}×</span></div>${CZ_BULBS(13)}</div>
+    <div class="czwindow"><div class="czreels">${fin.map(reel).join('')}<div class="czline"></div></div><div class="czglass" aria-hidden="true"></div></div>
+    <div class="czcabmsg">${msg}</div>${pay}
+   </div><button class="czlever${sp?' pulled':''}" data-act="slots" ${dis} aria-label="Pull the lever to spin"><i></i><b></b></button></div>`;
+  game=table('sl',felt,`<button class="czbtn pri wide" data-act="slots" ${dis}>Spin · $${czShort(csBet)}</button>`);
+  rule=`Three matching symbols on the centre line pay the multiplier shown. Two cherries return ${S_.two.cherry}× your stake.`}
+ else{const sp=csAnim&&csAnim.g==='dice',d=sp?csAnim.r.d:L&&L.d?L.d:[5,2],D_=C.CASINO.dice,pick=sp?csAnim.r.pick:L?L.pick:null,tot=d[0]+d[1];
+  const dw=v=>`<div class="czdw"><div class="czdsh"></div>${czDie(v)}</div>`;
+  const msg=L&&L.d&&!sp?czBanner(L.win?'w':'l',L.win?`${tot} · You win ${czNet(L.net)}`:`${tot} · No win`,L.msg):sp?czBanner('p','Dice are rolling',''):czBanner('p','Place your bet','Bet on the total of two dice');
+  const box=([k,t,s_,p])=>`<button class="czdb ${k}${pick===k?' pk':''}${!sp&&L&&L.d&&L.pick===k?(L.win?' won':' lost'):''}" data-act="dice" data-a="${k}" ${dis}><b>${t}</b><small>${s_}</small><em>pays ${p}×</em>${pick===k?czStack(csBet):''}</button>`;
+  const felt=`<div class="czwall" aria-hidden="true"></div><div class="czdprint" aria-hidden="true">World Powers Dice</div><div class="czdice">${dw(d[0])}${dw(d[1])}</div>${msg}
+   <div class="czdbets">${[['low','Under 7','2 to 6',D_.hl],['seven','Seven','exactly 7',D_.seven],['high','Over 7','8 to 12',D_.hl]].map(box).join('')}</div>`;
+  const acts=pick?`<button class="czbtn pri wide" data-act="dice" data-a="${pick}" ${dis}>Roll again on ${czPickName('dice',pick)}</button>`:`<span class="czhint">Tap a bet on the felt to roll</span>`;
+  game=table('dc',felt,acts);
+  rule=`Under 7 and over 7 each come up about 42% of the time and return ${D_.hl}×. A seven comes up one roll in six and returns ${D_.seven}×.`}
  const hist=(cs.hist||[]).map(h=>`<div><time>${ago(h.t)}</time><span>${({bj:'Blackjack',roulette:'Roulette',slots:'Slots',dice:'Dice'})[h.g]||h.g}<i class="mu"> ${esc(h.d||'')}</i></span><span class="num">${moneyS(h.bet)}${h.nz&&h.nz.length?` <small class="czbn">${h.nz.map(z=>czfLink(z,h.g)).join(' ')}</small>`:''}</span><b class="num ${h.net>0?'gn':h.net<0?'rd':''}">${h.net>0?'+':''}${moneyS(h.net)}</b></div>`).join('');
  return`<div class="czhead"><div><h1 class="pg czt">World Casino</h1><p class="pgsub">Stakes come from your nation's treasury. The house keeps a small edge.</p></div>
  <dl class="czstat"><div><dt>Treasury</dt><dd class="num ${n.cash<0?'rd':''}">${moneyS(n.cash)}</dd></div><div><dt>Table limit</dt><dd class="num">${moneyS(mx)}</dd></div><div><dt>Your results</dt><dd class="num ${cs.net>0?'gn':cs.net<0?'rd':''}">${cs.net>0?'+':''}${moneyS(cs.net||0)}</dd></div></dl></div>
- <div class="czbar"><div class="czseg" role="tablist">${tabs}</div><div class="czstake"><label for="csBetIn">Stake</label><div class="czamt"><button class="czstep" data-act="csbet" data-a="half" aria-label="Halve the stake" ${inHand?'disabled':''}>−</button><input id="csBetIn" value="${moneyS(csBet).replace('$','')}" inputmode="decimal" autocomplete="off" ${inHand?'disabled':''}><button class="czstep" data-act="csbet" data-a="dbl" aria-label="Double the stake" ${inHand?'disabled':''}>+</button></div><div class="czchips">${chips}</div></div></div>
+ <div class="czbar"><div class="czseg" role="tablist">${tabs}</div></div>
  ${game}
+ <div class="czunder">${czScore(csGame)}<p class="czrule">${rule}</p></div>
  ${hist?`<div class="czhist"><h3>Recent play</h3><div class="czhl2">${hist}</div></div>`:''}
  ${czFair()}`}
 
