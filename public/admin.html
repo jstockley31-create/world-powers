@@ -98,7 +98,7 @@ function pdSync(){pdraft.title=$('pd_title')?$('pd_title').value:pdraft.title;pd
 
 
 // Casino: how much is bet, what the house keeps, by game and by day, plus the biggest winners
-let CAS=null,casAt=0;async function casLoad(){casAt=Date.now();try{CAS=await api('GET','/api/admin/casino');if(tab==='casino')render()}catch(e){toast(e.message)}}
+let PKA=null;let CAS=null,casAt=0;async function casLoad(){casAt=Date.now();try{PKA=await api('GET','/api/admin/poker')}catch(e){}try{CAS=await api('GET','/api/admin/casino');if(tab==='casino')render()}catch(e){toast(e.message)}}
 const msS=v=>{const a=Math.abs(v),sg=v<0?'−$':'$';return a>=1e12?sg+(a/1e12).toFixed(2)+'T':a>=1e9?sg+(a/1e9).toFixed(2)+'B':a>=1e6?sg+(a/1e6).toFixed(2)+'M':a>=1e3?sg+(a/1e3).toFixed(1)+'K':sg+Math.round(a)};
 function casTab(){if(!CAS||Date.now()-casAt>15000)casLoad();if(!CAS)return'<h1>🎰 Casino</h1><p class="mu">Loading…</p>';
  const G={bj:'Blackjack',roulette:'Roulette',slots:'Slots',dice:'Dice'},T=CAS.tot||{},all=T.all||{plays:0,wag:0,net:0,wins:0},house=-all.net;
@@ -113,7 +113,10 @@ function casTab(){if(!CAS||Date.now()-casAt>15000)casLoad();if(!CAS)return'<h1>�
  const tbl=(L,empty)=>L.length?`<div style="overflow-x:auto"><table>${thp}<tbody>${L.map(row).join('')}</tbody></table></div>`:`<p class="mu">${empty}</p>`;
  const play=r=>`<tr><td class="mu" style="white-space:nowrap">${new Date(r.t).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td>${esc(r.name)} <span class="mu">${esc(r.leader)}</span></td><td>${G[r.g]||r.g}</td><td class="mu">${esc(r.d||'')}</td><td style="text-align:right">${msS(r.bet)}</td><td style="text-align:right" class="${r.net>0?'gn':r.net<0?'rd':''}">${r.net>0?'+':''}${msS(r.net)}</td></tr>`;
  const thr='<thead><tr><th>When</th><th>Nation</th><th>Game</th><th>Result</th><th style="text-align:right">Bet</th><th style="text-align:right">Won / lost</th></tr></thead>';
- return`<h1>🎰 Casino</h1><p class="sub">What players bet at the World Casino and what the house keeps. Money the house wins leaves the economy.</p>${hero}
+ const pokerP=PKA?panel(`🃏 Poker · house cut ${msS(PKA.rake)} from ${PKA.hands.toLocaleString('en-US')} hands`,`<table><thead><tr><th>Table</th><th>Blinds</th><th>Players</th><th style="text-align:right">Pot now</th></tr></thead><tbody>${PKA.tables.map(t=>`<tr><td><b>${esc(t.name)}</b></td><td class="mu">${msS(t.sb)} / ${msS(t.bb)}</td><td>${t.seats.filter(Boolean).map(x=>`${esc(x.name)} <span class="mu">${msS(x.stack)}${x.sitOut?' · away':''}</span>`).join(', ')||'<span class="mu">empty</span>'}</td><td style="text-align:right">${t.live?msS(t.pot):'—'}</td></tr>`).join('')}</tbody></table>
+  ${PKA.top.length?`<p class="mu" style="margin:12px 0 6px;font-size:13px">Biggest winners and losers</p><table><tbody>${PKA.top.map(x=>`<tr><td>${esc(x.name)}</td><td class="mu">${x.hands} hands · ${x.won} won</td><td style="text-align:right" class="${x.net>=0?'g':'r'}">${x.net>=0?'+':''}${msS(x.net)}</td></tr>`).join('')}</tbody></table>`:''}
+  <div class="row" style="margin-top:12px;justify-content:space-between;gap:10px;flex-wrap:wrap"><span class="mu" style="font-size:13px">Problem at a table? Cash out everyone: every chip, including chips in a hand being played, goes back to its owner's treasury.</span><button class="btn dng" data-act="pkcash">Cash out every table</button></div>`):'';
+ return`<h1>🎰 Casino</h1><p class="sub">What players bet at the World Casino and what the house keeps. Money the house wins leaves the economy.</p>${hero}${pokerP}
   ${panel('By game',games)}${panel('House result, last 30 days',chart)}
   <div class="cols">${panel('Biggest winners',tbl(winners,'Nobody is ahead of the house.'))}${panel('Biggest losers',tbl(losers,'Nobody is behind yet.'))}</div>
   ${panel('Most active players',tbl(busiest,'No one has played yet.'))}
@@ -472,6 +475,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-tab]');if(
  case'evend':act(()=>api('POST','/api/admin/event-end',{}),'World event ended.');break;
  case'peace':if(confirm('Force peace between these two nations now?'))act(()=>api('POST','/api/admin/peace',{a:b.dataset.a,b:b.dataset.b}),'Peace imposed.');break;
  case'peacepick':{const pa=$('pzA').value,pb=$('pzB').value;if(pa===pb){toast('Pick two different nations.');break}if(confirm('Force peace between these two nations now?'))act(()=>api('POST','/api/admin/peace',{a:pa,b:pb}),'Peace imposed.');break}
+ case'pkcash':if(confirm('Cash out every poker table now? Hands in progress are cancelled and all chips go back to their owners.'))api('POST','/api/admin/poker',{op:'cashout'}).then(()=>{toast('Every table cashed out.');casLoad()}).catch(er=>toast(er.message));break;
  case'firesout':if(confirm('Put out every fire on the globe for everyone?'))act(()=>api('POST','/api/admin/fires-out',{}),'All fires put out.');break;
  case'ccancel':if(confirm('Cancel this Council vote?'))act(()=>api('POST','/api/admin/council-cancel',{prop:b.dataset.r}),'Vote cancelled.');break;
  case'clearflags':act(()=>api('POST','/api/admin/clear-flags',{id}),'Flags dismissed.');break;

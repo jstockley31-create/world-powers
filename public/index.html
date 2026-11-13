@@ -990,6 +990,66 @@ body.czfullon{overflow:hidden}body.czfullon #dock{display:none!important}
 }
 @media (prefers-reduced-motion:reduce){.czbanner,.czfelt.bj .czbanner,.czfelt.bj .czcard,.czcab .czbulbs i,.czlever.pulled i{animation:none!important}}
 .pgsub.ovsub{margin-top:2px;font-size:14px}
+/* ---- poker ---- */
+.cztable .czfelt.pk{height:600px;padding:0;border-radius:300px/240px;background:radial-gradient(70% 60% at 50% 45%,#1f6b47 0%,#0f4a30 60%,#08301f 100%)}
+.cztable .czfelt.pk.lobby{height:auto;min-height:420px;border-radius:24px;padding:70px 28px 28px}
+.czfelt.pk .czbrand{left:50%;top:auto;bottom:150px;transform:translateX(-50%);opacity:.35;z-index:0}
+.czfelt.pk.lobby .czbrand{left:22px;top:16px;bottom:auto;transform:none;opacity:1}
+.pkload{text-align:center;color:rgba(241,236,224,.7);margin-top:80px}
+.pkhero{text-align:center;max-width:640px;margin:0 auto 22px}.pkhero h2{font:700 30px/1.1 Cinzel,Georgia,serif;letter-spacing:.06em;color:#e9c46a;margin:0 0 8px}.pkhero p{margin:0;color:rgba(241,236,224,.78);font-size:14px}
+.pklist{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;max-width:900px;margin:0 auto}
+.pktab{font:inherit;text-align:left;color:#f1ece0;background:rgba(0,0,0,.28);border:1px solid rgba(233,196,106,.35);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;cursor:pointer}
+.pktab:hover{border-color:#e9c46a;background:rgba(0,0,0,.38)}.pktab.mine{border-color:#e9c46a;box-shadow:0 0 0 1px #e9c46a inset}
+.pktab b{font:700 16px/1.2 Georgia,serif}.pkbl{color:#e9c46a;font-weight:700}.pktab .mu{font-size:12.5px;color:rgba(241,236,224,.6)}
+.pkocc{display:flex;align-items:center;gap:3px;font-size:12px;color:rgba(241,236,224,.7);margin-top:4px}.pkocc i{width:9px;height:9px;border-radius:50%;border:1px solid rgba(233,196,106,.5)}.pkocc i.on{background:#e9c46a}
+.pktab em{font-style:normal;font-weight:700;color:#f2d27a;margin-top:6px;font-size:13px}
+.pkme{text-align:center;margin:18px 0 0;color:rgba(241,236,224,.75);font-size:13.5px}
+.pktop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;font-size:13px;color:var(--mu)}.pktop b{color:var(--tx)}.pkback{font:inherit;font-size:13px;font-weight:600;color:#f1e6c8;background:#1b2430;border:1px solid rgba(201,162,74,.45);border-radius:8px;padding:6px 12px;cursor:pointer}.pkback:hover{border-color:#e9c46a}
+.czfelt .pkname{position:absolute;bottom:22px;left:0;right:0;text-align:center;font:600 12px/1 Georgia,serif;letter-spacing:.14em;text-transform:uppercase;color:rgba(233,215,154,.55);z-index:0}
+.czfelt .pkoval{position:absolute;inset:56px 24px 44px;z-index:1}
+.pkboard{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);display:flex;gap:7px}
+.pkboard .czcard,.pkslot{width:56px;height:80px;border-radius:6px;flex:none}.pkslot{border:1.5px dashed rgba(233,215,154,.22)}
+.pkboard .czcard{animation:czdeal2 .35s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i) * .08s);--dx:0px;--dy:-120px}
+.pkboard .czpips{inset:10px 9px}.pkboard .czpips span{width:10px;height:10px}.pkboard .czface{inset:12px 10px}.pkboard .czface b{font-size:19px}.pkboard .czace .czs{width:26px;height:26px}.pkboard .czix{top:4px;left:4px}.pkboard .czix.br{top:auto;left:auto;bottom:4px;right:4px}.pkboard .czix b{font-size:13px}
+.pkpot{position:absolute;left:50%;top:calc(44% + 54px);transform:translateX(-50%);white-space:nowrap;background:rgba(11,16,22,.82);border:1px solid rgba(233,196,106,.55);border-radius:99px;padding:3px 12px;font-size:13px;color:#fff}
+.pkres{position:absolute!important;left:50%;top:calc(44% - 100px);transform:translateX(-50%);margin:0!important;white-space:nowrap;z-index:6}
+.pkwait{position:absolute;left:50%;top:calc(44% - 80px);transform:translateX(-50%);white-space:nowrap;color:rgba(241,236,224,.75);font-size:14px;background:rgba(0,0,0,.25);border-radius:99px;padding:6px 14px}
+.pkseat{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;z-index:3;width:150px}
+.pkseat.empty{width:auto}
+.pksit{font:inherit;font-size:12.5px;font-weight:700;color:#1a1305;background:linear-gradient(180deg,#f2d27a,#c99a33);border:0;border-radius:99px;padding:7px 14px;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.4)}
+.pkseat.empty .mu{white-space:nowrap;font-size:12px;color:rgba(241,236,224,.4);border:1px dashed rgba(233,215,154,.25);border-radius:99px;padding:6px 12px}
+.pkplate{position:relative;display:flex;align-items:center;gap:8px;background:rgba(10,14,18,.88);border:1px solid rgba(233,196,106,.35);border-radius:99px;padding:4px 12px 4px 4px;min-width:130px;box-shadow:0 6px 14px rgba(0,0,0,.45)}
+.pkseat.turn .pkplate{border-color:#e9c46a;box-shadow:0 0 0 2px rgba(233,196,106,.55),0 0 18px rgba(233,196,106,.45)}
+.pkseat.me .pkplate{background:rgba(24,20,8,.92)}
+.pkseat.out{opacity:.6}.pkseat.won .pkplate{border-color:#7ee2a8;box-shadow:0 0 18px rgba(126,226,168,.45)}
+.pkav{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;font:700 11px/1 Inter,system-ui,sans-serif;color:#fff;background:var(--c);box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.pkpl{display:flex;flex-direction:column;line-height:1.15;min-width:0}.pkpl b{font-size:12.5px;max-width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f1ece0}.pkpl span{font-size:12px;color:#e9c46a;font-weight:700}
+.pkdb{position:absolute;right:-10px;top:-8px;width:20px;height:20px;border-radius:50%;background:#fbf9f3;color:#111;font:800 10px/20px Inter,sans-serif;text-align:center;font-style:normal;box-shadow:0 2px 4px rgba(0,0,0,.5)}
+.pkcards{display:flex;gap:2px;margin-bottom:-14px;z-index:-1}.pkcards .czcard{width:40px;height:56px;border-radius:5px;animation:czdeal2 .35s both;--dx:0px;--dy:-60px}
+.pkcards .czpips{inset:7px 6px}.pkcards .czpips span{width:7px;height:7px}.pkcards .czface{inset:9px 7px}.pkcards .czface b{font-size:13px}.pkcards .czface .czs{width:9px;height:9px}.pkcards .czace .czs{width:18px;height:18px}.pkcards .czix{top:3px;left:3px}.pkcards .czix.br{display:none}.pkcards .czix b{font-size:11px}.pkcards .czix .czs{width:7px;height:7px}
+.pkseat.me .pkcards .czcard{width:52px;height:74px}.pkseat.me .pkcards .czix b{font-size:13px}.pkseat.me .pkcards .czix .czs{width:9px;height:9px}.pkseat.me .pkcards .czpips{inset:9px 8px}.pkseat.me .pkcards .czpips span{width:9px;height:9px}.pkseat.me .pkcards .czace .czs{width:24px;height:24px}.pkseat.me .pkcards .czface b{font-size:17px}
+.pkcards.fold{opacity:.35}
+.pktime{width:110px;height:4px;border-radius:2px;background:rgba(0,0,0,.4);overflow:hidden}.pktime i{display:block;height:100%;background:#e9c46a;transition:width .25s linear}.pktime i.low{background:#e5534b}
+.pktag{font-size:11.5px;font-weight:700;color:#f1ece0;background:rgba(0,0,0,.45);border-radius:99px;padding:2px 9px;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis}.pktag.win{color:#0b1a10;background:#7ee2a8}.pktag.allin{background:#a51d1d}
+.pkbet{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:5px;z-index:2;pointer-events:none}.pkbet .czstack{width:26px;height:26px}.pkbet>span{font-size:12px;font-weight:700;color:#fff;background:rgba(0,0,0,.45);border-radius:99px;padding:1px 7px}
+.pkdock{flex-wrap:wrap;justify-content:center}
+.pkacts{display:flex;gap:8px;flex-wrap:wrap}.pkacts .czbtn{min-width:110px}
+.pkraise{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1;min-width:280px}.pkraise input[type=range]{flex:1;min-width:140px;accent-color:#e9c46a}
+.czbtn.sm{min-width:0;padding:7px 10px;font-size:12.5px}
+.pkbuy{display:flex;align-items:center;gap:8px}.pkbuy label{color:#b9a98a;font-size:13px}.pkbuy input{width:120px;background:rgba(0,0,0,.35);border:1px solid rgba(233,196,106,.35);border-radius:9px;color:#fff;font:inherit;font-weight:700;text-align:center;padding:8px}
+.pkside{display:flex;gap:8px;flex-wrap:wrap}
+.pkhist .log>div{display:grid;grid-template-columns:70px 1fr auto;gap:10px;align-items:center}
+.pkmini{display:flex;gap:3px}.pkmini i{font-style:normal;font-size:11.5px;font-weight:700;background:#fbf9f3;color:#16181c;border-radius:3px;padding:1px 4px}.pkmini i.r{color:#b3202a}
+@media (max-width:760px){
+ .cztable .czfelt.pk{height:560px;border-radius:150px/200px}
+ .czfelt .pkoval{inset:50px 6px 36px}
+ .pkseat{width:104px}.pkplate{min-width:0;padding:3px 8px 3px 3px;gap:5px}.pkav{width:24px;height:24px;font-size:9.5px}.pkpl b{max-width:64px;font-size:11px}.pkpl span{font-size:11px}
+ .pkboard{gap:3px;top:45%}.pkboard .czcard,.pkslot{width:40px;height:58px}.pkboard .czpips{inset:7px 6px}.pkboard .czpips span{width:7px;height:7px}.pkboard .czface b{font-size:13px}.pkboard .czix b{font-size:10px}.pkboard .czix .czs{width:7px;height:7px}.pkboard .czix.br{display:none}.pkboard .czace .czs{width:18px;height:18px}
+ .pkpot{top:calc(45% + 40px)}.pkres{top:calc(45% - 92px);white-space:normal;width:max-content;max-width:calc(100% - 20px)}.pkres b{font-size:15px}
+ .pkcards .czcard{width:30px;height:42px}.pkseat.me .pkcards .czcard{width:44px;height:62px}.pktime{width:80px}.pktag{font-size:10.5px;max-width:110px}
+ .pkacts{width:100%}.pkacts .czbtn{flex:1;min-width:0}.pkraise{min-width:0;width:100%}
+ .pklist{grid-template-columns:1fr}.cztable .czfelt.pk.lobby{padding:60px 12px 18px}.pkhero h2{font-size:24px}
+}
 /* casino chips v3: vector chips with real thickness */
 .czchip,.czstack .czpc{background:none!important;border-radius:50%}
 .czchip::before,.czstack .czpc::before{content:none!important}
@@ -1154,7 +1214,7 @@ on('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[
 on('mail',e=>{WP.extra.mailUnread=JSON.parse(e.data).unread;emit('wp-mail',WP.extra.mailUnread)});
 on('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fallen)});
 on('fallenlist',e=>{WP.extra.fallenList=JSON.parse(e.data);emit('wp-extra',WP.extra)});
-on('bm',()=>emit('wp-bm',{}));on('council',e=>{WP.extra.council=JSON.parse(e.data);emit('wp-council',WP.extra.council)});
+on('bm',()=>emit('wp-bm',{}));on('poker',e=>{try{emit('wp-poker',JSON.parse(e.data))}catch(er){}});on('council',e=>{WP.extra.council=JSON.parse(e.data);emit('wp-council',WP.extra.council)});
 on('games',e=>{WP.extra.games=JSON.parse(e.data);emit('wp-games',WP.extra.games)});
 on('dis',e=>{WP.extra.dis=JSON.parse(e.data)||[];emit('wp-dis',WP.extra.dis)});
 on('crisis',e=>{WP.extra.crisis=JSON.parse(e.data);emit('wp-crisis',WP.extra.crisis)});
@@ -1471,6 +1531,7 @@ document.addEventListener('input',e=>{if(e.target.id==='cpText'){councilDraft.te
 document.addEventListener('input',e=>{if(e.target.id!=='rkQ')return;rkQ=e.target.value;const pos=e.target.selectionStart;e.target.blur();render();const n=$('rkQ');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(_){}}});
 document.addEventListener('change',e=>{if(e.target.id==='cpAnon'){councilDraft.anon=e.target.checked;const b=document.getElementById('cpSubmit');if(b)b.textContent=`Submit to the Council (${e.target.checked?'$10,000,000':'$1,000,000'})`}});
 document.addEventListener('input',e=>{if(/^bm_[qp]$/.test(e.target.id)&&BMV){bmDraft[e.target.id==='bm_q'?'q':'price']=e.target.value;const R=BMV.rules,qv=Math.max(0,Math.floor(+bmDraft.q||0)),pv=Math.max(0,Math.round(+bmDraft.price||0)),val=qv*pv,el=$('bm_sum');if(el)el.innerHTML=bmSum(val,bmRiskPct(R.sellRisk,R.sellRiskMax,val,R),Math.max(R.fineMin,Math.min(R.fineMax,val*R.fine)),BMV.prices[bmDraft.r],pv)}if(e.target.id==='csBetIn'){const v=pMoney(e.target.value);if(v>0&&me)csBet=Math.max(C.CASINO.min,Math.min(C.casinoMax(me),Math.floor(v)))}});
+document.addEventListener('input',e=>{if(e.target.id==='pkRange'){PKS.raise=+e.target.value;render()}}); /* re-render so the page and its saved copy never disagree */
 document.addEventListener('change',e=>{if(e.target.id==='csBetIn'&&loaded)render();if(e.target.id==='rkSort'){const c=RCOLS[rankTab].find(x=>x[0]===e.target.value);if(c){rankSort={k:c[0],d:c[4]?1:-1};render()}}});
 async function found(){const s=found_;const el=$('fn_name');const name=(el?.value||s.name||'').trim();if(s.hex==null)return toast('Choose your land first: tap dark land on the globe, or tap “Pick a good spot for me”.');if(name.length<2){toast('Now give your nation a name.');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>el.focus(),350)}return}
  const r=await cmd({c:'found',name,color:s.color,gov:s.gov,hex:s.hex},false);if(!r)return;try{if(localStorage.getItem('wp_sound')===null)SND.set(true)}catch(e){} /* new nations start with sound effects on (players can turn them off under the bell) */page='overview';toast('Your nation has been founded. Start with Operations → Collect Taxes.');setTimeout(()=>{$('main').scrollTop=0;GL.flyTo(P[s.hex].c,2.2)},300)}
@@ -2812,7 +2873,7 @@ function worldStats(){const ids=wsAll();if(!ids.length)return'';const sum=f=>ids
 
 // ================= WORLD CASINO =================
 let csGame='bj',csBet=1e6,csLast={},csBusy=false,csAnim=null,csRot=0,csHole=false;
-const CSG=[['bj','Blackjack'],['roulette','Roulette'],['slots','Slots'],['dice','Dice']];
+const CSG=[['bj','Blackjack'],['roulette','Roulette'],['slots','Slots'],['dice','Dice'],['poker','Poker']];
 const CZ_RM=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 // suits as vector paths, so no phone turns them into emoji
 const CZ_SUIT={'♥':'M50 90C22 68 6 50 6 31 6 16 18 6 31 6c9 0 16 5 19 12 3-7 10-12 19-12 13 0 25 10 25 25 0 19-16 37-44 59z','♦':'M50 4 86 50 50 96 14 50z',
@@ -2928,6 +2989,56 @@ const CZ_RACK=['#d6d6d6','#c0303a','#2b62c4','#2f9a5a','#1d1d1d','#7d3fb8','#d6a
 const CZ_PRINT=`<svg class="czprint" viewBox="0 0 1000 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><path id="czp1" d="M150,40 Q500,150 850,40"/><path id="czp2" d="M210,72 Q500,170 790,72"/><path id="czp3" d="M270,102 Q500,190 730,102"/></defs>
  <text font-size="30" font-weight="700"><textPath href="#czp1" startOffset="50%" text-anchor="middle">BLACKJACK PAYS 3 TO 2</textPath></text><text font-size="15"><textPath href="#czp2" startOffset="50%" text-anchor="middle">DEALER STANDS ON 17 · DRAWS TO 16</textPath></text><text font-size="13"><textPath href="#czp3" startOffset="50%" text-anchor="middle">DOUBLE DOWN ON ANY FIRST TWO CARDS</textPath></text></svg>`;
 const CZ_BULBS=n=>`<div class="czbulbs" aria-hidden="true">${'<i></i>'.repeat(n)}</div>`;
+// ---------- poker: Texas Hold'em between nations ----------
+let PKS={lobby:null,table:null,tid:null,at:0,busy:false,buy:null,raise:null,seen:''};
+async function pkLoad(tid){if(tid!==undefined)PKS.tid=tid;try{const r=await WP.api('GET','/api/poker'+(PKS.tid?'?t='+encodeURIComponent(PKS.tid):''));PKS.lobby=r.lobby;PKS.table=r.table;PKS.at=Date.now();if(PKS.lobby&&PKS.lobby.mine&&!PKS.tid){PKS.tid=PKS.lobby.mine;return pkLoad()}}catch(e){toast(e.message)}if(page==='casino'&&csGame==='poker')render()}
+window.addEventListener('wp-poker',e=>{const d=e.detail;if(!d||d.t!==PKS.tid)return;const was=PKS.table;PKS.table=d.v;PKS.at=Date.now();
+ const v=d.v,myTurn=v.me>=0&&v.toAct===v.me,key=v.no+':'+v.toAct;if(myTurn&&PKS.seen!==key){PKS.seen=key;PKS.raise=null;SND.play('ok')}
+ if(was&&was.street!=='done'&&v.street==='done'){const w=v.seats[v.me];if(w&&w.won>0)SND.play('win')}
+ if(page==='casino'&&csGame==='poker')render()});
+// keep our seat at the table "watched" so updates keep coming, and refresh the lobby now and then
+setInterval(()=>{if(page==='casino'&&csGame==='poker'&&Date.now()-PKS.at>20e3)pkLoad()},5e3);
+setInterval(()=>{for(const el of document.querySelectorAll('[data-pkdl]')){const dl=+el.dataset.pkdl,tot=+el.dataset.pktot||25e3,left=Math.max(0,dl-Date.now());el.style.width=(left/tot*100)+'%';el.classList.toggle('low',left<7e3)}},250);
+async function pkDo(body){if(PKS.busy)return;PKS.busy=true;try{const r=await WP.api('POST','/api/poker',{t:PKS.tid,...body});PKS.lobby=r.lobby;PKS.table=r.table;PKS.at=Date.now()}catch(e){toast(e.message)}PKS.busy=false;render()}
+const pkInit=nm=>esc(String(nm||'?').replace(/^(The |Republic of |Kingdom of )/i,'').slice(0,2).toUpperCase());
+const PK_POS=[[50,88],[9,66],[13,20],[50,8],[87,20],[91,66]];
+function pkSeatHtml(v,s,i,rel){const [x,y]=PK_POS[rel],turn=v.toAct===i,done=v.street==='done',btn=v.btn===i&&v.street;
+ if(!s){const canSit=v.me<0&&PKS.lobby&&!PKS.lobby.mine;return`<div class="pkseat empty" style="left:${x}%;top:${y}%">${canSit?`<button class="pksit" data-act="pksit" data-a="${i}">Sit here</button>`:'<span class="mu">Empty seat</span>'}</div>`}
+ const st=s.folded?'Folded':s.allin?'All-in':s.sitOut?'Sitting out':s.last?({check:'Check',call:'Call',raise:'Raise',allin:'All-in',fold:'Fold'})[s.last[1]]||'':'';
+ const cards=s.cards.length?`<div class="pkcards${s.folded?' fold':''}">${s.cards.map((c,k)=>czCard(c,{i:k})).join('')}</div>`:'';
+ const [bx,by]=[x+(50-x)*.42,y+(50-y)*.42];
+ return`<div class="pkseat${turn?' turn':''}${i===v.me?' me':''}${s.folded||s.sitOut?' out':''}${done&&s.won>0?' won':''}" style="left:${x}%;top:${y}%">
+  ${cards}<div class="pkplate"><span class="pkav" style="--c:${esc(s.color)}">${pkInit(s.name)}</span><div class="pkpl"><b>${esc(s.name)}</b><span class="num">${moneyS(s.stack)}</span></div>${btn?'<i class="pkdb" title="Dealer">D</i>':''}</div>
+  ${turn?`<div class="pktime"><i data-pkdl="${v.deadline}" data-pktot="25000" style="width:${Math.max(0,(v.deadline-v.now)/250)}%"></i></div>`:''}
+  ${done&&s.won>0?`<div class="pktag win">+${moneyS(s.won)}${s.hand?` · ${esc(s.hand)}`:''}</div>`:done&&s.hand?`<div class="pktag">${esc(s.hand)}</div>`:st?`<div class="pktag${s.allin?' allin':''}">${st}</div>`:''}
+ </div>${s.bet>0?`<div class="pkbet" style="left:${bx}%;top:${by}%">${czStack(s.bet)}<span class="num">${moneyS(s.bet)}</span></div>`:''}`}
+function pkLobbyHtml(){const L=PKS.lobby;if(!L)return`<div class="cztable t-pk"><div class="czfelt pk lobby">${CZ_BRAND}<p class="pkload">Opening the poker room…</p></div></div>`;const st=L.stats||{};
+ return`<div class="cztable t-pk"><div class="czfelt pk lobby">${CZ_BRAND}<div class="pkhero"><h2>Texas Hold'em</h2><p>Play other nations for real treasury money. Pick a table, buy in, and leave whenever you like: your chips go straight back to your treasury.</p></div>
+  <div class="pklist">${L.tables.map(t=>`<button class="pktab${L.mine===t.id?' mine':''}" data-act="pkopen" data-a="${esc(t.id)}"><b>${esc(t.name)}</b><span class="pkbl">Blinds ${moneyS(t.sb)} / ${moneyS(t.bb)}</span><span class="mu">Buy-in ${moneyS(t.min)} to ${moneyS(t.max)}</span><span class="pkocc">${Array.from({length:t.seats},(_,k)=>`<i class="${k<t.seated?'on':''}"></i>`).join('')} ${t.seated}/${t.seats}${t.playing?` · hand in play${t.pot?` · pot ${moneyS(t.pot)}`:''}`:''}</span><em>${L.mine===t.id?'Back to your seat':t.seated>=t.seats?'Watch':'Open table'}</em></button>`).join('')}</div>
+  ${st.hands?`<p class="pkme">Your poker: <b>${num(st.hands)}</b> hands · <b>${num(st.won)}</b> won · <b class="${st.net>0?'gn':st.net<0?'rd':''}">${st.net>0?'+':''}${moneyS(st.net)}</b></p>`:''}</div></div>`}
+function pkTableHtml(){const v=PKS.table;if(!v)return pkLobbyHtml();const mi=v.me,meS=mi>=0?v.seats[mi]:null,L=v.legal,cash=me?me.cash:0;
+ const rot=mi>=0?mi:0,rel=i=>(i-rot+6)%6;
+ const board=`<div class="pkboard">${Array.from({length:5},(_,k)=>v.board[k]?czCard(v.board[k],{i:k}):'<div class="pkslot"></div>').join('')}</div>`;
+ const pot=v.pot>0?`<div class="pkpot">Pot <b class="num">${moneyS(v.pot)}</b></div>`:'';
+ let center='';if(v.street==='done'&&v.result){const w=v.seats.map((s,i)=>s&&s.won>0?s:null).filter(Boolean);center=`<div class="czbanner w pkres"><b>${w.map(s=>esc(s.name)).join(' & ')} win${w.length>1?'':'s'} ${moneyS(w.reduce((a,s)=>a+s.won,0))}</b><small>${w[0]&&w[0].hand?esc(w[0].hand):'Everyone else folded'}${v.result.rake?` · house ${moneyS(v.result.rake)}`:''}</small></div>`}
+ else if(!v.street){const n=v.seats.filter(s=>s&&!s.sitOut).length;center=`<div class="pkwait">${n<2?'Waiting for another nation to sit down':'Next hand is about to start'}</div>`}
+ const seats=v.seats.map((s,i)=>pkSeatHtml(v,s,i,rel(i))).join('');
+ let dock='';
+ if(mi<0){const free=v.seats.some(s=>!s),buy=PKS.buy!=null?PKS.buy:Math.min(v.max,Math.max(v.min,Math.floor(cash/4)));
+  dock=PKS.lobby&&PKS.lobby.mine?`<span class="czhint">You are sitting at another table.</span><button class="czbtn" data-act="pkopen" data-a="${esc(PKS.lobby.mine)}">Go to your table</button>`:free?`<div class="pkbuy"><label for="pkBuy">Buy-in</label><input id="pkBuy" value="${moneyS(buy).replace('$','')}" inputmode="decimal" autocomplete="off"><button class="czbtn" data-act="pkbuyq" data-a="min">Min</button><button class="czbtn" data-act="pkbuyq" data-a="max">Max</button></div><span class="czhint">Then tap “Sit here” on an empty seat. Buy-in ${moneyS(v.min)} to ${moneyS(v.max)}.</span>`:'<span class="czhint">This table is full. You can watch, or try another table.</span>'}
+ else if(L){const pot=L.pot,raiseTo=PKS.raise!=null?Math.min(L.maxTo,Math.max(L.minTo,PKS.raise)):L.minTo,q=(lbl,val)=>`<button class="czbtn sm" data-act="pkrq" data-a="${Math.min(L.maxTo,Math.max(L.minTo,Math.floor(val)))}">${lbl}</button>`;
+  dock=`<div class="pkacts"><button class="czbtn" data-act="pkact" data-a="fold" ${PKS.busy?'disabled':''}>Fold</button><button class="czbtn" data-act="pkact" data-a="${L.check?'check':'call'}" ${PKS.busy?'disabled':''}>${L.check?'Check':`Call ${moneyS(L.toCall)}`}</button>
+   ${L.canRaise?`<button class="czbtn pri" data-act="pkact" data-a="${raiseTo>=L.maxTo?'allin':'raise'}" ${PKS.busy?'disabled':''}>${raiseTo>=L.maxTo?`All-in ${moneyS(L.maxTo)}`:`${L.curBet?'Raise to':'Bet'} ${moneyS(raiseTo)}`}</button>`:L.toCall<meS.stack?'':''}</div>
+   ${L.canRaise?`<div class="pkraise"><input type="range" id="pkRange" min="${L.minTo}" max="${L.maxTo}" step="${v.bb}" value="${raiseTo}" aria-label="Raise amount">${q('Min',L.minTo)}${q('½ pot',L.curBet+(pot+L.toCall)/2)}${q('Pot',L.curBet+pot+L.toCall)}${q('All-in',L.maxTo)}</div>`:''}`}
+ else{const H=v.street&&v.street!=='done',inH=meS&&meS.inHand&&!meS.folded,wait=v.toAct>=0&&v.seats[v.toAct];
+  dock=`<span class="czhint">${meS.sitOut?'You are sitting out.':H?(inH?(wait?`Waiting for ${esc(wait.name)}…`:'Waiting…'):'You will be dealt in next hand.'):'Waiting for the next hand…'}</span>
+   <div class="pkside">${meS.sitOut?`<button class="czbtn pri" data-act="pksitout" data-a="0">I'm back</button>`:`<button class="czbtn" data-act="pksitout" data-a="1">Sit out</button>`}${!inH?`<button class="czbtn" data-act="pktop">Add chips</button>`:''}<button class="czbtn" data-act="pkleave">Leave table</button></div>`}
+ const hist=(v.hist||[]).map(h=>`<div><time>${ago(h.t)}</time><span><b>${h.win.map(w=>esc(w.name)).join(', ')||'—'}</b> won ${moneyS(h.win.reduce((a,w)=>a+w.amt,0))}${h.win[0]&&h.win[0].hand?` with ${esc(h.win[0].hand)}`:''}</span><span class="pkmini">${h.board.map(c=>`<i class="${c.s==='♥'||c.s==='♦'?'r':''}">${({1:'A',11:'J',12:'Q',13:'K',10:'10'})[c.v]||c.v}${c.s}</i>`).join('')}</span></div>`).join('');
+ return`<div class="pktop"><button class="pkback" data-act="pkopen" data-a="">← All tables</button><span><b>${esc(v.name)}</b> · blinds ${moneyS(v.sb)} / ${moneyS(v.bb)} · buy-in ${moneyS(v.min)} to ${moneyS(v.max)}</span></div><div class="cztable t-pk"><div class="czfelt pk">${CZ_BRAND}
+  <div class="pkoval">${board}${pot}${center}${seats}</div></div>
+  <div class="czdock pkdock">${dock}</div></div>
+  ${hist?`<div class="czhist pkhist"><h3>Last hands at this table</h3><div class="log">${hist}</div></div>`:''}`}
+function pPoker(){if(!PKS.lobby||Date.now()-PKS.at>30e3)setTimeout(()=>pkLoad(),0);return PKS.tid?pkTableHtml():pkLobbyHtml()}
 function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,best:0,hist:[],wagered:0};csBet=Math.max(C.CASINO.min,Math.min(csBet,mx));
  const tabs=CSG.map(([k,t])=>`<button class="${csGame===k?'on':''}" data-act="csgame" data-a="${k}" role="tab" aria-selected="${csGame===k}">${t}</button>`).join('');
  const inHand=!!n.bj,L=csLast[csGame],busy=csBusy||!!csAnim,dis=busy?'disabled':'';
@@ -2936,7 +3047,8 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
  const fair='<a class="czpf" href="#czFair" data-act="czfgo" title="How you can check every result">✓ Provably fair</a>';
  const table=(cls,felt,acts)=>`<div class="cztable t-${cls}"><div class="czfelt ${cls}">${CZ_BRAND}${fair}${felt}</div><div class="czdock"><div class="czchips" role="group" aria-label="Chip value">${chips}</div>${stake}<div class="czact">${acts}</div></div></div>`;
  let game='',rule='';
- if(csGame==='bj'){const h=n.bj||(L&&L.bj)||null,done=!n.bj&&L&&L.res;
+ if(csGame==='poker'){game=pPoker();rule=`No-limit Texas Hold'em against other nations. Your buy-in comes from your treasury and your chips go back when you leave. If you miss two turns you are sat out, and after 10 minutes away you are stood up and paid out. The house keeps 2% of pots that reach the flop (at most two big blinds). Friends on the same connection cannot sit at the same table. Cards are shuffled by the server with a cryptographic random generator.`}
+ else if(csGame==='bj'){const h=n.bj||(L&&L.bj)||null,done=!n.bj&&L&&L.res;
   const dCards=h?h.d.map((c,i)=>czCard(c,{i,cls:done&&csHole&&i===1?'flip':''})).join('')+(!done?czCard(null,{i:1}):''):'<div class="czslot"></div><div class="czslot"></div>';
   const pCards=h?h.p.map((c,i)=>czCard(c,{i})).join(''):'<div class="czslot"></div><div class="czslot"></div>';
   const pv=h?C.bjVal(h.p):0,dv=h?(done?L.dv:C.bjVal(h.d)):0,bet=h&&h.bet?h.bet:csBet;
@@ -2991,7 +3103,7 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
  <div class="czstage${czFull?' czfull':''}">
  <div class="czbar"><div class="czseg" role="tablist">${tabs}</div><div class="czbarr">${czFull?`<span class="czfcash">Treasury <b class="num">${moneyS(n.cash)}</b></span>`:''}<button class="czfs" data-act="czfull" title="${czFull?'Exit full screen (Esc)':'Full screen'}" aria-label="${czFull?'Exit full screen':'Full screen'}">${I(czFull?'unfull':'full')}</button></div></div>
  ${game}
- <div class="czunder">${czScore(csGame)}<p class="czrule">${rule}</p></div>
+ <div class="czunder">${csGame==='poker'?'':czScore(csGame)}<p class="czrule">${rule}</p></div>
  </div>
  ${hist?`<div class="czhist"><h3>Recent play</h3><div class="czhl2">${hist}</div></div>`:''}
  ${czFair()}`}
@@ -3289,7 +3401,15 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'czfgo':{const el=$('czFair');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});break}
  case'czfclient':{const v=($('czfClient')||{}).value||'';WP.api('POST','/api/casino/fair',{op:'client',client:v.trim()}).then(r=>{CZF=r;czfAt=Date.now();toast('Client seed changed. Your previous server seed was revealed.');render()}).catch(e=>toast(e.message));break}
  case'czfrotate':{ask('Reveal your server seed?','You will see the secret seed behind your past bets and can check every one of them. A new secret seed (with a new fingerprint) is used from your next bet.','Reveal',async()=>{try{CZF=await WP.api('POST','/api/casino/fair',{op:'rotate'});czfAt=Date.now();toast('Seed revealed. New fingerprint in use.');render()}catch(e){toast(e.message)}});break}
- case'csgame':csGame=a;render();break;
+ case'csgame':csGame=a;if(a==='poker')pkLoad();render();break;
+ case'pkopen':PKS.tid=a||null;PKS.table=null;PKS.raise=null;pkLoad();render();break;
+ case'pksit':{const v=PKS.table;if(!v)break;const buy=pMoney(($('pkBuy')||{}).value||'');if(!(buy>0))return toast('Enter a buy-in first.');pkDo({op:'sit',seat:+a,buy:Math.floor(buy)});break}
+ case'pkbuyq':{const v=PKS.table;if(!v)break;PKS.buy=a==='min'?v.min:Math.max(v.min,Math.min(v.max,Math.floor(me.cash)));render();break}
+ case'pkrq':PKS.raise=+a;render();break;
+ case'pkact':{const v=PKS.table,L=v&&v.legal;if(!L)break;const amt=a==='raise'?Math.min(L.maxTo,Math.max(L.minTo,PKS.raise!=null?PKS.raise:L.minTo)):0;PKS.raise=null;pkDo({op:'act',a,amt});break}
+ case'pksitout':pkDo({op:'sitout',on:a==='1'});break;
+ case'pktop':{const v=PKS.table,s=v&&v.seats[v.me];if(!s)break;const add=Math.max(0,Math.min(v.max-s.stack,Math.floor(me.cash)));if(add<=0)return toast(s.stack>=v.max?'You already have the most chips allowed at this table.':'Your treasury is empty.');ask(`Add ${moneyS(add)} in chips?`,`That brings you to ${moneyS(s.stack+add)}, the table maximum${add<v.max-s.stack?' your treasury allows':''}.`,'Add chips',()=>pkDo({op:'topup',amt:add}));break}
+ case'pkleave':ask('Leave the table?','Your chips go straight back to your treasury. If you are in a hand, your cards are folded.','Leave table',()=>pkDo({op:'leave'}));break;
  case'csbet':{const mx=C.casinoMax(me);csBet=a==='half'?Math.floor(csBet/2):a==='dbl'?csBet*2:+a;csBet=Math.max(C.CASINO.min,Math.min(mx,csBet));render();break}
  case'bj':csPlay({g:'bj',a,bet:csBet});break;case'rl':csPlay({g:'roulette',pick:a,bet:csBet});break;case'slots':csPlay({g:'slots',bet:csBet});break;case'dice':csPlay({g:'dice',pick:a,bet:csBet});break;
  case'rushgo':closeModal();page='military';render();break;case'rkmetric':rkMetric=a;render();break;case'rkrange':rkRange=+a;render();break;case'rkfilt':rkFilter=a;render();break;case'rkfocus':rkFocus=rkFocus===a?null:a;render();break;

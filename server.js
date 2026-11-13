@@ -842,6 +842,73 @@ const FRESH_AWARDS = ['prov', 'econ', 'tech', 'power', 'wins', 'relief'], NORMAL
 S.seasons = S.seasons || { cur: null, n: HOF.length };
 S.countdown = S.countdown || null;
 S.bm = S.bm && Array.isArray(S.bm.list) ? S.bm : { list: [] }; // black market listings (seller ids never leave the server)
+// ---------- poker: Texas Hold'em tables where nations play each other ----------
+const PK = require('./poker.js');
+const PK_TABLES = [['emb1', 'Embassy Table I', 5e4, 1e5, 2e6, 1e7], ['emb2', 'Embassy Table II', 5e4, 1e5, 2e6, 1e7], ['tre1', 'Treasury Table I', 5e5, 1e6, 2e7, 1e8], ['tre2', 'Treasury Table II', 5e5, 1e6, 2e7, 1e8], ['imp1', 'Imperial Table I', 5e6, 1e7, 2e8, 1e9], ['imp2', 'Imperial Table II', 5e6, 1e7, 2e8, 1e9]];
+S.poker = S.poker && S.poker.tables ? S.poker : { tables: {}, stats: {}, rake: 0, hands: 0 };
+for (const [id, name, sb, bb, mn, mx] of PK_TABLES) { const t = S.poker.tables[id]; if (!t) S.poker.tables[id] = PK.newTable(id, name, sb, bb, mn, mx); else Object.assign(t, { name, sb, bb, min: mn, max: mx }); }
+const PK_WATCH = new Map(); // uid -> { t, at }: who is looking at which table, for live updates
+const pkSeatOf = uid => { for (const t of Object.values(S.poker.tables)) { const i = t.seats.findIndex(s => s && s.u === uid); if (i >= 0) return { t, i }; } return null; };
+const pkCard = c => c ? { v: c.v === 14 ? 1 : c.v, s: c.s } : null;
+function pkView(t, uid) {
+  const H = t.hand, now = Date.now(), done = H && H.done;
+  const seats = t.seats.map((s, i) => { if (!s) return null; const n = S.docs['nations/' + s.u] || {}, P = H && H.p[i] && H.p[i].u === s.u ? H.p[i] : null;
+    const show = P && (s.u === uid || (done && done.shown[i])); return { u: s.u, name: n.name || (S.users[s.u] || {}).name || '?', color: n.color || '#888', stack: s.stack, sitOut: !!s.sitOut, leaving: !!s.leaving,
+      inHand: !!P, folded: !!(P && P.folded), allin: !!(P && P.allin), bet: P && !done ? P.bet : 0, cards: P ? (show ? P.hole.map(pkCard) : P.folded ? [] : [null, null]) : [], won: done ? done.won[i] || 0 : 0, hand: done ? done.names[i] || null : null, last: H && !done ? (H.log.filter(x => x[0] === i).slice(-1)[0] || null) : null }; });
+  const me = t.seats.findIndex(s => s && s.u === uid), L = me >= 0 ? PK.legal(t, me) : null;
+  return { id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, btn: t.btn, seats, me, board: H ? H.board.map(pkCard) : [], pot: H ? PK.potTotal(H) : 0, street: H ? (done ? 'done' : H.street) : null, toAct: H && !done ? H.toAct : -1, deadline: H && !done ? H.deadline : 0, now,
+    legal: L, no: H ? H.no : t.handNo, result: done ? { pot: done.pot, rake: done.rake, ranOut: !!H.ranOut } : null, next: !H || done ? t.next : 0, hist: t.hist.slice(0, 8).map(h => ({ ...h, board: h.board.map(pkCard), win: h.win.map(w => ({ ...w, name: (S.docs['nations/' + w.u] || {}).name || '?' })), shown: Object.fromEntries(Object.entries(h.shown).map(([u, c]) => [(S.docs['nations/' + u] || {}).name || '?', c.map(pkCard)])) })) };
+}
+function pkLobby(uid) { const mine = pkSeatOf(uid); return { tables: Object.values(S.poker.tables).map(t => ({ id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, seated: t.seats.filter(Boolean).length, seats: PK.SEATS, playing: t.hand && !t.hand.done ? Object.keys(t.hand.p).length : 0, pot: t.hand && !t.hand.done ? PK.potTotal(t.hand) : 0 })), mine: mine ? mine.t.id : null, stats: S.poker.stats[uid] || { hands: 0, won: 0, net: 0 } }; }
+const pkTimers = {};
+function pkPush(t) { if (pkTimers[t.id]) return; pkTimers[t.id] = setTimeout(() => { delete pkTimers[t.id]; const now = Date.now(), to = new Set(t.seats.filter(Boolean).map(s => s.u)); for (const [u, w] of PK_WATCH) if (w.t === t.id && now - w.at < 90e3) to.add(u); for (const u of to) sendTo(u, 'poker', { t: t.id, v: pkView(t, u) }); }, 40); }
+// chips go back to the nation's treasury
+function pkCashOut(t, i, why) { const s = t.seats[i]; if (!s) return 0; const amt = s.stack; s.stack = 0; const n = S.docs['nations/' + s.u]; if (n && amt > 0) { n.cash = (n.cash || 0) + amt; setDoc('nations', s.u, n); } if (why) addNote(s.u, 'diplo', `🃏 ${why}: ${WP.moneyS(amt)} from your chips went back to your treasury.`); return amt; }
+function pkStand(t, i, why) { const s = t.seats[i]; if (!s) return; const H = t.hand, live = H && !H.done && H.p[i] && !H.p[i].folded;
+  if (live && !H.p[i].allin) PK.foldOut(t, i, Date.now());
+  pkCashOut(t, i, why); if (H && !H.done && H.p[i] && !H.p[i].folded) s.leaving = true; else t.seats[i] = null; }
+function pkStandUser(uid, why) { const m = pkSeatOf(uid); if (m) { pkStand(m.t, m.i, why); pkPush(m.t); persist(); } }
+// before the world is switched or rewound, every chip goes home and every hand stops
+function pkCashAll(why) { for (const t of Object.values(S.poker.tables)) { const H = t.hand; if (H && !H.done) for (const [i, P] of Object.entries(H.p)) { const s = t.seats[i]; if (s) s.stack += P.total; } t.hand = null; for (let i = 0; i < t.seats.length; i++) if (t.seats[i]) { pkCashOut(t, i, why); t.seats[i] = null; } pkPush(t); } persist(); }
+function pkStats(H) { if (!H || !H.done || H.counted) return; H.counted = true; S.poker.hands++; S.poker.rake += H.done.rake || 0; for (const [u, net] of Object.entries(H.done.net)) { const st = S.poker.stats[u] = S.poker.stats[u] || { hands: 0, won: 0, net: 0 }; st.hands++; if (net > 0) st.won++; st.net += net; } }
+setInterval(() => { const now = Date.now();
+  for (const t of Object.values(S.poker.tables)) { let ch = false;
+    try { ch = PK.tick(t, now); } catch (e) { logErr('poker tick: ' + e.message); }
+    if (t.hand && t.hand.done && !t.hand.counted) { pkStats(t.hand); ch = true; }
+    if (!t.hand || t.hand.done) for (let i = 0; i < t.seats.length; i++) { const s = t.seats[i]; if (!s) continue;
+      if (s.leaving) { pkCashOut(t, i, null); t.seats[i] = null; ch = true; continue; }
+      if (!S.docs['nations/' + s.u]) { t.seats[i] = null; ch = true; continue; }
+      if (s.sitOut) { s.outSince = s.outSince || now; if (now - s.outSince > 10 * 60e3) { pkCashOut(t, i, `You were away from ${t.name} for 10 minutes and were stood up`); t.seats[i] = null; ch = true; } } else s.outSince = 0; }
+    if (ch) { pkPush(t); persist(); } }
+  for (const [u, w] of PK_WATCH) if (now - w.at > 120e3) PK_WATCH.delete(u);
+}, 500).unref();
+async function pokerRoute(p, req, res, me) {
+  const url = new URL(req.url, 'http://x'), now = Date.now();
+  if (req.method === 'GET') { const tid = url.searchParams.get('t'), t = tid && Object.prototype.hasOwnProperty.call(S.poker.tables, tid) ? S.poker.tables[tid] : null; if (t) PK_WATCH.set(me.id, { t: t.id, at: now }); else PK_WATCH.delete(me.id); return send(res, 200, { lobby: pkLobby(me.id), table: t ? pkView(t, me.id) : null }); }
+  if (limited('poker:' + me.id, 40, 10e3)) return send(res, 429, { error: 'Slow down a little.' });
+  const b = await readBody(req, 1024), op = String(b.op || ''), tid = String(b.t || ''), t = Object.prototype.hasOwnProperty.call(S.poker.tables, tid) ? S.poker.tables[tid] : null;
+  if (!t) return send(res, 404, { error: 'That table does not exist.' });
+  const n = S.docs['nations/' + me.id], mine = pkSeatOf(me.id), i = mine && mine.t === t ? mine.i : -1, fail_ = (m, c = 400) => send(res, c, { error: m });
+  const done = () => { pkPush(t); persist(); return send(res, 200, { lobby: pkLobby(me.id), table: pkView(t, me.id) }); };
+  switch (op) {
+    case 'sit': {
+      if (!n) return fail_('Found a nation first.'); if (mine) return fail_(mine.t === t ? 'You are already at this table.' : `You are already sitting at ${mine.t.name}. Leave it first.`);
+      if (S.users[me.id] && S.users[me.id].banned) return fail_('Your account is suspended.');
+      const seat = Math.floor(+b.seat), buy = Math.floor(+b.buy); if (!(seat >= 0 && seat < PK.SEATS) || t.seats[seat]) return fail_('That seat is taken. Pick another.');
+      if (!(buy >= t.min && buy <= t.max)) return fail_(`The buy-in at this table is ${WP.moneyS(t.min)} to ${WP.moneyS(t.max)}.`);
+      if ((n.cash || 0) < buy) return fail_('You do not have that much in your treasury.');
+      const mate = t.seats.find(s => s && sharesNetwork(me.id, s.u)); if (mate) return fail_('Someone on your network is already at this table. Friends on the same connection cannot play at the same table.');
+      n.cash -= buy; setDoc('nations', me.id, n); t.seats[seat] = { u: me.id, stack: buy, sitOut: false, missed: 0, joined: now };
+      if (!t.hand && t.next < now + 2500) t.next = now + 2500; return done(); }
+    case 'act': { if (i < 0) return fail_('You are not at this table.'); try { PK.act(t, i, String(b.a), b.amt, now); t.seats[i].missed = 0; } catch (e) { return fail_(e.message); } return done(); }
+    case 'leave': { if (i < 0) return fail_('You are not at this table.'); pkStand(t, i, null); return done(); }
+    case 'topup': { if (i < 0) return fail_('You are not at this table.'); const s = t.seats[i], H = t.hand; if (H && !H.done && H.p[i] && !H.p[i].folded) return fail_('Add chips between hands.');
+      const amt = Math.floor(+b.amt); if (!(amt > 0)) return fail_('Enter an amount.'); if (s.stack + amt > t.max) return fail_(`You can have at most ${WP.moneyS(t.max)} at this table.`); if ((n.cash || 0) < amt) return fail_('You do not have that much in your treasury.');
+      n.cash -= amt; setDoc('nations', me.id, n); s.stack += amt; return done(); }
+    case 'sitout': { if (i < 0) return fail_('You are not at this table.'); const s = t.seats[i]; if (b.on) s.sitOut = true; else { if (s.stack < t.bb) return fail_('Add chips first: you need at least the big blind.'); s.sitOut = false; s.missed = 0; s.outSince = 0; if (!t.hand && t.next < now + 2500) t.next = now + 2500; } return done(); }
+    default: return fail_('Unknown poker action.');
+  }
+}
 setTimeout(() => { try { blocRepair(); } catch (e) { console.error('blocRepair', e); } }, 0); // admin countdown banner: { id, text, at } shown to every player until 2 hours after it reaches zero
 if (S.seasons.n < HOF.length) S.seasons.n = HOF.length;
 function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = se.base[u] || { score: 0, prov: 0, gdp: n.gdp || 0 }; const ss = n.ss && n.ss.id === se.id ? n.ss : {};
@@ -917,12 +984,14 @@ function freshClear() {
 // the world loop's copy of the old world must never be written back after the switch
 function freshDropW(W) { if (!W) return; W.changed = new Set(); for (const k of Object.keys(W.A)) delete W.A[k]; W.OWN = {}; W.fallen = []; W.strikeFx = []; W.welcome = null; }
 function freshBegin(W, se) {
+  pkCashAll('A season is starting'); // chips go home to the real nations before the real world is saved
   const n = freshSave(se); freshClear(); freshDropW(W); SW = null; publicCache = null;
   S.fresh = { id: se.id, t: Date.now(), nations: n }; persist(true);
   audit('System', 'Fresh season world started', `${se.name}: real world (${n} nations) saved to ${path.basename(FRESH_FILE)}`);
   setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
 }
 function freshRestore(by, why) {
+  try { pkCashAll(null); } catch (e) {}
   let snap = null, src = FRESH_FILE;
   try { snap = JSON.parse(fs.readFileSync(FRESH_FILE, 'utf8')); } catch (e) { const id = S.fresh && S.fresh.id; const alt = id && path.join(BACKUP_DIR, `season-realworld-${id}.json`); if (alt && fs.existsSync(alt)) { snap = JSON.parse(fs.readFileSync(alt, 'utf8')); src = alt; } }
   if (!snap || snap.v !== 1 || !snap.nations) throw Object.assign(new Error('The saved real world could not be found or read. Nothing was changed.'), { status: 500 });
@@ -1080,6 +1149,7 @@ function takeSnap(tag) {
 }
 function listSnaps() { try { return fs.readdirSync(SNAP_DIR).map(f => { const m = f.match(/^snap-(\d+)(?:-([a-z]+))?\.json\.gz$/); return m && { name: f, t: +m[1], tag: m[2] || '', size: fs.statSync(path.join(SNAP_DIR, f)).size }; }).filter(Boolean).sort((a, b) => b.t - a.t); } catch (e) { return []; } }
 function rollback(name, by) {
+  try { pkCashAll('The world was rolled back'); } catch (e) {}
   const snaps = listSnaps(), sn = snaps.find(x => x.name === name); if (!sn) throw Object.assign(new Error('That snapshot no longer exists.'), { status: 404 });
   const st = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(SNAP_DIR, sn.name))));
   if ((st.world || 'real') !== (S.fresh ? S.fresh.id : 'real')) throw Object.assign(new Error(S.fresh ? 'That snapshot is from the real world, and a fresh-start season is running. To bring the real world back, use Seasons → Restore the real world.' : 'That snapshot is from a fresh-start season world, not the real world, so it cannot be rolled back to.'), { status: 400 });
@@ -1129,6 +1199,7 @@ function mailSend(me, b) {
 const PUSH_HOST = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|[a-z0-9-]+\.notify\.windows\.com|web\.push\.apple\.com|[a-z0-9-]+\.push\.apple\.com)\//;
 // remove an account and everything tied to it; other nations forget it too
 function wipeUser(id) {
+  try { pkStandUser(id, null); } catch (e) {}
   const W = mkWorld(); if (W.A[id]) { delete W.A[id]; for (const [u, n] of Object.entries(W.A)) if (n.rel && n.rel[id]) { delete n.rel[id]; W.changed.add(u); } commit(W); }
   for (const c of COLS) if (S.docs[c + '/' + id]) setDoc(c, id, null);
   for (const [t, s] of Object.entries(S.sessions)) if (s.uid === id) delete S.sessions[t];
@@ -1539,6 +1610,12 @@ async function adminRoute(p, req, res, me) {
     else return send(res, 400, { error: 'Unknown repair.' });
     persist(); audit(me.name, 'World repair: ' + msg); return send(res, 200, { ok: true, msg });
   }
+  if (p === '/api/admin/poker') { // Casino tab → Poker
+    if (req.method === 'POST') { const b = await readBody(req, 256); if (b.op === 'cashout') { pkCashAll('The administrators closed the poker tables for a moment'); audit(me.name, 'Poker: cashed out every table'); return send(res, 200, { ok: true }); } return send(res, 400, { error: 'Unknown action.' }); }
+    const nm = u => (S.docs['nations/' + u] || {}).name || (S.users[u] || {}).name || '?';
+    return send(res, 200, { rake: S.poker.rake, hands: S.poker.hands, tables: Object.values(S.poker.tables).map(t => ({ id: t.id, name: t.name, sb: t.sb, bb: t.bb, seats: t.seats.map(x => x ? { name: nm(x.u), stack: x.stack, sitOut: !!x.sitOut } : null), live: !!(t.hand && !t.hand.done), pot: t.hand ? PK.potTotal(t.hand) : 0, hist: t.hist.slice(0, 5).map(h => ({ t: h.t, pot: h.pot, rake: h.rake, win: h.win.map(w => ({ name: nm(w.u), amt: w.amt, hand: w.hand })) })) })),
+      top: Object.entries(S.poker.stats).map(([u, x]) => ({ name: nm(u), ...x })).sort((a, b) => b.net - a.net).slice(0, 10) });
+  }
   if (p === '/api/admin/fires-out' && req.method === 'POST') { const n = Object.keys(S.burn).length; S.burn = {}; S.strikes = []; persist(); broadcast('firesout', {}); audit(me.name, 'Put out all fires', null, `${n} burning provinces`); return send(res, 200, { ok: true, n }); }
   if (p === '/api/admin/backup' && req.method === 'GET') {
     audit(me.name, 'Downloaded a backup');
@@ -1572,8 +1649,9 @@ async function adminRoute(p, req, res, me) {
       setDoc('nations', b.id, n); audit(me.name, 'Edited nation', target, changes.join('; ') || 'no changes');
       return send(res, 200, { ok: true });
     }
-    case '/api/admin/reset-nation': { if (!u) return send(res, 404, { error: 'Unknown player.' }); setDoc('nations', b.id, null); audit(me.name, 'Reset nation', target); return send(res, 200, { ok: true }); }
+    case '/api/admin/reset-nation': { try { pkStandUser(b.id, null); } catch (e) {} if (!u) return send(res, 404, { error: 'Unknown player.' }); setDoc('nations', b.id, null); audit(me.name, 'Reset nation', target); return send(res, 200, { ok: true }); }
     case '/api/admin/ban': case '/api/admin/unban': {
+      if (p === '/api/admin/ban') try { pkStandUser(b.id, null); } catch (e) {}
       if (!u || b.id === me.id) return send(res, 400, { error: 'Unknown player.' });
       if (p.endsWith('/ban')) {
         u.banned = true; for (const [t, s] of Object.entries(S.sessions)) if (s.uid === b.id) delete S.sessions[t];
@@ -1649,6 +1727,7 @@ async function adminRoute(p, req, res, me) {
       try { const sn = rollback(name, me.name); return send(res, 200, { ok: true, t: sn.t }); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
     }
     case '/api/admin/wipe-world': {
+      if (b.confirm === 'WIPE') try { pkCashAll(null); } catch (e) {}
       if (b.confirm !== 'WIPE') return send(res, 400, { error: 'Type WIPE to confirm.' });
       const backup = path.join(BACKUP_DIR, `backup-before-wipe-${Date.now()}.json`); fs.writeFileSync(backup, JSON.stringify(S)); S.burn = {}; S.strikes = [];
       for (const k of Object.keys(S.docs)) { const [c, id] = k.split('/'); if (COLS.includes(c)) setDoc(c, id, null); }
@@ -1780,6 +1859,7 @@ async function handle(req, res) {
       if (b.op === 'rotate') { const n = S.docs['nations/' + me.id]; if (n && n.bj) return send(res, 400, { error: 'Finish your blackjack hand first.' });
         f.prev = [{ seed: f.seed, hash: sha256(f.seed), client: f.client, from: f.from || 0, to: f.nonce - 1, t: Date.now() }, ...(f.prev || [])].slice(0, 50); f.seed = crypto.randomBytes(32).toString('hex'); f.from = f.nonce; persist(); return send(res, 200, fairView(f)); }
       return send(res, 400, { error: 'Unknown operation.' }); }
+    if (p === '/api/poker') return pokerRoute(p, req, res, me);
     if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
     if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: HOF });
     if (p === '/api/me' && req.method === 'GET') { touch(me.id, req); return send(res, 200, pub(me)); }
