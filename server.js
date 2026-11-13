@@ -315,7 +315,7 @@ function effCfg() {
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
   c.noAdmin = !!S.fresh; // no province limit inside a fresh-start season world
-  if (S.fresh) { c.protectH = Math.min(c.protectH || 48, 24); if (now - (S.fresh.t || 0) < 48 * HOUR) c.aiBoss = false; } // season: 24 h new-nation protection, no Rising Power in the first 2 days
+  if (S.fresh) { c.protectH = Math.min(c.protectH || 48, 24); c.electionH = Math.min(c.electionH || 72, 48); c.lastStandH = Math.min(c.lastStandH || 24, 12); if (now - (S.fresh.t || 0) < 48 * HOUR) c.aiBoss = false; } // season: 24 h new-nation protection, no Rising Power in the first 2 days
   { const se = S.seasons && S.seasons.cur; c.fresh = S.fresh && se && se.fresh ? { name: se.name, end: se.end || 0, n: se.n } : S.fresh ? { name: 'Season', end: 0 } : null; }
   c.countdown = S.countdown && S.countdown.at + 2 * HOUR > now ? { id: S.countdown.id, text: S.countdown.text, at: S.countdown.at } : null;
   c.bossPause = (S.bossFell || 0) + bossBreatherH() * HOUR > now; // a breather after the Rising Power falls
