@@ -742,7 +742,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .czpay div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.18)}
 .czpay span{display:flex;gap:1px}.czpay svg{width:20px;height:20px}.czpay b{color:#e9d29a;font-variant-numeric:tabular-nums}
 .czdice{display:flex;justify-content:center;gap:34px;padding:16px 0 6px;perspective:700px}
-.czdie{width:76px;height:76px;transform:rotateX(-22deg) rotateY(-28deg);transform-style:preserve-3d}
+.czdie{width:76px;height:76px;transform:rotateX(-52deg) rotateY(-32deg);transform-style:preserve-3d}
 .czcube{position:relative;width:100%;height:100%;transform-style:preserve-3d}
 .czf{position:absolute;inset:0;border-radius:12px;background:radial-gradient(circle at 30% 25%,#fffdf8,#ece6d8);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12),inset 0 -4px 8px rgba(0,0,0,.08);backface-visibility:hidden}
 .czf i{position:absolute;width:15%;height:15%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a3f46,#111316);transform:translate(-50%,-50%)}
@@ -2953,6 +2953,7 @@ function worldStats(){const ids=wsAll();if(!ids.length)return'';const sum=f=>ids
   ${pl_.length?panel('Leaders by rank',vCols(rks.slice(0,Math.max(6,lastR+1)),{unit:'leaders'}),'<span class="mu" style="font-size:12px;text-transform:none;letter-spacing:0">Players only</span>','trophy'):''}`}
 
 // ================= WORLD CASINO =================
+let csLastBet={};const csBetNow=()=>me?Math.max(C.CASINO.min,Math.min(csBet,C.casinoMax(me))):csBet;
 let csGame='bj',csBet=1e6,csLast={},csBusy=false,csAnim=null,csRot=0,csHole=false;
 const CSG=[['bj','Blackjack'],['roulette','Roulette'],['slots','Slots'],['dice','Dice'],['poker','Poker']];
 const CZ_RM=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2987,7 +2988,7 @@ let czWheelSvg=null;function czWheel(){if(czWheelSvg)return czWheelSvg;const n=3
   <circle cx="100" cy="100" r="88" fill="#0b0c0e"/>${g}<circle cx="100" cy="100" r="87" fill="none" stroke="#d9b45a" stroke-width="1.2"/><circle cx="100" cy="100" r="71" fill="none" stroke="#d9b45a" stroke-width=".8"/><circle cx="100" cy="100" r="57" fill="url(#czcone)" stroke="#d9b45a" stroke-width="1.2"/>
   <circle cx="100" cy="100" r="40" fill="none" stroke="rgba(233,210,154,.18)" stroke-width="1"/>${spokes}<circle cx="100" cy="100" r="11" fill="url(#czgold)"/><circle cx="100" cy="100" r="5" fill="#fbefc8"/></svg>`;return czWheelSvg}
 const CZ_DIE=[[],[[50,50]],[[27,27],[73,73]],[[27,27],[50,50],[73,73]],[[27,27],[73,27],[27,73],[73,73]],[[27,27],[73,27],[50,50],[27,73],[73,73]],[[27,24],[73,24],[27,50],[73,50],[27,76],[73,76]]];
-const CZ_FACE={1:'rotateX(0deg) rotateY(0deg)',6:'rotateY(180deg)',3:'rotateY(-90deg)',4:'rotateY(90deg)',2:'rotateX(-90deg)',5:'rotateX(90deg)'};
+const CZ_FACE={1:'rotateX(90deg)',6:'rotateX(-90deg)',3:'rotateZ(-90deg)',4:'rotateZ(90deg)',2:'rotateX(0deg)',5:'rotateX(180deg)'}; // turns the cube so the rolled number faces up
 const czDie=v=>`<div class="czdie"><div class="czcube" style="transform:${CZ_FACE[v]}">${[1,6,3,4,2,5].map(f=>`<div class="czf f${f}">${CZ_DIE[f].map(([x,y])=>`<i style="left:${x}%;top:${y}%"></i>`).join('')}</div>`).join('')}</div></div>`;
 function czRun(g,R_){const rm=CZ_RM(),ease='cubic-bezier(.12,.62,.2,1)';
  if(g==='roulette'){const wl=document.querySelector('.czwheel .czrot'),car=document.querySelector('.czwheel .czcar'),ball=document.querySelector('.czwheel .czball');if(!wl)return 0;const D=rm?600:5200,from=+wl.dataset.from,to=csRot,s=wl.offsetWidth;
@@ -2999,7 +3000,7 @@ function czRun(g,R_){const rm=CZ_RM(),ease='cubic-bezier(.12,.62,.2,1)';
   w.animate([{transform:`translate(${-fw*.55}px,70px)`,opacity:0},{transform:`translate(${-fw*.42}px,40px)`,opacity:1,offset:.08},{transform:`translate(${30-i*24}px,-46px)`,offset:.46},{transform:`translate(${-8+i*6}px,8px)`,offset:.7},{transform:'translate(0,0)',offset:.86},{transform:'translate(0,0)'}],{duration:d,easing:ez});
   c.animate([{transform:`rotateX(${sx}deg) rotateY(${sy}deg) rotateZ(${90+i*90}deg)`},{transform:`rotateX(${sx/3}deg) rotateY(${sy/3}deg)`,offset:.46},{transform:fin,offset:.86},{transform:fin}],{duration:d,easing:ez})});return D+310}
  return 0}
-function csPlay(body){if(csBusy)return;csBusy=true;const g=body.g;const fromRot=csRot;cmd({c:'casino',...body},false).then(r=>{csBusy=false;if(!r||!r.casino){render();return}const R_=r.casino;
+function csPlay(body){if(csBusy)return;csBusy=true;if(body.a==='deal'||body.g!=='bj')csLastBet[body.g]=body.bet;const g=body.g;const fromRot=csRot;cmd({c:'casino',...body},false).then(r=>{csBusy=false;if(!r||!r.casino){render();return}const R_=r.casino;
  if(g==='roulette'){const i=CZ_ORDER.indexOf(R_.x),th=360/37;csRot=fromRot-1440-((((fromRot+i*th)%360)+360)%360)}
  if(['roulette','slots','dice'].includes(g)){csAnim={g,r:R_,from:fromRot};render();const D=czRun(g,R_);setTimeout(()=>{csAnim=null;if(R_.tot)CZTOT=R_.tot;csLast[g]={...R_,msg:r.msg,t:Date.now()};SND.play(R_.net>0?'win':'lose');render()},D)}
  else{const was=csLast.bj&&csLast.bj.res;if(R_.tot&&R_.res)CZTOT=R_.tot;csLast[g]={...R_,msg:r.msg,t:Date.now()};csHole=!!R_.res;render();if(R_.res){SND.play(R_.net>0?'win':R_.res==='push'?'ok':'lose');setTimeout(()=>{csHole=false},700)}}}).catch(()=>{csBusy=false;render()})}
@@ -3120,11 +3121,11 @@ function pkTableHtml(){const v=PKS.table;if(!v)return pkLobbyHtml();const mi=v.m
   <div class="czdock pkdock">${dock}</div></div>
   ${hist?`<div class="czhist pkhist"><h3>Last hands at this table</h3><div class="log">${hist}</div></div>`:''}`}
 function pPoker(){if(!PKS.lobby||Date.now()-PKS.at>30e3)setTimeout(()=>pkLoad(),0);return PKS.tid?pkTableHtml():pkLobbyHtml()}
-function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,best:0,hist:[],wagered:0};csBet=Math.max(C.CASINO.min,Math.min(csBet,mx));
+function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,best:0,hist:[],wagered:0};const bN=csBetNow();
  const tabs=CSG.map(([k,t])=>`<button class="${csGame===k?'on':''}" data-act="csgame" data-a="${k}" role="tab" aria-selected="${csGame===k}">${t}</button>`).join('');
  const inHand=!!n.bj,L=csLast[csGame],busy=csBusy||!!csAnim,dis=busy?'disabled':'';
  const chips=CZ_CH.map(([v,l,c])=>`<button class="czchip ${c}${csBet===v?' on':''}" data-act="csbet" data-a="${v}" ${v>mx||inHand?'disabled':''} aria-label="Bet ${l}" aria-pressed="${csBet===v}">${czChipSvg(c,l)}</button>`).join('');
- const stake=`<div class="czstake"><label for="csBetIn">Stake</label><div class="czamt"><button class="czstep" data-act="csbet" data-a="half" aria-label="Halve the stake" ${inHand?'disabled':''}>−</button><input id="csBetIn" value="${moneyS(csBet).replace('$','')}" inputmode="decimal" autocomplete="off" ${inHand?'disabled':''}><button class="czstep" data-act="csbet" data-a="dbl" aria-label="Double the stake" ${inHand?'disabled':''}>+</button></div></div>`;
+ const stake=`<div class="czstake"><label for="csBetIn">Stake</label><div class="czamt"><button class="czstep" data-act="csbet" data-a="half" aria-label="Halve the stake" ${inHand?'disabled':''}>−</button><input id="csBetIn" value="${moneyS(bN).replace('$','')}" inputmode="decimal" autocomplete="off" ${inHand?'disabled':''}><button class="czstep" data-act="csbet" data-a="dbl" aria-label="Double the stake" ${inHand?'disabled':''}>+</button></div></div>`;
  const fair='<a class="czpf" href="#czFair" data-act="czfgo" title="How you can check every result">✓ Provably fair</a>';
  const table=(cls,felt,acts)=>`<div class="cztable t-${cls}"><div class="czfelt ${cls}">${CZ_BRAND}${fair}${felt}</div><div class="czdock"><div class="czchips" role="group" aria-label="Chip value">${chips}</div>${stake}<div class="czact">${acts}</div></div></div>`;
  let game='',rule='';
@@ -3132,7 +3133,7 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
  else if(csGame==='bj'){const h=n.bj||(L&&L.bj)||null,done=!n.bj&&L&&L.res;
   const dCards=h?h.d.map((c,i)=>czCard(c,{i,cls:done&&csHole&&i===1?'flip':''})).join('')+(!done?czCard(null,{i:1}):''):'<div class="czslot"></div><div class="czslot"></div>';
   const pCards=h?h.p.map((c,i)=>czCard(c,{i})).join(''):'<div class="czslot"></div><div class="czslot"></div>';
-  const pv=h?C.bjVal(h.p):0,dv=h?(done?L.dv:C.bjVal(h.d)):0,bet=h&&h.bet?h.bet:csBet;
+  const pv=h?C.bjVal(h.p):0,dv=h?(done?L.dv:C.bjVal(h.d)):0,bet=h&&h.bet?h.bet:bN;
   const dLab=h?(done?`Dealer: ${dv}${dv>21?' · bust':''}`:`Dealer shows ${dv}`):'Dealer';
   const pLab=h?`You: ${pv}${pv>21?' · bust':h.p.length===2&&pv===21?' · Blackjack!':''}${h.dbl?' · doubled':''}`:'Your hand';
   const head=done?({blackjack:'Blackjack',win:'You win',push:'Push',bust:'Bust',lose:'Dealer wins'})[L.res]||'Hand over':'',cls=done?(L.net>0?'w':L.res==='push'?'p':'l'):'';
@@ -3141,12 +3142,12 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
    <div class="czh p" aria-label="Your cards">${pCards}</div><div class="cztot p${h?'':' idle'}">${pLab}</div>
    <div class="czcircle${h?' on':''}">${h?czStack(bet):'<span class="czbetlbl">Bet</span>'}</div>
    ${done?czBanner(cls,`${head}${L.net?' · '+czNet(L.net):''}`,L.msg):''}`;
-  const acts=inHand?`<button class="czbtn" data-act="bj" data-a="stand" ${dis}>Stand</button><button class="czbtn pri" data-act="bj" data-a="hit" ${dis}>Hit</button>${n.bj.p.length===2&&n.cash>=n.bj.bet?`<button class="czbtn" data-act="bj" data-a="double" ${dis}>Double</button>`:''}`:`<button class="czbtn pri wide" data-act="bj" data-a="deal" ${dis}>${done?'Deal again':'Deal'} · $${czShort(csBet)}</button>`;
+  const acts=inHand?`<button class="czbtn" data-act="bj" data-a="stand" ${dis}>Stand</button><button class="czbtn pri" data-act="bj" data-a="hit" ${dis}>Hit</button>${n.bj.p.length===2&&n.cash>=n.bj.bet?`<button class="czbtn" data-act="bj" data-a="double" ${dis}>Double</button>`:''}`:(()=>{const lb=csLastBet.bj,lbN=lb?Math.max(C.CASINO.min,Math.min(lb,mx)):0;return lb&&lbN!==bN?`<button class="czbtn pri" data-act="bjrep" ${dis}>Repeat bet · $${czShort(lbN)}</button><button class="czbtn" data-act="bj" data-a="deal" ${dis}>Deal · $${czShort(bN)}</button>`:`<button class="czbtn pri wide" data-act="bj" data-a="deal" ${dis}>${done?'Repeat bet':'Deal'} · $${czShort(bN)}</button>`})();
   game=table('bj'+(done?' has-result':''),felt,acts);
   rule='Get closer to 21 than the dealer without going over. Double down on your first two cards to double your bet and take exactly one more card.'}
  else if(csGame==='roulette'){const sp=csAnim&&csAnim.g==='roulette',x=sp?csAnim.r:L&&L.x!=null?L:null,showBall=!!x,pick=sp?csAnim.r.pick:L?L.pick:null,hit=!sp&&L&&L.x!=null?L.x:null;
   const recent=(cs.hist||[]).filter(q=>q.g==='roulette').slice(0,12).map(q=>{const v=parseInt(q.d,10);return isNaN(v)?'':`<span class="czmk ${czCol(v)}">${v}</span>`}).join('');
-  const chipOn=k=>pick===k?czStack(csBet):'';
+  const chipOn=k=>pick===k?czStack(bN):'';
   const cell=(v)=>`<button class="czn ${czCol(v)}${pick===String(v)?' pk':''}${hit===v?' hit':''}" style="--o:${v}" data-act="rl" data-a="${v}" ${dis} aria-label="Bet on ${v}">${v}${chipOn(String(v))}</button>`;
   const rows=Array.from({length:12},(_,c)=>[3,2,1].map(r=>cell(c*3+r)).join('')).join('');
   const ob=[['low','1 to 18'],['even','Even'],['red',''],['black',''],['odd','Odd'],['high','19 to 36']].map(([k,t])=>`<button class="czo ${k}${pick===k?' pk':''}" data-act="rl" data-a="${k}" ${dis} aria-label="Bet on ${CZ_PICK[k]}">${k==='red'||k==='black'?'<i></i>':t}${chipOn(k)}</button>`).join('');
@@ -3156,7 +3157,7 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
    <div class="czlayout"><button class="czn g z${pick==='0'?' pk':''}${hit===0?' hit':''}" data-act="rl" data-a="0" ${dis} aria-label="Bet on 0">0${chipOn('0')}</button><div class="cznums">${rows}</div><div class="czouts">${ob}</div></div>`;
   const acts=pick!=null?`<button class="czbtn pri wide" data-act="rl" data-a="${pick}" ${dis}>Spin again on ${czPickName('roulette',pick)}</button>`:`<span class="czhint">Tap the layout to place your bet and spin</span>`;
   game=table('rl',felt,acts);
-  rule=`European single-zero wheel. Outside bets return 2× your stake; a single number returns 36×. Every bet is ${moneyS(csBet)}.`}
+  rule=`European single-zero wheel. Outside bets return 2× your stake; a single number returns 36×. Every bet is ${moneyS(bN)}.`}
  else if(csGame==='slots'){const sp=csAnim&&csAnim.g==='slots',S_=C.CASINO.slots,rand=()=>S_.sym[Math.floor(Math.random()*S_.sym.length)],fin=sp?csAnim.r.reels:L&&L.reels?L.reels:['seven','seven','seven'];
   const reel=(k,i)=>{const top3=[S_.sym[(S_.sym.indexOf(k)+1)%6],k,S_.sym[(S_.sym.indexOf(k)+5)%6]],strip=sp?[...top3,...Array.from({length:18+i*6},rand)]:top3;return`<div class="czreel"><div class="czstrip">${strip.map(x=>`<div class="czsym">${CZ_SYM[x]}</div>`).join('')}</div></div>`};
   const win=!sp&&L&&L.reels&&L.mult;
@@ -3167,12 +3168,12 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
     <div class="czwindow"><div class="czreels">${fin.map(reel).join('')}<div class="czline"></div></div><div class="czglass" aria-hidden="true"></div></div>
     <div class="czcabmsg">${msg}</div>${pay}
    </div><button class="czlever${sp?' pulled':''}" data-act="slots" ${dis} aria-label="Pull the lever to spin"><i></i><b></b></button></div>`;
-  game=table('sl',felt,`<button class="czbtn pri wide" data-act="slots" ${dis}>Spin · $${czShort(csBet)}</button>`);
+  game=table('sl',felt,`<button class="czbtn pri wide" data-act="slots" ${dis}>Spin · $${czShort(bN)}</button>`);
   rule=`Three matching symbols on the centre line pay the multiplier shown. Two cherries return ${S_.two.cherry}× your stake.`}
  else{const sp=csAnim&&csAnim.g==='dice',d=sp?csAnim.r.d:L&&L.d?L.d:[5,2],D_=C.CASINO.dice,pick=sp?csAnim.r.pick:L?L.pick:null,tot=d[0]+d[1];
   const dw=v=>`<div class="czdw"><div class="czdsh"></div>${czDie(v)}</div>`;
   const msg=L&&L.d&&!sp?czBanner(L.win?'w':'l',L.win?`${tot} · You win ${czNet(L.net)}`:`${tot} · No win`,L.msg):sp?czBanner('p','Dice are rolling',''):czBanner('p','Place your bet','Bet on the total of two dice');
-  const box=([k,t,s_,p])=>`<button class="czdb ${k}${pick===k?' pk':''}${!sp&&L&&L.d&&L.pick===k?(L.win?' won':' lost'):''}" data-act="dice" data-a="${k}" ${dis}><b>${t}</b><small>${s_}</small><em>pays ${p}×</em>${pick===k?czStack(csBet):''}</button>`;
+  const box=([k,t,s_,p])=>`<button class="czdb ${k}${pick===k?' pk':''}${!sp&&L&&L.d&&L.pick===k?(L.win?' won':' lost'):''}" data-act="dice" data-a="${k}" ${dis}><b>${t}</b><small>${s_}</small><em>pays ${p}×</em>${pick===k?czStack(bN):''}</button>`;
   const felt=`<div class="czwall" aria-hidden="true"></div><div class="czdprint" aria-hidden="true">World Powers Dice</div><div class="czdice">${dw(d[0])}${dw(d[1])}</div>${msg}
    <div class="czdbets">${[['low','Under 7','2 to 6',D_.hl],['seven','Seven','exactly 7',D_.seven],['high','Over 7','8 to 12',D_.hl]].map(box).join('')}</div>`;
   const acts=pick?`<button class="czbtn pri wide" data-act="dice" data-a="${pick}" ${dis}>Roll again on ${czPickName('dice',pick)}</button>`:`<span class="czhint">Tap a bet on the felt to roll</span>`;
@@ -3499,7 +3500,7 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-act
  case'pktop':{const v=PKS.table,s=v&&v.seats[v.me];if(!s)break;const add=Math.max(0,Math.min(v.max-s.stack,Math.floor(me.cash)));if(add<=0)return toast(s.stack>=v.max?'You already have the most chips allowed at this table.':'Your treasury is empty.');ask(`Add ${moneyS(add)} in chips?`,`That brings you to ${moneyS(s.stack+add)}, the table maximum${add<v.max-s.stack?' your treasury allows':''}.`,'Add chips',()=>pkDo({op:'topup',amt:add}));break}
  case'pkleave':ask('Leave the table?','Your chips go straight back to your treasury. If you are in a hand, your cards are folded.','Leave table',()=>pkDo({op:'leave'}));break;
  case'csbet':{const mx=C.casinoMax(me);csBet=a==='half'?Math.floor(csBet/2):a==='dbl'?csBet*2:+a;csBet=Math.max(C.CASINO.min,Math.min(mx,csBet));render();break}
- case'bj':csPlay({g:'bj',a,bet:csBet});break;case'rl':csPlay({g:'roulette',pick:a,bet:csBet});break;case'slots':csPlay({g:'slots',bet:csBet});break;case'dice':csPlay({g:'dice',pick:a,bet:csBet});break;
+ case'bj':csPlay({g:'bj',a,bet:csBetNow()});break;case'bjrep':{const v=csLastBet.bj;if(v){csBet=v;csPlay({g:'bj',a:'deal',bet:csBetNow()})}break}case'rl':csPlay({g:'roulette',pick:a,bet:csBetNow()});break;case'slots':csPlay({g:'slots',bet:csBetNow()});break;case'dice':csPlay({g:'dice',pick:a,bet:csBetNow()});break;
  case'rushgo':closeModal();page='military';render();break;case'rkmetric':rkMetric=a;render();break;case'rkrange':rkRange=+a;render();break;case'rkfilt':rkFilter=a;render();break;case'rkfocus':rkFocus=rkFocus===a?null:a;render();break;
  case'rtab':rankTab=a;rankSort={k:{overall:'score',economy:'gdp',society:'approval',military:'power'}[a],d:-1};render();break;
  case'rsort':{const c=RCOLS[rankTab].find(x=>x[0]===a);rankSort=rankSort.k===a?{k:a,d:-rankSort.d}:{k:a,d:c&&c[4]?1:-1};render();break}
