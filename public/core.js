@@ -624,7 +624,7 @@ function Core(PD, CARDS) {
     for (let i = 0; i < N; i++) sum += mktMult(W, other + clamp(mine + q * (i + .5) / N, -cap, cap)); return sum / N; }
   // price multiplier at the very end of an order of q units, relative to the price before it (for "sensible max" buttons)
   function orderEdge(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75; return mktMult(W, other + clamp(mine + q, -cap, cap)) / mktMult(W, other + mine); }
-  function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(tcap(n), traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1) * W.m.tradeMul; const inf = Math.max(0, (n.infl || 0) - 3) / 200; const lx = fxAdd(n, 'spread'); return { buy: 1.08 + sp - tb - W.m.spread + inf - lx, sell: .92 - sp + tb + W.m.spread + lx }; }
+  function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(tcap(n), traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1) * W.m.tradeMul; const inf = Math.max(0, (n.infl || 0) - 3) / 200; const lx = fxAdd(n, 'spread'); return { buy: Math.max(1.02 + sp + inf, 1.08 + sp - tb - W.m.spread + inf - lx), sell: Math.min(.98 - sp, .92 - sp + tb + W.m.spread + lx) }; } // trade bonuses narrow the fee but can never cross it: buying and selling straight back always loses at least 4%
   const maxBorrow = n => Math.max(0, (n.gdp || 0) * 1.2 - (n.debt || 0));
 
   // ---------- costs ----------
