@@ -139,13 +139,15 @@ STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
 STATIC['/landing-land.js'] = loadFile('landing-land.js', JS, 'public, max-age=604800');
 STATIC['/prov.js'] = loadFile('prov.js', JS, 'public, max-age=31536000, immutable'); // the URL carries a version number, so browsers keep it until the map changes
 STATIC['/og.jpg'] = loadFile('og.jpg', 'image/jpeg', 'public, max-age=604800');
+for (const f of ['inter-latin.woff2', 'inter-latin-ext.woff2', 'cinzel-700.woff2', 'jbmono-500.woff2']) STATIC['/fonts/' + f] = loadFile('fonts/' + f, 'font/woff2', 'public, max-age=31536000, immutable');
+STATIC['/fonts/fonts.css'] = loadFile('fonts/fonts.css', 'text/css; charset=utf-8', 'public, max-age=86400');
 STATIC['/robots.txt'] = { type: 'text/plain; charset=utf-8', buf: Buffer.from('User-agent: *\nAllow: /$\nAllow: /faq\nAllow: /n/\nAllow: /terms\nAllow: /privacy\nDisallow: /\n'), cache: 'public, max-age=86400' };
 Object.assign(STATIC['/robots.txt'], { gz: zlib.gzipSync(STATIC['/robots.txt'].buf), br: zlib.brotliCompressSync(STATIC['/robots.txt'].buf), etag: '"robots2"' });
 const NOTFOUND = loadFile('404.html', HTML, 'no-cache');
 STATIC['/manifest.webmanifest'] = loadFile('manifest.webmanifest', 'application/manifest+json', 'no-cache');
 STATIC['/icon.svg'] = loadFile('icon.svg', 'image/svg+xml', 'public, max-age=604800');
 const ADMIN_HTML = { ...loadFile('admin.html', HTML, 'no-store') };
-const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 function secHeaders(req) {
   const h = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'DENY', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' };
   if (isHttps(req)) h['Strict-Transport-Security'] = 'max-age=31536000';
@@ -175,7 +177,7 @@ function nationPage(req, res, slug) {
   const row = (k, v) => `<div><span>${k}</span><b>${v}</b></div>`;
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(n.name)} — World Powers</title><link rel="icon" href="/icon.svg">
 <meta name="description" content="${escH(desc)}"><meta property="og:type" content="website"><meta property="og:title" content="${escH(n.name)} — World Powers"><meta property="og:description" content="${escH(desc)}"><meta property="og:image" content="https://worldpowersgame.com/og.jpg"><meta name="twitter:card" content="summary_large_image">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fonts/fonts.css">
 <style>body{margin:0;background:#06090d;color:#e6edf3;font:16px/1.6 Inter,system-ui,sans-serif}.w{max-width:820px;margin:0 auto;padding:28px 20px 70px}a{color:#d4a64a}.top{display:flex;justify-content:space-between;align-items:center}.logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.22em;font-size:14px;color:#e6edf3;text-decoration:none}.logo i{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#4c7ca5,#0d2236 70%)}.play{background:#d4a64a;color:#111;padding:9px 18px;border-radius:8px;font-weight:600;text-decoration:none;font-size:14px}
 .hero{margin:34px 0 20px;display:flex;align-items:center;gap:16px}.flagsvg svg{display:block;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.5)}.flag{width:54px;height:54px;border-radius:12px;flex:none}h1{margin:0;font-size:34px;line-height:1.1}.sub{color:#8b98a5}.tag{font-size:11px;border:1px solid #2a3542;border-radius:4px;padding:1px 6px;margin-left:8px;color:#8b98a5;vertical-align:middle}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:18px 0}.grid div{background:#0c1218;border:1px solid #1e2833;border-radius:10px;padding:12px}.grid span{display:block;color:#8b98a5;font-size:11px;text-transform:uppercase;letter-spacing:.08em}.grid b{font-size:18px}
@@ -250,8 +252,9 @@ function publicView(n) {
 
 // ---------- live stream ----------
 const clients = new Set();
-function write(c, event, data) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { c.res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
-function writeRaw(c, str) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { c.res.write(str); } catch (e) {} }
+function write(c, event, data) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { (c.out || c.res).write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch (e) {} }
+function writeRaw(c, str) { if (c.res.writableEnded || c.res.destroyed) { clients.delete(c); return; } try { (c.out || c.res).write(str); } catch (e) {} }
+function endStream(c) { try { if (c.out) c.out.end(); else c.res.end(); } catch (e) {} }
 function broadcast(event, data) { if (!clients.size) return; const str = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const c of clients) writeRaw(c, str); }
 // ---- polls: questions the admin sends to every player; each player sees the pop-up once (answer or skip) ----
 const pollOpen = q => q && q.active && (!q.ends || q.ends > Date.now());
@@ -1068,7 +1071,7 @@ const fairView = f => ({ hash: sha256(f.seed), client: f.client, nonce: f.nonce,
 function worldLoop() {
   const t0 = process.hrtime.bigint();
   try {
-    const W = mkWorld(); const now = Date.now();
+    const W = mkWorld(); const now = Date.now(); try { moneySample(W); } catch (e) {}
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
@@ -1119,6 +1122,67 @@ try { RH = JSON.parse(fs.readFileSync(RANK_FILE, 'utf8')); if (!Array.isArray(RH
 // total money in the world (sums only, no single treasury is revealed)
 let WCASH = null;
 function worldCash(W) { let all = 0, players = 0; for (const [u, n] of Object.entries(W.A)) { const c = Math.round(n.cash || 0); all += c; if (!n.ai) players += c; } return { all, players, ai: all - players, t: Date.now() }; }
+// ---------- game check-up: a wide scan for anything the admins may want to look at ----------
+S.moneyLog = Array.isArray(S.moneyLog) ? S.moneyLog : [];
+function moneySample(W) { const last = S.moneyLog[S.moneyLog.length - 1]; if (last && Date.now() - last.t < 55 * 60e3) return; const c = worldCash(W); S.moneyLog.push({ t: c.t, all: c.all, players: c.players }); if (S.moneyLog.length > 80) S.moneyLog.splice(0, S.moneyLog.length - 80); }
+function gameAudit() {
+  const W = mkWorld(), now = Date.now(), out = [], M = WP.moneyS, nm = u => (W.A[u] || {}).name || (S.users[u] || {}).name || '?';
+  const add = (sev, cat, title, detail, fix, items) => out.push({ sev, cat, title, detail: detail || '', fix: fix || '', items: (items || []).slice(0, 25) });
+  const seen = u => (S.meta[u] || {}).lastSeen || 0, human = Object.keys(W.A).filter(u => !W.A[u].ai && S.users[u]), active = human.filter(u => now - seen(u) < 24 * HOUR);
+  const it = (u, extra) => ({ id: S.users[u] ? u : null, name: nm(u), extra });
+  // --- money ---
+  const cash = worldCash(W), past = S.moneyLog.find(x => now - x.t <= 26 * HOUR && now - x.t >= 22 * HOUR) || S.moneyLog[0];
+  if (past && past.players > 0) { const ch = (cash.players - past.players) / past.players * 100;
+    if (ch < -25) add('amber', 'Economy', `Players' money fell ${Math.round(-ch)}% since ${new Date(past.t).toLocaleString('en-US', { weekday: 'short', hour: 'numeric' })}`, `${M(past.players)} → ${M(cash.players)}.`, 'Usually big prestige purchases (wonder stages, cosmetics, grand projects); check the news feed. If purchases don’t explain it, look at war costs and prestige-unit upkeep below.');
+    else if (ch > 60) add('amber', 'Economy', `Players' money rose ${Math.round(ch)}% since ${new Date(past.t).toLocaleString('en-US', { weekday: 'short', hour: 'numeric' })}`, `${M(past.players)} → ${M(cash.players)}. Fast growth leads to inflation of prices players think are "cheap".`, 'Check the biggest earners below and recent gifts in the Activity log.');
+    else add('ok', 'Economy', `Players' money is steady (${ch >= 0 ? '+' : ''}${Math.round(ch)}% in about a day)`, `${M(cash.players)} held by players, ${M(cash.ai)} by AI nations.`); }
+  else add('info', 'Economy', 'Money trend not available yet', 'The check-up starts recording total money every hour from now on; the trend shows after a day.');
+  const pc = active.map(u => [u, W.A[u].cash || 0]).sort((a, b) => b[1] - a[1]), totA = pc.reduce((a, x) => a + Math.max(0, x[1]), 0);
+  if (pc.length >= 3 && totA > 0) { const share = Math.max(0, pc[0][1]) / totA; if (share > .5) add(share > .75 ? 'red' : 'amber', 'Economy', `One player holds ${Math.round(share * 100)}% of all active players' money`, `${nm(pc[0][0])} has ${M(pc[0][1])}.`, 'Not a bug by itself, but check how they earned it (casino, poker, gifts, trades) in their timeline.', [it(pc[0][0], M(pc[0][1]))]); }
+  const med = pc.length ? pc[Math.floor(pc.length / 2)][1] : 0, rich = pc.filter(([u, c]) => c > 5e11 && c > med * 25);
+  if (rich.length) add('info', 'Economy', `${rich.length} player${rich.length > 1 ? 's are' : ' is'} far richer than everyone else`, `More than 25 times the typical active player (${M(med)}).`, 'Worth a look in their timeline; the Prestige page gives them things to spend on.', rich.map(([u, c]) => it(u, M(c))));
+  if (cash.all > 0 && cash.ai / cash.all > .7) add('info', 'Economy', `AI nations hold ${Math.round(cash.ai / cash.all * 100)}% of all money`, '', 'Normal when few players are online; AI money never reaches players unless they trade or conquer.');
+  // --- players in trouble ---
+  const broke = active.filter(u => (W.A[u].cash || 0) < 1e6 && (W.A[u].debt || 0) > 0); if (broke.length) add('amber', 'Players', `${broke.length} active player${broke.length > 1 ? 's are' : ' is'} broke and in debt`, 'Treasury under $1M with debt.', 'Their timeline shows why (war costs, upkeep, casino). Players → Fix problems / Give a gift can help.', broke.map(u => it(u, `${M(W.A[u].cash || 0)}, debt ${M(W.A[u].debt || 0)}`)));
+  const nearDef = human.filter(u => (W.A[u].debt || 0) > (W.A[u].gdp || 1) * 1.6); if (nearDef.length) add('red', 'Players', `${nearDef.length} nation${nearDef.length > 1 ? 's are' : ' is'} close to bankruptcy`, 'Debt above 1.6× GDP; at 2× they default (−30 stability, −20 approval, GDP −15%).', 'Warn them, or lower their debt in Players → edit the nation.', nearDef.map(u => it(u, `debt ${M(W.A[u].debt)} vs GDP ${M(W.A[u].gdp || 0)}`)));
+  const def = human.filter(u => W.A[u].defaulted && now - W.A[u].defaulted < 48 * HOUR); if (def.length) add('amber', 'Players', `${def.length} nation${def.length > 1 ? 's' : ''} defaulted in the last 48 hours`, '', 'Check what drove them there.', def.map(u => it(u, 'defaulted ' + Math.round((now - W.A[u].defaulted) / HOUR) + 'h ago')));
+  const warDrain = human.map(u => [u, core.warCostH(W, u)]).filter(([u, c]) => c > 0 && c * 24 > Math.max(1, W.A[u].cash || 0)); if (warDrain.length) add('amber', 'Players', `${warDrain.length} player${warDrain.length > 1 ? 's are' : ' is'} being drained by war costs`, 'A day of war costs is more than their whole treasury.', 'Their war will push them into debt. Make peace, or ease the cost (Repair → Fix a nation → End all of its wars).', warDrain.map(([u, c]) => it(u, `${M(c)}/h, treasury ${M(W.A[u].cash || 0)}`)));
+  const puDrain = human.map(u => [u, core.puUpkeepH(W, W.A[u])]).filter(([u, c]) => c > 0 && (W.A[u].cash || 0) < c * 6); if (puDrain.length) add('amber', 'Players', `${puDrain.length} player${puDrain.length > 1 ? 's' : ''} will lose prestige units soon`, 'Their treasury covers less than 6 hours of upkeep; units are scrapped when it runs out.', '', puDrain.map(([u, c]) => it(u, `upkeep ${M(c)}/h, treasury ${M(W.A[u].cash || 0)}`)));
+  const crisis = active.filter(u => { const n = W.A[u]; return n.approval < 20 || n.stability < 15 || n.infl > 25 || n.unemp > 25; }); if (crisis.length) add('info', 'Players', `${crisis.length} active nation${crisis.length > 1 ? 's are' : ' is'} in a domestic crisis`, 'Approval under 20, stability under 15, inflation over 25% or unemployment over 25%.', 'Usually their own choices; Fix problems → raise approval and stability if something unfair caused it.', crisis.map(u => { const n = W.A[u]; return it(u, `approval ${Math.round(n.approval)}, stability ${Math.round(n.stability)}, inflation ${Math.round(n.infl)}%, unemployment ${Math.round(n.unemp)}%`); }));
+  const casinoWin = human.filter(u => ((W.A[u].casino || {}).net || 0) > 2e10); if (casinoWin.length) add('amber', 'Casino', `${casinoWin.length} player${casinoWin.length > 1 ? 's have' : ' has'} won over $20B from the casino`, 'Possible with luck, but worth checking.', 'Casino tab shows every player’s plays; the Provably fair page lets you verify results.', casinoWin.map(u => it(u, '+' + M(W.A[u].casino.net))));
+  const CT = casinoTotals(), hNet = Object.values(CT).reduce((a, x) => a - (x.net || 0), 0); if (Object.keys(CT).length && hNet < 0) add('amber', 'Casino', 'The house is losing money overall', `Players are ahead by ${M(-hNet)} across all games.`, 'Fine over short periods; if it lasts, look at which game in the Casino tab.');
+  // --- poker ---
+  let atTables = 0, stuck = [], away = 0; for (const t of Object.values(S.poker.tables)) { for (const s of t.seats) if (s) { atTables += s.stack; if (s.sitOut) away++; } if (t.hand && !t.hand.done) { atTables += PK.potTotal(t.hand); if (t.hand.deadline && now - t.hand.deadline > 120e3) stuck.push(t.name); } }
+  if (stuck.length) add('red', 'Poker', `${stuck.length} poker hand${stuck.length > 1 ? 's look' : ' looks'} stuck`, stuck.join(', '), 'Casino tab → Cash out every table returns all chips safely.');
+  if (atTables > 0) add('info', 'Poker', `${M(atTables)} in chips is at the poker tables`, `${away} player${away === 1 ? '' : 's'} sitting out.`, 'This money is not in any treasury until they leave the table.');
+  // --- alliances ---
+  const lostLead = Object.values(S.blocs || {}).filter(b => now - seen(b.leader) > 7 * 864e5 && (b.members || []).some(m => now - seen(m) < 3 * 864e5)); if (lostLead.length) add('amber', 'Alliances', `${lostLead.length} alliance${lostLead.length > 1 ? 's have' : ' has'} a leader who hasn’t played for a week`, 'Active members can’t start projects or use the treasury beyond co-leader limits.', 'Alliances tab → make an active member the leader.', lostLead.map(b => ({ name: `${b.name} [${b.tag}]`, extra: `leader ${nm(b.leader)} last seen ${Math.round((now - seen(b.leader)) / 864e5)}d ago` })));
+  const bigBank = Object.values(S.blocs || {}).filter(b => (b.bank || 0) > 1e11 && !b.proj); if (bigBank.length) add('info', 'Alliances', `${bigBank.length} alliance${bigBank.length > 1 ? 's are' : ' is'} sitting on a big unused treasury`, '', 'Nothing to fix; their next projects will spend it.', bigBank.map(b => ({ name: b.name, extra: M(b.bank) })));
+  // --- land and wars ---
+  const idleLand = human.filter(u => now - seen(u) > 14 * 864e5 && core.hexesOf(W, u).length >= 20); if (idleLand.length) add('info', 'World', `${idleLand.length} inactive player${idleLand.length > 1 ? 's hold' : ' holds'} a lot of land`, 'Not seen for 2 weeks, 20+ provinces each. Their land is locked away from active players.', 'If they don’t return, Players → Reset nation frees the land.', idleLand.map(u => it(u, `${core.hexesOf(W, u).length} provinces, last seen ${Math.round((now - seen(u)) / 864e5)}d ago`)));
+  const longWars = []; const sw = new Set(); for (const u of Object.keys(W.A)) for (const v of core.wars(W, u)) { const k = [u, v].sort().join('|'); if (sw.has(k)) continue; sw.add(k); const r1 = (W.A[u].rel || {})[v] || {}, r2 = (W.A[v].rel || {})[u] || {}, since = Math.max(r1.war || 0, r2.war || 0); if (now - since > 72 * HOUR) longWars.push({ name: `${nm(u)} vs ${nm(v)}`, extra: Math.round((now - since) / 864e5) + ' days' }); }
+  if (longWars.length) add('info', 'World', `${longWars.length} war${longWars.length > 1 ? 's have' : ' has'} lasted more than 3 days`, 'Both sides keep paying war costs.', 'War room → Force peace if a war is stuck or one-sided.', longWars);
+  const rog = Object.keys(W.A).filter(u => core.rogue(W, W.A[u])); if (rog.length) add('info', 'World', `${rog.length} rogue state${rog.length > 1 ? 's' : ''}`, '', 'War room → Clear if one is stuck that way unfairly.', rog.map(u => it(u, W.A[u].ai ? 'AI' : '')));
+  const slowW = []; for (const u of human) for (const [k, x] of Object.entries(W.A[u].uw || {})) if (now - seen(u) > 2 * 864e5) slowW.push(it(u, `${(WP.UWONDERS[k] || {}).n || k}: stage ${x.stage}/4`)); if (slowW.length) add('info', 'World', 'World Wonders left half-built by inactive players', 'They don’t block anyone; others can still race and finish first.', '', slowW);
+  // --- votes ---
+  const vt = (S.stats[today()] || {}).votes || 0; if (active.length && vt / active.length > 10) add('amber', 'Economy', `${vt} vote bonuses claimed today (${Math.round(vt / active.length)} per active player)`, 'Each pays 1% of GDP ($1M–$25M).', 'If it’s too much money, the wait between bonuses can go from 6 to 12 hours.');
+  // --- server ---
+  const mem = Math.round(process.memoryUsage().rss / 1048576), errs = health.errors.filter(e => now - e.t < 864e5).length;
+  if (health.saveError) add('red', 'Server', 'Saving the game is failing', health.saveError, 'Download a backup now (Game settings) and check the Railway volume.');
+  if ((health.loopMs || 0) > 1500) add('amber', 'Server', `The world update takes ${Math.round(health.loopMs)} ms`, 'It runs every 30 seconds; over a few seconds players notice lag.', '');
+  if (mem > 450) add('amber', 'Server', `The server is using ${mem} MB of memory`, '', 'A restart (redeploy) clears it if it keeps growing.');
+  if (errs > 20) add('amber', 'Server', `${errs} server errors in the last 24 hours`, '', 'Activity log → Server errors shows them.');
+  const lb = S.lastBackupT || 0; if (now - lb > 30 * HOUR) add('amber', 'Server', 'No nightly backup in over 30 hours', lb ? 'Last one ' + Math.round((now - lb) / HOUR) + ' hours ago.' : 'None recorded yet.', 'Download one manually from Game settings → Backups.');
+  if (!listSnaps().length) add('amber', 'Server', 'No rollback snapshots yet', 'A snapshot is saved every 10 minutes after a restart.', '');
+  let fileMB = 0; try { fileMB = fs.statSync(FILE).size / 1048576; } catch (e) {} if (fileMB > 25) add('amber', 'Server', `The save file is ${Math.round(fileMB)} MB`, 'Large saves slow every save and backup.', '');
+  if (S.fresh && !fs.existsSync(FRESH_FILE)) add('red', 'Server', 'A fresh season is running but the saved real world file is missing', '', 'There is a backup copy in the backups folder; contact support before ending the season.');
+  if (!out.some(x => x.cat === 'Server')) add('ok', 'Server', 'Server healthy', `Memory ${mem} MB, world update ${Math.round(health.loopMs || 0)} ms, ${errs} errors today, save file ${fileMB.toFixed(1)} MB.`);
+  // --- moderation ---
+  const reps = (S.reports || []).filter(r => !r.done).length, fl = (S.flags || []).filter(f => now - f.t < 864e5).length, bugs = (S.bugs || []).filter(b => !b.done && b.kind !== 'idea').length;
+  if (reps) add('amber', 'Moderation', `${reps} player report${reps > 1 ? 's' : ''} waiting`, '', 'Moderation tab.'); if (fl) add('info', 'Moderation', `${fl} cheat flag${fl > 1 ? 's' : ''} in the last 24 hours`, '', 'Cheat watch tab.'); if (bugs) add('info', 'Moderation', `${bugs} open bug report${bugs > 1 ? 's' : ''}`, '', 'Bugs tab.');
+  const order = { red: 0, amber: 1, info: 2, ok: 3 }; out.sort((a, b) => order[a.sev] - order[b.sev]);
+  return { t: now, items: out, players: human.length, active: active.length };
+}
 function rankPoint(W) {
   const n = {}; for (const u of Object.keys(W.A)) n[u] = [core.score(W, u), Math.round(W.A[u].gdp || 0), Math.round(core.power(W, u)), core.hexesOf(W, u).length];
   const now = Date.now(), wc = worldCash(W); RH.push({ t: now, n, c: wc.all, cp: wc.players }); // world money totals only: each treasury stays private RH = RH.filter(p => now - p.t <= 7 * 24 * HOUR); rhGz = null;
@@ -1204,7 +1268,7 @@ function wipeUser(id) {
   const W = mkWorld(); if (W.A[id]) { delete W.A[id]; for (const [u, n] of Object.entries(W.A)) if (n.rel && n.rel[id]) { delete n.rel[id]; W.changed.add(u); } commit(W); }
   for (const c of COLS) if (S.docs[c + '/' + id]) setDoc(c, id, null);
   for (const [t, s] of Object.entries(S.sessions)) if (s.uid === id) delete S.sessions[t];
-  for (const c of clients) if (c.uid === id) { try { c.res.end(); } catch (e) {} }
+  for (const c of clients) if (c.uid === id) endStream(c);
   for (const k of Object.keys(S.mail)) S.mail[k] = (S.mail[k] || []).filter(m => m.from !== id && m.to !== id);
   delete S.users[id]; delete S.meta[id]; delete S.actlog[id]; delete S.mail[id]; delete S.notes[id]; delete S.push[id]; broadcast('user', { id, name: null }); persist();
 }
@@ -1589,6 +1653,7 @@ async function adminRoute(p, req, res, me) {
     else if (op === 'nukes') { let k = 0; for (const [key, n] of all) if (n.nuked || n.fallout || n.winter || n.rad) { n.nuked = null; n.fallout = 0; n.winter = 0; n.rad = null; setDoc('nations', key.slice(8), n); k++; } S.nukes = []; msg = `cleared nuclear effects on ${k} nations`; }
     else if (op === 'rogue') { let k = 0; for (const [key, n] of all) if ((n.rogue || 0) > t || (n.aggr || 0) >= 50) { n.rogue = 0; n.rogueT = 0; n.aggr = Math.min(n.aggr || 0, 20); setDoc('nations', key.slice(8), n); k++; } msg = `cleared rogue and sanctioned status on ${k} nations`; }
     else if (op === 'bm') { let k = 0, back = 0; for (const x of S.bm.list) { if (x.exp > t && x.q > 0) { const n = S.docs['nations/' + x.seller]; if (n) { n.res = n.res || {}; n.res[x.r] = (n.res[x.r] || 0) + x.q; setDoc('nations', x.seller, n); back++; } k++; } } S.bm.list = []; bmCast(); msg = `cleared ${k} black-market listings (goods returned to ${back} sellers)`; }
+    else if (op === 'audit') { try { return send(res, 200, { ok: true, audit: gameAudit() }); } catch (e) { logErr('audit: ' + e.message); return send(res, 500, { error: 'The check-up failed: ' + e.message }); } }
     else if (op === 'health' || op === 'healthfix') {
       const fix = op === 'healthfix', found = [], numF = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'infra', 'fort', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl', 'tax', 'gdp'];
       for (const [key, n] of all) { const id = key.slice(8); let ch = false;
@@ -1598,7 +1663,13 @@ async function adminRoute(p, req, res, me) {
         if (n.bloc && !(S.blocs[n.bloc] && (S.blocs[n.bloc].members || []).includes(id))) { found.push(`${n.name}: points at an alliance it is not in`); if (fix) { n.bloc = null; ch = true; } }
         if (n.bj && n.bj.t && t - n.bj.t > 6 * HOUR) { found.push(`${n.name}: blackjack hand stuck for hours`); if (fix) { n.cash = (n.cash || 0) + (n.bj.bet || 0); n.bj = null; ch = true; } }
         for (const v of Object.keys(n.rel || {})) if (!S.docs['nations/' + v]) { if (fix) { delete n.rel[v]; ch = true; } }
+        for (const f of ['troops', 'ships', 'air', 'spies']) if (Number.isFinite(+n[f]) && n[f] < 0) { found.push(`${n.name}: negative ${f} (${Math.round(n[f])})`); if (fix) { n[f] = 0; ch = true; } }
+        if (Number.isFinite(+n.cash) && Math.abs(n.cash) > 1e15) found.push(`${n.name}: an impossible treasury (${WP.moneyS(n.cash)}); check how it got there before fixing it by hand`);
+        for (const [k, ct] of Object.entries(n.cd || {})) if (typeof ct === 'number' && ct - Date.now() > 30 * 864e5) { found.push(`${n.name}: a cooldown (${k}) set more than 30 days ahead`); if (fix) { n.cd[k] = Date.now(); ch = true; } }
+        if ((n.shield || 0) - Date.now() > 8 * 864e5) { found.push(`${n.name}: an attack shield longer than a week`); if (fix) { n.shield = Date.now() + 24 * HOUR; ch = true; } }
+        if (n.uw) for (const k of Object.keys(n.uw)) if (!WP.UWONDERS[k]) { found.push(`${n.name}: building an unknown wonder (${k})`); if (fix) { delete n.uw[k]; ch = true; } }
         if (ch) setDoc('nations', id, n); }
+      for (const t of Object.values(S.poker.tables)) for (let i = 0; i < t.seats.length; i++) { const st = t.seats[i]; if (st && !S.docs['nations/' + st.u]) { found.push(`${t.name}: a seat belongs to a nation that no longer exists`); if (fix) t.seats[i] = null; } }
       for (const bl of Object.values(S.blocs || {})) { const live = (bl.members || []).filter(m => S.docs['nations/' + m]); if (live.length !== (bl.members || []).length) { found.push(`${bl.name}: lists ${bl.members.length - live.length} nation(s) that no longer exist`); if (fix) bl.members = live; }
         for (const m of live) { const n = S.docs['nations/' + m]; if (n.bloc !== bl.id) { found.push(`${bl.name}: ${n.name} is a member but its nation points elsewhere`); if (fix) { const other = n.bloc && S.blocs[n.bloc] && S.blocs[n.bloc].members.includes(m); if (other) bl.members = bl.members.filter(x => x !== m); else { n.bloc = bl.id; setDoc('nations', m, n); } } } }
         if (fix && !bl.members.length) { delete S.blocs[bl.id]; continue; }
@@ -1657,7 +1728,7 @@ async function adminRoute(p, req, res, me) {
       if (p.endsWith('/ban')) {
         u.banned = true; for (const [t, s] of Object.entries(S.sessions)) if (s.uid === b.id) delete S.sessions[t];
         for (const c of COLS) if (S.docs[c + '/' + b.id]) setDoc(c, b.id, null);
-        for (const c of clients) if (c.uid === b.id) c.res.end();
+        for (const c of clients) if (c.uid === b.id) endStream(c);
         broadcast('user', { id: b.id, name: null }); audit(me.name, 'Banned player', target);
       } else { u.banned = false; broadcast('user', { id: b.id, name: u.name }); audit(me.name, 'Unbanned player', target); }
       persist(); return send(res, 200, { ok: true });
@@ -1671,7 +1742,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/kick': {
       if (!u || b.id === me.id) return send(res, 400, { error: 'Unknown player.' });
       for (const [t, s] of Object.entries(S.sessions)) if (s.uid === b.id) delete S.sessions[t];
-      for (const c of clients) if (c.uid === b.id) c.res.end(); persist(); audit(me.name, 'Kicked (signed out)', target); return send(res, 200, { ok: true });
+      for (const c of clients) if (c.uid === b.id) endStream(c); persist(); audit(me.name, 'Kicked (signed out)', target); return send(res, 200, { ok: true });
     }
     case '/api/admin/clear-user-chat': { if (!u) return send(res, 404, { error: 'Unknown player.' }); setDoc('chat', b.id, null); audit(me.name, 'Deleted chat messages', target); return send(res, 200, { ok: true }); }
     case '/api/admin/bug-done': { const x = S.bugs.find(y => y.id === b.bug); if (x) { x.done = !x.done; persist(); } return send(res, 200, { ok: true }); }
@@ -1907,7 +1978,7 @@ async function handle(req, res) {
       }
       if (p === '/api/account/signout-all') {
         for (const [t, s2] of Object.entries(S.sessions)) if (s2.uid === me.id) delete S.sessions[t];
-        for (const c of clients) if (c.uid === me.id) { try { c.res.end(); } catch (e) {} }
+        for (const c of clients) if (c.uid === me.id) endStream(c);
         persist(); return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) });
       }
       if (p === '/api/account/delete') {
@@ -1924,10 +1995,14 @@ async function handle(req, res) {
     if (p === '/api/stream' && req.method === 'GET') {
       if (clients.size >= 5000) return send(res, 503, { error: 'The server is very busy. Try again shortly.' });
       touch(me.id, req);
-      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-      res.write('retry: 3000\n\n'); write({ res }, 'init', snapshot(me.id));
-      const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { try { mine[0].res.end(); } catch (e) {} clients.delete(mine[0]); }
-      const c = { res, uid: me.id }; clients.add(c); res.on('error', () => clients.delete(c)); req.on('close', () => clients.delete(c));
+      // the live stream is gzip-compressed when the page asks for it (?z=1): game updates are repetitive JSON and shrink to a fraction. Every message is flushed at once.
+      const zip = new URL(req.url, 'http://x').searchParams.get('z') === '1' && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}) });
+      let out = null; if (zip) { out = zlib.createGzip({ level: 6, memLevel: 6, windowBits: 14, flush: zlib.constants.Z_SYNC_FLUSH }); out.on('error', () => {}); out.pipe(res); }
+      const c = { res, out, uid: me.id };
+      (out || res).write('retry: 3000\n\n'); write(c, 'init', snapshot(me.id));
+      const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { endStream(mine[0]); clients.delete(mine[0]); }
+      clients.add(c); const bye = () => { clients.delete(c); if (out) try { out.destroy(); } catch (e) {} }; res.on('error', bye); req.on('close', bye);
       return;
     }
 

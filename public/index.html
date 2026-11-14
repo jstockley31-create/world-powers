@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0f151c"><meta name="apple-mobile-web-app-capable" content="yes">
 <title>World Powers</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel:wght@700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/fonts/fonts.css">
 <style>
 :root{--bg:#090d12;--s1:#0f151c;--s2:#141c25;--s3:#1a2430;--bd:#1f2a36;--bd2:#2a3746;--tx:#e6edf3;--mu:#8b98a5;--mu2:#5d6b79;--ac:#d4a64a;--ac2:#b8892f;--bl:#4c9aff;--gn:#3fb950;--rd:#f85149;--yl:#e3b341;
  --food:#8fbf5a;--oil:#d4a64a;--steel:#8ea4b8;--goods:#b48ce0;--mun:#e0865a;--r:8px;--mono:'JetBrains Mono',ui-monospace,monospace}
@@ -1236,10 +1235,13 @@ WP.expect=()=>{const at=Date.now();clearTimeout(expT);expT=setTimeout(()=>{if(cu
 setInterval(()=>{if(curES&&document.visibilityState==='visible'&&Date.now()-lastMsg>50000)reconnect('silent stream')},10000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&curES&&Date.now()-lastMsg>30000)reconnect('back in the foreground')});
 window.addEventListener('online',()=>{if(curES)reconnect('network back')});
-function connect(){const es=new EventSource('/api/stream');curES=es;lastMsg=Date.now();connT=Date.now();
+// the stream asks for compression unless a compressed stream ever failed to deliver on this device
+let noZip=false;try{noZip=localStorage.getItem('wp_noz')==='1'}catch(e){}
+function connect(){const zip=!noZip,es=new EventSource('/api/stream'+(zip?'?z=1':''));curES=es;lastMsg=Date.now();connT=Date.now();
+ if(zip)setTimeout(()=>{if(curES===es&&!es._init){noZip=true;try{localStorage.setItem('wp_noz','1')}catch(e){}reconnect('compressed stream sent nothing')}},9000);
  const on=(n,f)=>es.addEventListener(n,e=>{if(curES!==es)return;lastMsg=Date.now();f(e)});
  on('hb',()=>{});
-on('init',e=>{const d=JSON.parse(e.data);
+on('init',e=>{es._init=1;const d=JSON.parse(e.data);
   // a new version was deployed while this page stayed open (phones keep apps alive for days): reload into it
   if(d.ver){if(!WP.ver)WP.ver=d.ver;else if(d.ver!==WP.ver&&!WP.updating){WP.updating=true;window.dispatchEvent(new CustomEvent('wp-update'))}}
   applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}))});
@@ -1350,7 +1352,9 @@ let found_={hex:null,color:null,gov:'dem',name:''};
 const X=()=>WP.extra||{};
 // BrowserMMORPG vote link: carries the player id so its vote reward (incentive callback) can find the voter
 const voteUrl=()=>'https://browsermmorpg.com/vote.php?id=1957'+(uid?'&amp;userid='+encodeURIComponent(uid):'');
-function refreshW(){A={};for(const[k,v]of Object.entries(N))if(v&&v.cap!=null)A[k]=C.normalize(JSON.parse(JSON.stringify(v)));me=uid&&A[uid]?A[uid]:null;if(me&&decPend.size)me.cards=(me.cards||[]).filter(c=>!decPend.has(c.id));W=C.world(A,CFG,Date.now(),X().event,X().council,X().blocs||{},X().crisis||null,{games:X().games||null,dis:X().dis||[]})}
+// other nations' copies are only rebuilt when the server actually sent a new version of them (your own is always fresh)
+const RAWC=new Map();
+function refreshW(){A={};const seen=new Set();for(const[k,v]of Object.entries(N))if(v&&v.cap!=null){seen.add(k);const c=RAWC.get(k);if(k!==uid&&c&&c.raw===v){A[k]=c.obj;continue}const o=C.normalize(JSON.parse(JSON.stringify(v)));A[k]=o;if(k!==uid)RAWC.set(k,{raw:v,obj:o})}for(const k of RAWC.keys())if(!seen.has(k))RAWC.delete(k);me=uid&&A[uid]?A[uid]:null;if(me&&decPend.size)me.cards=(me.cards||[]).filter(c=>!decPend.has(c.id));W=C.world(A,CFG,Date.now(),X().event,X().council,X().blocs||{},X().crisis||null,{games:X().games||null,dis:X().dis||[]})}
 const owner=h=>C.owner(W,h),hexesOf=u=>C.hexesOf(W,u),myHexes=()=>hexesOf(uid);
 const rankOf=C.rankOf,rankName=C.rankName,maxHex=C.maxHex;
 const R=(a,b)=>C.R(W,a,b),atWar=(a,b)=>C.atWar(W,a,b),warSince=(a,b)=>C.warSince(W,a,b),pact=(a,b,k)=>C.pact(W,a,b,k),offered=(a,b,k)=>C.offered(W,a,b,k);
@@ -2081,7 +2085,8 @@ function chatPageFit(){const on=page==='chat'&&innerWidth>820,b=document.body;b.
 addEventListener('resize',()=>{if(page==='chat')chatPageFit()});
 addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('chatfull')){document.body.classList.remove('chatfull');updChatBtns()}});
 function updChatBtns(){const x=$('chatExp'),f=$('chatFull'),pg=document.body.classList.contains('chatpage'),fu=document.body.classList.contains('chatfull');if(x){x.style.display=pg?'none':'';}if(f){f.style.display=pg?'':'none';f.textContent=fu?'Exit full screen':'⛶ Full screen';f.title=fu?'Back to the page (Esc)':'Fill the whole window'}const back=$('chatBack');if(back)back.style.display=pg?'':'none'}
-function render(){if(czFull&&page!=='casino'){czFull=false;document.body.classList.remove('czfullon');try{if(document.fullscreenElement&&!gFull)document.exitFullscreen().catch(()=>{})}catch(e){}}renderTop();renderSide();if(document.body.classList.contains('chatpage')!==(page==='chat'&&innerWidth>820)){chatPageFit();updChatBtns()} /* the chat page closes however you leave it */setTimeout(rushCheck,0);setTimeout(cbkCheck,50);const m=$('main');if(typingIn()){pendRender=true;updTimers();return}pendRender=false;
+function render(){if(W&&C.freeze)C.freeze(W);try{render0()}finally{if(C.thaw)C.thaw()}}
+function render0(){if(czFull&&page!=='casino'){czFull=false;document.body.classList.remove('czfullon');try{if(document.fullscreenElement&&!gFull)document.exitFullscreen().catch(()=>{})}catch(e){}}renderTop();renderSide();if(document.body.classList.contains('chatpage')!==(page==='chat'&&innerWidth>820)){chatPageFit();updChatBtns()} /* the chat page closes however you leave it */setTimeout(rushCheck,0);setTimeout(cbkCheck,50);const m=$('main');if(typingIn()){pendRender=true;updTimers();return}pendRender=false;
  const html=`<div class="wrap${page!==lastPage?' enter':''}">${CFG.motd?`<div class="motd">${I('mega')}<span>${esc(CFG.motd)}</span></div>`:''}${me?freshBanner(false):''}${cdBanner()}${boostBar()}${guestBar()}${evBar()}${renderPage()}</div>`;
  const plain=h=>h.replace(/^<div class="wrap enter">/,'<div class="wrap">'); // only the page-enter animation class, never text that happens to contain " enter"
  if(page!==lastPage||!m.firstChild){m.innerHTML=html;lastPage=page}else if(plain(html)!==plain(lastHtml))morph(m,plain(html));lastHtml=html;
@@ -3288,7 +3293,8 @@ let teamSending=false;async function sendTeam(text){text=text.trim().slice(0,100
  try{await WP.api('POST','/api/cmd',{c:'bloc',op:'post',text})}catch(e){b.wall=b.wall.filter(w=>!(w.u===uid&&w.x===text&&Date.now()-w.t<15e3));renderTeamChat(true);toast(e.message||'Message failed to send.')}teamSending=false}
 // open the chat at the newest message (after the layout settles, since a closed chat has no height to scroll)
 function chatToBottom(){const go=()=>{const c=$('chat');if(c)c.scrollTop=c.scrollHeight};requestAnimationFrame(()=>{go();setTimeout(go,60)})}
-function renderChat(force){if(chatMode==='team'&&myBloc())return renderTeamChat(force);const msgs=[];for(const[u,c]of Object.entries(CH)){if(u==='_system'){for(const m of c.m||[])msgs.push({s:1,t:m.t,x:m.x});continue}if(!A[u])continue;for(const m of c.m||[])msgs.push({u,t:m.t,x:m.x})}
+let chatPre='';
+function renderChat(force){if(chatMode==='team'&&myBloc())return renderTeamChat(force);{let k='';for(const[u,c]of Object.entries(CH)){const L=c&&c.m;k+=u+(L?L.length+'.'+(L.length?L[L.length-1].t:0):'')+','}for(const[u,n]of Object.entries(A)){const o=n.out;k+=u+n.name+n.color+((n.cos&&n.cos.chat)||'')+(n.flag?1:0)+(o&&o.length?o[0].t:0)+'|'}k+=':'+(X().muted||[]).length;if(!force&&k===chatPre&&lastChatKey)return;chatPre=k}const msgs=[];for(const[u,c]of Object.entries(CH)){if(u==='_system'){for(const m of c.m||[])msgs.push({s:1,t:m.t,x:m.x});continue}if(!A[u])continue;for(const m of c.m||[])msgs.push({u,t:m.t,x:m.x})}
  for(const e of chatNews())msgs.push({n:1,t:e.t,x:e.x,hot:HOTNEWS.test(e.x)});msgs.sort((a,b)=>a.t-b.t);{const seen=new Map();for(let i=msgs.length-1;i>=0;i--){const m=msgs[i];if(!m.n||m.hot)continue;const k=m.x,p=seen.get(k);if(p!=null&&p-m.t<6*HOUR)msgs.splice(i,1);else seen.set(k,m.t)}}const show=msgs.slice(-150);const key=show.length+':'+(show.at(-1)?.t||0)+':'+Object.keys(A).length+':'+(X().muted||[]).length;if(!force&&key===lastChatKey)return;lastChatKey=key;
  const el=$('chat');const atBot=el.scrollHeight-el.scrollTop-el.clientHeight<40;
  el.innerHTML=show.map(m=>{const ts=new Date(m.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});if(m.s)return`<div class="m sys"><time>${ts}</time><b>Announcement</b> — ${nLinks(esc(m.x)).replace(/\n/g,'<br>')}</div>`;if(m.n)return`<div class="m n${m.hot?' hot':''}"><time>${ts}</time><span class="lbl">${m.hot?'Alert':'War'}</span>${nLinks(esc(m.x))}</div>`;if(isMutedByMe(m.u))return`<div class="m muted-msg"><time>${ts}</time>Message from a muted leader</div>`;const mt=mentionHtml(m.x);return`<div class="m${mt.me?' mention':''}"><time>${ts}</time><span class="who${cosChat(A[m.u])}" data-act="prof" data-a="${esc(m.u)}" style="color:${esc(A[m.u].color)}">${A[m.u].flag?flagOf(A[m.u],16,11)+' ':''}${esc(A[m.u].name)}</span>${mt.html.replace(/\n/g,'<br>')}</div>`}).join('')||'<div class="mu">No messages yet.</div>';
