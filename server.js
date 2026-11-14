@@ -925,6 +925,7 @@ function seasonView(W, se, uid) { if (!se) return null; const live = se.status =
   return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
 function seasonBegin(W) { const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
   se.status = 'live'; se.start = Date.now(); se.base = {};
+  if (S.countdown) { audit('System', 'Removed the countdown banner', 'the season has started'); S.countdown = null; } // the "starts in" banner must not keep counting once the season is on
   for (const u of Object.keys(W.A)) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 };
   const t = se.fresh ? `🏆 ${se.name} has begun! Everyone starts fresh in a brand-new world: found your season nation now. Your real nation is saved and comes back${se.end ? ` on ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ' when the season ends'}, with your prizes.` : `🏆 ${se.name} has begun! Nations are ranked by ${SEASON_METRICS[se.metric].n.toLowerCase()}${se.end ? ` until ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ''}.${se.prizes && se.prizes[0] ? ` The champion wins $${Math.round(se.prizes[0]).toLocaleString('en-US')}.` : ''} See Rankings for the live standings.`;
   if (se.announce) { systemMessage(t); broadcast('announce', { text: t }); }
@@ -990,7 +991,7 @@ function freshDropW(W) { if (!W) return; W.changed = new Set(); for (const k of 
 function freshBegin(W, se) {
   pkCashAll('A season is starting'); // chips go home to the real nations before the real world is saved
   const n = freshSave(se); freshClear(); freshDropW(W); SW = null; publicCache = null;
-  S.fresh = { id: se.id, t: Date.now(), nations: n }; persist(true);
+  S.fresh = { id: se.id, t: Date.now(), nations: n }; S.moneyLog = []; persist(true); // the check-up compares money with a day ago: a different world must not look like a 98% crash
   audit('System', 'Fresh season world started', `${se.name}: real world (${n} nations) saved to ${path.basename(FRESH_FILE)}`);
   setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
 }
@@ -1009,7 +1010,7 @@ function freshRestore(by, why) {
   for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
   for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
   RH = Array.isArray(snap.rh) ? snap.rh : []; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
-  S.fresh = null; SW = null; publicCache = null; persist(true); // the restored world is on disk before the save file is retired
+  S.fresh = null; SW = null; publicCache = null; S.moneyLog = []; persist(true); // the restored world is on disk before the save file is retired
   try { blocRepair(); } catch (e) {}
   try { fs.renameSync(src, path.join(DATA_DIR, `season-realworld-restored-${snap.season}-${now}.json`)); } catch (e) {}
   audit(by || 'System', 'Real world restored', `${snap.name || 'season'}: ${Object.keys(snap.nations).length - gone.length} nations back${gone.length ? `, ${gone.length} skipped (account deleted)` : ''}${why ? ' (' + why + ')' : ''}`);

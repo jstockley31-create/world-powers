@@ -113,7 +113,7 @@ const PUNITS = {
   bomber: { n: 'Stealth Bomber Wing', ic: '🛩', cost: 1.5e10, steel: 6000, oil: 6000, up: 2e8, max: 3, tech: 40, atk: .05, def: 0, d: '+5% attack each.' }
 };
 // running a war costs money every hour: the nation that declared it pays in full, the defender a quarter
-const WARCOST = { base: 1e7, troop: 40, ship: 400, air: 500, defender: .25 };
+const WARCOST = { base: 1e7, troop: 40, ship: 400, air: 500, defender: .25, gdpCap: .002, floor: 1e5 }; // per war per hour; never more than 0.2% of the nation's GDP an hour (about 5% of a day's output), so small and new nations are not ruined by one war
 // a huge standing army costs more per soldier: no change up to 200,000 troops, then up to +50% per soldier at 2 million
 const ARMYUP = { from: 2e5, to: 2e6, max: .5 };
 // SHOW-OFF COSMETICS: no effect on the game, only on how you look to everyone else
@@ -2465,7 +2465,7 @@ function Core(PD, CARDS) {
     return { msg: `${U.ic} ${U.n} commissioned: ${U.d} Upkeep is ${money(U.up)} every hour.` };
   }
   const puUpkeepH = (W, n) => Math.round(Object.entries((n && n.pu) || {}).reduce((a, [k, c]) => a + (PUNITS[k] ? PUNITS[k].up * c : 0), 0) * ((W && W.m && W.m.upkeep) || 1));
-  const warCostH = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 0; let t = 0; const c = WARCOST.base + (n.troops || 0) * WARCOST.troop + (n.ships || 0) * WARCOST.ship + (n.air || 0) * WARCOST.air;
+  const warCostH = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 0; let t = 0; const c = Math.min(WARCOST.base + (n.troops || 0) * WARCOST.troop + (n.ships || 0) * WARCOST.ship + (n.air || 0) * WARCOST.air, Math.max(WARCOST.floor, (n.gdp || 0) * WARCOST.gdpCap));
     for (const v of wars(W, u)) t += (R(W, u, v).war || 0) >= (R(W, v, u).war || 0) ? c : c * WARCOST.defender; return Math.round(t); };
   function cosmetic(W, u, slot, k) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(COSMETICS, slot)) fail('Unknown item.'); n.cos = n.cos || {}; n.cosOwn = n.cosOwn || {}; const C_ = COSMETICS[slot];
