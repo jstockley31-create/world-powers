@@ -1497,7 +1497,10 @@ async function adminRoute(p, req, res, me) {
     if (op === 'cancel') { if (se.fresh && S.fresh) { freshDropW(W); try { freshRestore(me.name, 'season cancelled'); } catch (e) { return send(res, e.status || 500, { error: e.message }); } }
       S.seasons.cur = null; if (se.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se.n - 1); persist(); broadcast('config', effCfg()); audit(me.name, 'Cancelled a season (nothing recorded)', se.name); if (se.announce && b.announce !== false) systemMessage(`${se.name} has been cancelled.`); return send(res, 200, { ok: true }); }
     if (op === 'extend') { const d = +b.days; if (!(d > 0) || !se.end) return send(res, 400, { error: 'Only seasons with an end date can be extended.' }); se.end += Math.min(90, d) * 864e5; persist(); audit(me.name, 'Extended a season', `${se.name} by ${d} days`); if (se.announce) systemMessage(`⏳ ${se.name} has been extended. It now ends ${new Date(se.end).toUTCString().slice(0, 22)} UTC.`); return send(res, 200, { ok: true }); }
-    if (op === 'rename') { const nm = clean(b.name).slice(0, 60); if (!nm) return send(res, 400, { error: 'Give the season a name.' }); se.name = nm; se.msg = clean(b.msg).slice(0, 300); persist(); return send(res, 200, { ok: true }); }
+    if (op === 'rename') { const nm = clean(b.name).slice(0, 60); if (!nm) return send(res, 400, { error: 'Give the season a name.' }); const old = se.name; se.name = nm; if (b.msg != null) se.msg = clean(b.msg).slice(0, 300);
+      // fix the name in the announcements already posted in chat too
+      let fixed = 0; if (old && old !== nm) { const doc = S.docs['chat/_system']; if (doc && Array.isArray(doc.m)) { doc.m = doc.m.map(x => { if (x && typeof x.x === 'string' && x.x.includes(old)) { fixed++; return { ...x, x: x.x.split(old).join(nm) }; } return x; }); if (fixed) setDoc('chat', '_system', doc); } }
+      persist(); broadcast('config', effCfg()); audit(me.name, 'Renamed the season', `${old} → ${nm}`); return send(res, 200, { ok: true, fixed }); }
     return send(res, 400, { error: 'Unknown operation.' });
   }
   if (p === '/api/admin/poll' && req.method === 'POST') { // Admin page → Polls: questions sent to every player
