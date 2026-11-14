@@ -55,7 +55,8 @@ function fireTest(id) {
   setTimeout(() => systemMessage(`☢ NUCLEAR TEST: ${fx.byName} detonated a nuclear device in ${oceanPhrase(fx.ocean)}. The world condemns the test.`), NT_COUNT + 500);
 }
 // after a restart: re-arm tests still to come; one that should have fired more than 3 minutes ago is simply recorded
-setTimeout(() => { for (const fx of S.ntestPending.slice()) { if (Date.now() - fx.go > 3 * 60e3) { S.ntestPending = S.ntestPending.filter(x => x.id !== fx.id); S.ntests.unshift({ ...fx, fired: fx.go, missed: true }); } else armTest(fx); } }, 2000);
+function ntestSweep() { for (const fx of S.ntestPending.slice()) { if (Date.now() - fx.go > 3 * 60e3) { S.ntestPending = S.ntestPending.filter(x => x.id !== fx.id); S.ntests.unshift({ ...fx, fired: fx.go, missed: true }); } else armTest(fx); } }
+setTimeout(ntestSweep, 2000); // also run when the real world comes back after a season, so a test that was pending at the switch does not stay stuck
 // provinces still burning after air and missile strikes: { province: { t: last hit, n: hits } }. Fires smoulder for a day; a new hit re-ignites them.
 const BURN_MS = 24 * HOUR; S.burn = S.burn && typeof S.burn === 'object' && !Array.isArray(S.burn) ? S.burn : {};
 function burnList() { const now = Date.now(), out = []; for (const [h, b] of Object.entries(S.burn)) { if (now - b.t < BURN_MS) out.push([+h, b.t, b.n]); else delete S.burn[h]; } return out; }
@@ -987,7 +988,7 @@ function freshClear() {
   RH = []; rhGz = null; try { fs.writeFileSync(RANK_FILE, '[]'); } catch (e) {}
 }
 // the world loop's copy of the old world must never be written back after the switch
-function freshDropW(W) { if (!W) return; W.changed = new Set(); for (const k of Object.keys(W.A)) delete W.A[k]; W.OWN = {}; W.fallen = []; W.strikeFx = []; W.welcome = null; }
+function freshDropW(W) { if (!W) return; W.changed = new Set(); for (const k of Object.keys(W.A)) delete W.A[k]; W.OWN = {}; W.fallen = []; W.strikeFx = []; W.nukeFx = []; W.ntestFx = []; W.casinoEv = null; W.welcome = null; } // nothing from the old world (a missile, a test, a strike) may land in the new one
 function freshBegin(W, se) {
   pkCashAll('A season is starting'); // chips go home to the real nations before the real world is saved
   const n = freshSave(se); freshClear(); freshDropW(W); SW = null; publicCache = null;
@@ -1012,6 +1013,7 @@ function freshRestore(by, why) {
   RH = Array.isArray(snap.rh) ? snap.rh : []; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
   S.fresh = null; SW = null; publicCache = null; S.moneyLog = []; persist(true); // the restored world is on disk before the save file is retired
   try { blocRepair(); } catch (e) {}
+  try { ntestSweep(); } catch (e) {}
   try { fs.renameSync(src, path.join(DATA_DIR, `season-realworld-restored-${snap.season}-${now}.json`)); } catch (e) {}
   audit(by || 'System', 'Real world restored', `${snap.name || 'season'}: ${Object.keys(snap.nations).length - gone.length} nations back${gone.length ? `, ${gone.length} skipped (account deleted)` : ''}${why ? ' (' + why + ')' : ''}`);
   setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
@@ -1023,6 +1025,9 @@ function applyGrant(n, g) { if (g.cash) n.cash = (n.cash || 0) + g.cash; if (g.x
   for (const b of g.badges || []) n.badges = [...(n.badges || []).filter(x => !(x.s === b.s && x.k === b.k && x.t === b.t)), b].slice(-60); if (g.log) n.log = [{ t: Date.now(), x: g.log }, ...(n.log || [])].slice(0, 120); }
 function seasonPendingApply(u) { const m = S.meta[u], d = S.docs['nations/' + u]; if (!m || !d || !(m.seasonPending || []).length) return; for (const g of m.seasonPending) applyGrant(d, g); const k = m.seasonPending.length; m.seasonPending = []; addNote(u, 'event', `🏆 ${k} season reward${k > 1 ? 's were' : ' was'} waiting for your new nation and ${k > 1 ? 'have' : 'has'} been added.`); sendNation(u); persist(); }
 function seasonFinishFresh(W, by) {
+  { const se0 = S.seasons.cur; if (se0 && se0.grants && !S.fresh) { // a restart cut the last finish short after the real world came back: only the prizes are left to pay
+    for (const [u, g] of Object.entries(se0.grants)) { const paid = seasonGrant(u, g); addNote(u, 'event', `🏆 ${se0.name}: ${g.lines.length ? 'you ' + g.lines.join('; ') : 'you took part'}.${paid ? '' : ' Found a nation to receive your rewards.'}`); }
+    S.seasons.cur = null; audit(by || 'System', 'Season ended', se0.name + ' (prizes paid after a restart)'); persist(true); broadcast('config', effCfg()); return null; } }
   const se = S.seasons.cur, M = SEASON_METRICS[se.metric] || SEASON_METRICS.final, table = seasonTable(W, se), now = Date.now();
   const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
   const ranked = table.filter(x => x.v > 0), top = ranked.slice(0, 10);
@@ -1040,6 +1045,8 @@ function seasonFinishFresh(W, by) {
   if (!HOF.some(h => h.season === se.n && h.fresh && h.start === se.start)) { try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); } HOF.push(Object.freeze(entry)); }
   const champ = top[0] ? W.A[top[0].u].name : null, t2 = top[1] ? W.A[top[1].u].name : null, t3 = top[2] ? W.A[top[2].u].name : null;
   freshDropW(W);
+  for (const [u, g] of Object.entries(grants)) { const lines = g.lines.length ? g.lines.join('; ') : 'took part'; g.log = `🏆 ${se.name} is over: you ${lines}.${g.cash || g.xp ? ' Your prizes have been added to this nation.' : ''}`; }
+  se.grants = grants; // saved with the restored world, so a restart in the middle of the finish still pays exactly these prizes
   try { freshRestore(by || 'System', 'season ended'); } catch (e) { logErr('Real world restore failed at season end: ' + (e.stack || e)); se.status = 'restorefail'; persist(true); return entry; }
   // prizes go to the real nations (or wait for players who don't have one yet)
   for (const [u, g] of Object.entries(grants)) { const lines = g.lines.length ? g.lines.join('; ') : 'took part'; g.log = `🏆 ${se.name} is over: you ${lines}.${g.cash || g.xp ? ' Your prizes have been added to this nation.' : ''}`; const paid = seasonGrant(u, g); addNote(u, 'event', `🏆 ${se.name}: you ${lines}.${paid ? '' : ' Found a nation to receive your rewards.'}`); }
@@ -1135,6 +1142,7 @@ function gameAudit() {
   const cash = worldCash(W), past = S.moneyLog.find(x => now - x.t <= 26 * HOUR && now - x.t >= 22 * HOUR) || S.moneyLog[0];
   if (past && past.players > 0) { const ch = (cash.players - past.players) / past.players * 100;
     if (ch < -25) add('amber', 'Economy', `Players' money fell ${Math.round(-ch)}% since ${new Date(past.t).toLocaleString('en-US', { weekday: 'short', hour: 'numeric' })}`, `${M(past.players)} → ${M(cash.players)}.`, 'Usually big prestige purchases (wonder stages, cosmetics, grand projects); check the news feed. If purchases don’t explain it, look at war costs and prestige-unit upkeep below.');
+    else if (ch > 60 && S.fresh) add('info', 'Economy', `Players' money rose ${Math.round(ch)}% in about a day`, `${M(past.players)} → ${M(cash.players)}. Normal in a fresh-start season: every nation started from almost nothing and is growing fast.`, '');
     else if (ch > 60) add('amber', 'Economy', `Players' money rose ${Math.round(ch)}% since ${new Date(past.t).toLocaleString('en-US', { weekday: 'short', hour: 'numeric' })}`, `${M(past.players)} → ${M(cash.players)}. Fast growth leads to inflation of prices players think are "cheap".`, 'Check the biggest earners below and recent gifts in the Activity log.');
     else add('ok', 'Economy', `Players' money is steady (${ch >= 0 ? '+' : ''}${Math.round(ch)}% in about a day)`, `${M(cash.players)} held by players, ${M(cash.ai)} by AI nations.`); }
   else add('info', 'Economy', 'Money trend not available yet', 'The check-up starts recording total money every hour from now on; the trend shows after a day.');
@@ -1154,6 +1162,7 @@ function gameAudit() {
   const CT = casinoTotals(), hNet = Object.values(CT).reduce((a, x) => a - (x.net || 0), 0); if (Object.keys(CT).length && hNet < 0) add('amber', 'Casino', 'The house is losing money overall', `Players are ahead by ${M(-hNet)} across all games.`, 'Fine over short periods; if it lasts, look at which game in the Casino tab.');
   // --- poker ---
   let atTables = 0, stuck = [], away = 0; for (const t of Object.values(S.poker.tables)) { for (const s of t.seats) if (s) { atTables += s.stack; if (s.sitOut) away++; } if (t.hand && !t.hand.done) { atTables += PK.potTotal(t.hand); if (t.hand.deadline && now - t.hand.deadline > 120e3) stuck.push(t.name); } }
+  if (S.fresh) { const se_ = S.seasons && S.seasons.cur; add('info', 'Season', `${se_ ? se_.name : 'A fresh-start season'} is running`, se_ && se_.end ? `It ends by itself on ${new Date(se_.end).toUTCString().slice(0, 22)} UTC; the real world then comes back with the prizes added.` : 'The real world is saved and set aside until it ends.', ''); const alt_ = path.join(BACKUP_DIR, `season-realworld-${S.fresh.id}.json`); if (!fs.existsSync(FRESH_FILE)) add(fs.existsSync(alt_) ? 'amber' : 'red', 'Season', fs.existsSync(alt_) ? 'The main saved copy of the real world is missing (the backup copy is fine)' : 'Both saved copies of the real world are missing', fs.existsSync(alt_) ? 'The season will still end normally using the backup copy.' : 'The real world cannot come back automatically at the end of the season.', fs.existsSync(alt_) ? '' : 'Do not end or cancel the season; ask for help first.'); else add('ok', 'Season', 'The saved real world is safe', 'Two copies are on disk.', ''); }
   if (stuck.length) add('red', 'Poker', `${stuck.length} poker hand${stuck.length > 1 ? 's look' : ' looks'} stuck`, stuck.join(', '), 'Casino tab → Cash out every table returns all chips safely.');
   if (atTables > 0) add('info', 'Poker', `${M(atTables)} in chips is at the poker tables`, `${away} player${away === 1 ? '' : 's'} sitting out.`, 'This money is not in any treasury until they leave the table.');
   // --- alliances ---
@@ -1186,7 +1195,7 @@ function gameAudit() {
 }
 function rankPoint(W) {
   const n = {}; for (const u of Object.keys(W.A)) n[u] = [core.score(W, u), Math.round(W.A[u].gdp || 0), Math.round(core.power(W, u)), core.hexesOf(W, u).length];
-  const now = Date.now(), wc = worldCash(W); RH.push({ t: now, n, c: wc.all, cp: wc.players }); // world money totals only: each treasury stays private RH = RH.filter(p => now - p.t <= 7 * 24 * HOUR); rhGz = null;
+  const now = Date.now(), wc = worldCash(W); RH.push({ t: now, n, c: wc.all, cp: wc.players }); /* world money totals only: each treasury stays private */ RH = RH.filter(p => now - p.t <= 7 * 24 * HOUR); rhGz = null;
   try { fs.writeFileSync(RANK_FILE + '.tmp', JSON.stringify(RH)); fs.renameSync(RANK_FILE + '.tmp', RANK_FILE); } catch (e) { logErr('Could not save ranking history: ' + e.message); }
 }
 function rankHistBody() { if (!rhGz) rhGz = zlib.gzipSync(JSON.stringify({ v: 1, fields: ['score', 'gdp', 'power', 'prov'], points: RH })); return rhGz; }
@@ -1479,7 +1488,8 @@ async function adminRoute(p, req, res, me) {
       if (!S.fresh && !fs.existsSync(FRESH_FILE)) return send(res, 400, { error: 'There is no saved real world waiting to be restored.' });
       const se0 = S.seasons.cur; freshDropW(W);
       try { freshRestore(me.name, 'emergency restore'); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
-      if (se0 && se0.fresh) { S.seasons.cur = null; if (se0.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se0.n - 1); persist(true); }
+      if (se0 && se0.fresh && se0.grants) { for (const [u, g] of Object.entries(se0.grants)) { const paid = seasonGrant(u, g); addNote(u, 'event', `🏆 ${se0.name}: ${g.lines.length ? 'you ' + g.lines.join('; ') : 'you took part'}.${paid ? '' : ' Found a nation to receive your rewards.'}`); } S.seasons.cur = null; audit(me.name, 'Season ended', se0.name + ' (prizes paid after a manual restore)'); persist(true); } // the season had already finished and was recorded: pay its prizes
+      else if (se0 && se0.fresh) { S.seasons.cur = null; if (se0.n === S.seasons.n) S.seasons.n = Math.max(HOF.length, se0.n - 1); persist(true); }
       systemMessage('🌍 The real world has been restored by the administrators. Everything is back as it was when the season began.'); broadcast('config', effCfg()); return send(res, 200, { ok: true });
     }
     const se = S.seasons.cur; if (!se) return send(res, 404, { error: 'There is no season right now.' });

@@ -2349,7 +2349,7 @@ function Core(PD, CARDS) {
     if (d.u === u) fail('You cannot send relief to yourself.'); const v = W.A[d.u]; if (!v) fail('That nation no longer exists.'); if (atWar(W, u, d.u)) fail(`You are at war with ${v.name}.`);
     const a = Math.floor(Number(amt)); if (!(a >= DISASTER.minGive)) fail(`Send at least ${money(DISASTER.minGive)}.`); if (a > n.cash) fail('You do not have that much money.');
     const before = d.aid[u] || 0, pr0 = Math.min(3, Math.floor(before / d.need * 8) / 2), pr1 = Math.min(3, Math.floor((before + a) / d.need * 8) / 2);
-    const counts = Math.max(0, Math.min(a, (d.need || 0) - (d.got || 0))); n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; if (counts > 0) seasonBump(W, n, 'relief', counts); // only relief up to what the disaster needs counts for the season if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
+    const counts = Math.max(0, Math.min(a, (d.need || 0) - (d.got || 0))); n.cash -= a; v.cash += a; d.aid[u] = before + a; d.got += a; W.disch = true; if (counts > 0) seasonBump(W, n, 'relief', counts); /* only relief up to what the disaster needs counts for the season */ if (pr1 > pr0) n.prestige = Math.round(((n.prestige || 0) + pr1 - pr0) * 10) / 10;
     // every 20% of the appeal you fund lowers your aggression by 1 (up to −5 for funding all of it)
     const ag0 = Math.min(5, Math.floor(before / d.need * 5 + 1e-9)), ag1 = Math.min(5, Math.floor((before + a) / d.need * 5 + 1e-9)), agD = ag1 - ag0; if (agD > 0) n.aggr = Math.max(0, (n.aggr || 0) - agD);
     if (!before) n.approval = clamp(n.approval + 1, 0, 100); xpOnce(W, u, 'rel_' + d.id, 30 * MIN, Math.min(30, 3 + Math.round(a / 1e7)));
