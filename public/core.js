@@ -1703,7 +1703,7 @@ function Core(PD, CARDS) {
     n.infl = clamp(n.infl + (clamp(iT, -1, 60) - n.infl) * .04, -2, 80);
     // GDP
     n.gdp = n.gdp + (gdpTarget(W, u) - n.gdp) * .1;
-    if (!n.gdpHist.length || W.now - n.gdpHist[n.gdpHist.length - 1].t >= HOUR) { n.gdpHist.push({ t: W.now, v: Math.round(n.gdp), p: Math.round(n.pop), m: Math.round(n.troops || 0) }); if (n.gdpHist.length > 48) n.gdpHist.shift(); }
+    if (!n.gdpHist.length || W.now - n.gdpHist[n.gdpHist.length - 1].t >= HOUR) { n.gdpHist.push({ t: W.now, v: Math.round(n.gdp), p: Math.round(n.pop), m: Math.round(n.troops || 0), c: Math.round(n.cash || 0), a: Math.round(n.approval || 0), s: Math.round(n.stability || 0), w: Math.round(power(W, u)), h: hs.length }); if (n.gdpHist.length > 48) n.gdpHist.shift(); }
     // population
     if (W.m.pandemic) n.pop *= 1 - .004 * W.m.pandemicCut * (1 - n.health / 100);
     if (foodShort) n.pop *= .985; else if (n.approval > 35) n.pop = Math.min(Math.max(n.pop, popCap(W, u)), n.pop * (1 + .012 * (.5 + n.health / 100)));
