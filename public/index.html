@@ -41,6 +41,18 @@ a{color:var(--bl);text-decoration:none;cursor:pointer}a:hover{text-decoration:un
 .kpi span{display:flex;align-items:center;gap:5px;color:var(--mu);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em}.kpi span .ic{width:12px;height:12px}
 .kpi b{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
 .topr{display:flex;gap:6px;align-items:center}
+/* season chip in the top bar */
+.kpi.fitx{display:none!important}
+#seachip{flex:none;min-width:0;display:flex;align-items:center;margin-left:12px}
+.seachip{display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 9px;border-radius:999px;border:1px solid #6b5422;background:linear-gradient(180deg,#2a2210,#1b160a);color:#f0d9a4;font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;max-width:300px;min-width:0}
+.seachip:hover{border-color:#a07f33;background:#2f2611}.seachip:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.seachip b{font-weight:600;overflow:hidden;text-overflow:ellipsis;min-width:0}.seachip .sci{flex:none;font-size:13px}
+.seachip .sct{flex:none;color:#d4a64a;font-variant-numeric:tabular-nums;padding-left:7px;border-left:1px solid #6b542280}
+.seachip.soon{border-color:#3d4f66;background:#141d28;color:#c9d6e5}.seachip.soon .sct{color:var(--ac);border-left-color:#3d4f6680}
+@media(min-width:821px) and (max-width:1200px){.seachip{max-width:200px}}
+@media(max-width:820px){#seachip{display:none!important}}
+.tm.sea{border-color:#6b5422;background:#221b0c;color:#f0d9a4}.tm.sea b{color:#d4a64a!important}.tm.sea.soon{border-color:#3d4f66;background:#141d28;color:#c9d6e5}.tm.sea.soon b{color:var(--ac)!important}
+@media(max-width:380px){.seachip b{display:none}.seachip .sct{border-left:0;padding-left:0}}
 /* timers strip */
 #timers{display:flex;gap:6px;padding:6px 16px;background:#0c1117;border-bottom:1px solid var(--bd);overflow-x:auto;min-height:38px;align-items:center}
 @media(min-width:821px){#timers{flex-wrap:wrap;overflow-x:visible;row-gap:5px}}
@@ -419,7 +431,7 @@ a.nav{text-decoration:none;color:#b7c2cd}a.nav:hover{color:#fff}
 .rkbar{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden;background:var(--s1)}
 .rkbar i{display:block;min-width:2px}
 .rkshl{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--mu)}.rkshl span{display:inline-flex;align-items:center;gap:5px}.rkshl b{color:var(--tx);font-weight:600}
-.rkmvs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.rkmvs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.rkmvs>div{min-width:0}.rkmv>span:last-child{flex:none;white-space:nowrap}.rkmv .n .tag{font-size:10px}
 .rkmvh{color:var(--mu);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
 .rkmv{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd);font-size:13px}.rkmv:last-child{border-bottom:0}
 .rkmv .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1213,6 +1225,7 @@ table thead th{letter-spacing:.06em}
 <header id="top">
  <a class="brand" href="/" title="Main page"><svg class="crest" viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M32 4 L56 12 V30 C56 45 46 55 32 60 C18 55 8 45 8 30 V12 Z" stroke="#d4a64a" stroke-width="3.4" stroke-linejoin="round"/><circle cx="32" cy="31" r="13" stroke="#d4a64a" stroke-width="2.4"/><ellipse cx="32" cy="31" rx="5.5" ry="13" stroke="#d4a64a" stroke-width="2"/><path d="M19 31 H45 M21 24.5 Q32 26.3 43 24.5 M21 37.5 Q32 35.7 43 37.5" stroke="#d4a64a" stroke-width="1.8"/></svg><div><b>WORLD POWERS</b><small>Global Strategy</small></div></a>
  <div id="natbox"></div>
+ <div id="seachip" style="display:none"></div>
  <div id="kpis"></div>
  <div class="topr"><button id="mailBtn" class="ibtn" data-act="page" data-a="mail" title="Mail"><svg class="ic"><use href="#i-mail"/></svg><span class="cnt" id="mailCnt"></span></button><button id="acctBtn" class="ibtn" data-act="page" data-a="account" title="Account &amp; security"><svg class="ic"><use href="#i-user"/></svg></button><button id="bellBtn" class="ibtn" data-act="bell" title="Notifications"><svg class="ic"><use href="#i-bell"/></svg><span class="cnt" id="bellCnt"></span></button><a id="adminLink" class="btn sm" href="/admin" style="display:none;text-decoration:none"><svg class="ic"><use href="#i-cog"/></svg><span class="lotx">Admin</span></a><button id="logoutBtn" class="btn sm ghost" style="display:none"><svg class="ic"><use href="#i-logout"/></svg><span class="lotx">Log out</span></button></div>
 </header>
@@ -2131,15 +2144,16 @@ function kTrend(k,now_,pts){const H=(me&&me.gdpHist)||[],t0=Date.now()-24*HOUR;l
  if(!base||Date.now()-base.t<2*HOUR)return'';const was=base[k],d=now_-was,hrs=Math.round((Date.now()-base.t)/HOUR),since=hrs>=23?'in the last 24 hours':`in the last ${hrs} hours`;
  if(pts){const v=Math.round(d);if(!v)return'';return`<i class="kd ${v>0?'up':'dn'}" title="${v>0?'Up':'Down'} ${Math.abs(v)} points ${since}">${v>0?'▲':'▼'}<em>${Math.abs(v)}</em></i>`}
  if(!was||Math.abs(was)<1)return'';const pc=d/Math.abs(was)*100;if(Math.abs(pc)<.5)return'';const t=Math.abs(pc)>=100?Math.round(Math.abs(pc))+'%':Math.abs(pc).toFixed(Math.abs(pc)<10?1:0)+'%';return`<i class="kd ${pc>0?'up':'dn'}" title="${pc>0?'Up':'Down'} ${t} ${since}">${pc>0?'▲':'▼'}<em>${t}</em></i>`}
-function renderTop(){const nb=$('natbox'),k=$('kpis');if(!me){nb.innerHTML=loaded?`<div><b>Found your nation</b><small>${esc(names[uid]||'')}</small></div>`:'';k.innerHTML='';$('timers').innerHTML='';return}
+function renderTop(){const nb=$('natbox'),k=$('kpis');seaChip();if(!me){nb.innerHTML=loaded?`<div><b>Found your nation</b><small>${esc(names[uid]||'')}</small></div>`:'';k.innerHTML='';$('timers').innerHTML='';return}
  nb.innerHTML=`<span class="dot" style="background:${esc(me.color)}"></span><div><b>${esc(me.name)}</b><small>${esc(rankName(me))} · ${GOV[me.gov].n}</small></div>`;
- const pw=power(uid),pv=myHexes().length;k.innerHTML=kpi('coins','Treasury',moneyS(me.cash),me.cash<0?'rd':'',kTrend('c',me.cash))+kpi('chart','GDP',moneyS(me.gdp),'',kTrend('v',me.gdp))+kpi('user','Population',numS(me.pop),'',kTrend('p',me.pop))+kpi('heart','Approval',Math.round(me.approval)+'%',me.approval<35?'rd':'',kTrend('a',me.approval,1))+kpi('scale','Stability',Math.round(me.stability)+'%',me.stability<30?'rd':'',kTrend('s',me.stability,1))+kpi('shield','Power',numS(pw),'',kTrend('w',pw))+kpi('pin','Provinces',num(pv),'',kTrend('h',pv));
+ const pw=power(uid),pv=myHexes().length;k.innerHTML=kpi('coins','Treasury',moneyS(me.cash),me.cash<0?'rd':'',kTrend('c',me.cash))+kpi('chart','GDP',moneyS(me.gdp),'',kTrend('v',me.gdp))+kpi('user','Population',numS(me.pop),'',kTrend('p',me.pop))+kpi('heart','Approval',Math.round(me.approval)+'%',me.approval<35?'rd':'',kTrend('a',me.approval,1))+kpi('scale','Stability',Math.round(me.stability)+'%',me.stability<30?'rd':'',kTrend('s',me.stability,1))+kpi('shield','Power',numS(pw),'',kTrend('w',pw))+kpi('pin','Provinces',num(pv),'',kTrend('h',pv));fitTop();
  const mu=X().mailUnread||0;$('mailCnt').textContent=mu>99?'99+':mu;$('mailCnt').classList.toggle('on',mu>0);$('mailBtn').title=mu?`Mail: ${mu} unread`:'Mail';$('mailBtn').classList.toggle('on',page==='mail')}
 function updTimers(){if(!me)return;updExp();const nr=readyOps().length,T=[];
  // each chip: a fixed part and a changing value. The bar is patched in place (never rebuilt every second), so a tap that lands mid-update still counts as a click
  // the top of the page holds just one button: Collect Taxes (every other operation lives on the Operations page)
  {const l=left('tax'),bk=l?'':opBlock('tax');T.push({k:'tax',cls:`tm runall ${l||bk?'':'rdy'}`,act:'do',a:'tax',title:bk||'Collect Taxes',pre:I('coins')+' Collect Taxes',val:l?fmtT(l):bk?'BLOCKED':''})}
  {const st=$('sideTax');if(st){const l=left('tax'),bk=l?'':opBlock('tax'),tx=l?`Collect taxes · ${fmtT(l)}`:bk?'Taxes blocked':'Collect taxes';st.classList.toggle('wait',!!(l||bk));st.title=bk||'';const sp=st.lastChild;if(sp.textContent!==tx)sp.textContent=tx}}
+ {const c=SEA&&SEA.cur;if(c&&(c.status==='live'||c.status==='scheduled')){const live=c.status==='live';T.push({k:'sea',cls:`tm sea${live?'':' soon'}`,act:'page',a:'rank',title:`${c.name} · tap for the standings`,pre:'🏆 '+esc(c.name),val:live?(c.end?`${seaLeft(c.end)} left`:'live now'):`in ${seaLeft(c.start)}`})}}
  const box=$('timers'),kids=box.children;
  if(kids.length!==T.length||T.some((t,i)=>kids[i].dataset.k!==t.k)){box.innerHTML=T.map(t=>`<span class="${t.cls}" data-k="${t.k}" data-act="${t.act}"${t.a?` data-a="${t.a}"`:''} title="${esc(t.title)}"><i class="tp">${t.pre}</i><b>${esc(t.val)}</b></span>`).join('');for(let i=0;i<T.length;i++){kids[i]._p=T[i].pre}}
  else T.forEach((t,i)=>{const c=kids[i];if(c.className!==t.cls)c.className=t.cls;if(c.title!==t.title)c.title=t.title;if(c._p!==t.pre){c.firstChild.innerHTML=t.pre;c._p=t.pre}const b=c.lastChild;if(b.textContent!==t.val)b.textContent=t.val});
@@ -3235,6 +3249,19 @@ function pCasino(){const n=me,mx=C.casinoMax(n),cs=n.casino||{played:0,net:0,bes
 
 // ================= seasons & Hall of Fame =================
 let SEA=null,seaAt=0,seaBusy=false;
+let seaTry=0;
+/* desktop top bar: when the season chip needs room, hide the least important numbers one by one until everything fits (Power, Stability, Provinces, Population, Approval, GDP) */
+let fitKey='',fitN=0;
+function fitTop(){const k=$('kpis'),top=$('top');if(!k||!top)return;const ks=k.children,ord=[5,4,6,2,3,1];for(const x of ks)x.classList.remove('fitx');if(innerWidth<821||!$('seachip')._h){fitKey='';return}
+ const key=innerWidth+'|'+$('seachip')._h,over=()=>k.scrollWidth>k.clientWidth+1||top.scrollWidth>top.clientWidth+1||document.documentElement.scrollWidth>innerWidth;
+ if(key===fitKey){for(let i=0;i<fitN;i++)if(ks[ord[i]])ks[ord[i]].classList.add('fitx');return}
+ let n=0;while(n<ord.length&&over()){if(ks[ord[n]])ks[ord[n]].classList.add('fitx');n++}fitKey=key;fitN=n}
+addEventListener('resize',()=>{fitKey='';fitTop()});
+/* the season chip in the top bar: always there while a season is running or about to start, cannot be closed, tap opens the standings */
+function seaChip(){const el=$('seachip');if(!el)return;if(me&&Date.now()-seaTry>5*60e3){seaTry=Date.now();loadSeason(true)}const c=me&&SEA&&SEA.cur,on=c&&(c.status==='live'||c.status==='scheduled');
+ let h='';if(on){const live=c.status==='live',t=live?(c.end?`${seaLeft(c.end)} left`:'live now'):`starts in ${seaLeft(c.start)}`;
+  h=`<button type="button" class="seachip${live?'':' soon'}" data-act="page" data-a="rank" title="${esc(c.name)} ${live?(c.end?`ends in ${seaLeft(c.end)}`:'is on'):`starts in ${seaLeft(c.start)}`}${live&&c.me?` · you're #${c.me.r} of ${c.count}`:''} · tap for the standings"><span class="sci">🏆</span><b>${esc(c.name)}</b><span class="sct">${t}</span></button>`}
+ if(el._h!==h){el._h=h;el.innerHTML=h;el.style.display=h?'':'none';fitKey='';fitTop()}}
 async function loadSeason(force){if(seaBusy||(!force&&SEA&&Date.now()-seaAt<60e3))return;seaBusy=true;try{SEA=await WP.api('GET','/api/season');seaAt=Date.now()}catch(e){}seaBusy=false;if(page==='rank'||page==='overview')render()}
 const seaLeft=t=>{const ms=Math.max(0,t-Date.now()),d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5);return d?`${d}d ${h}h`:`${h}h ${Math.floor(ms%36e5/6e4)}m`};
 function seasonBanner(){loadSeason();const c=SEA&&SEA.cur;if(!c||!me||hid('sea:'+c.id+':'+c.status))return'';if(c.status!=='live'&&cdOn())return''; // the countdown banner already covers it
