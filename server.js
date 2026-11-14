@@ -1466,6 +1466,7 @@ async function adminRoute(p, req, res, me) {
     }
     if (op === 'countdown') { // the countdown banner players see at the top of every page
       if (b.off) { S.countdown = null; persist(); broadcast('config', effCfg()); audit(me.name, 'Removed the countdown banner', ''); return send(res, 200, { ok: true }); }
+      if (b.remind) { const c = S.countdown; if (!c || c.at + 2 * HOUR <= Date.now()) return send(res, 400, { error: 'There is no countdown banner to remind people about.' }); c.id = crypto.randomBytes(4).toString('hex'); c.reminded = Date.now(); persist(); broadcast('config', effCfg()); audit(me.name, 'Reminded everyone about the countdown', c.text); return send(res, 200, { ok: true, countdown: c }); } // a new id brings the banner back for everyone who closed it
       const text = clean(b.text).slice(0, 120) || 'The next season starts in', at = Math.round(+b.at);
       if (!Number.isFinite(at) || at <= Date.now() + 30e3) return send(res, 400, { error: 'Pick a time in the future for the countdown to end.' });
       if (at > Date.now() + 365 * 864e5) return send(res, 400, { error: 'The countdown can run for at most a year.' });
