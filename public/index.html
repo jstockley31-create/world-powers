@@ -1269,6 +1269,9 @@ const setCfg=c=>{if(c)window.dispatchEvent(new CustomEvent('wp-config',{detail:c
 function applyInit(d){st.cols={nations:{},chat:{},online:{},...d.cols};st.users=d.users||{};st.ready=true;setCfg(d.config);WP.extra={strikes:d.strikes||[],burn:d.burn||[],ntests:d.ntests||[],ntestPending:d.ntestPending||[],voteAt:d.voteAt||0,voteS:d.voteS||{},council:d.council,blocs:d.blocs||{},crisis:d.crisis||null,nukes:d.nukes||[],polls:d.polls||[],games:d.games||null,dis:d.dis||[],event:d.event,notes:d.notes||[],mailUnread:d.mailUnread||0,prefs:d.prefs||{},muted:d.muted||[],vapid:d.vapid,pushOn:d.pushOn,fallen:d.fallen||null,fallenList:d.fallenList||[],awaySince:d.awaySince||0};emit('wp-extra',WP.extra);for(const c in st.cols)fire(c)}
 // the live stream can stall without any error (a phone waking up, a network switch, a proxy hiccup): watch for silence and reconnect, which reloads the whole world
 let curES=null,lastMsg=0,lastDoc=0,lastOwn=0,expT=0,connT=0,connFails=0;
+/* the connection banner belongs to the page, not to one connection: whichever connection opens next clears it (a phone that switched apps gets a brand-new connection) */
+const NET={down:false,downT:null};const netBar=(t,ok)=>{const b=document.getElementById('netbar');if(!b)return;b.querySelector('span').textContent=t;b.classList.toggle('ok',!!ok);b.classList.add('on')};
+function netUp(){clearTimeout(NET.downT);NET.downT=null;const b=document.getElementById('netbar');if(NET.down||(b&&b.classList.contains('on')&&!b.classList.contains('ok'))){NET.down=false;netBar('Back online',true);setTimeout(()=>{const x=document.getElementById('netbar');if(x&&x.classList.contains('ok'))x.classList.remove('on')},1800)}}
 function reconnect(why,force){if(!force&&Date.now()-connT<5000)return;connT=Date.now();try{if(curES)curES.close()}catch(e){}connect()}
 WP.resync=reconnect;
 // an action's answer carries our own nation: show it right away
@@ -1282,7 +1285,7 @@ window.addEventListener('online',()=>{if(curES)reconnect('network back')});
 let noZip=false;try{noZip=localStorage.getItem('wp_noz')==='1'}catch(e){}
 function connect(){const zip=!noZip,es=new EventSource('/api/stream'+(zip?'?z=1':''));curES=es;lastMsg=Date.now();connT=Date.now();
  if(zip)setTimeout(()=>{if(curES===es&&!es._init){noZip=true;try{localStorage.setItem('wp_noz','1')}catch(e){}reconnect('compressed stream sent nothing')}},9000);
- const on=(n,f)=>es.addEventListener(n,e=>{if(curES!==es)return;lastMsg=Date.now();f(e)});
+ const on=(n,f)=>es.addEventListener(n,e=>{if(curES!==es)return;lastMsg=Date.now();if(NET.down||NET.downT)netUp();f(e)});
  on('hb',()=>{});
 on('init',e=>{es._init=1;const d=JSON.parse(e.data);
   // a new version was deployed while this page stayed open (phones keep apps alive for days): reload into it
@@ -1310,9 +1313,8 @@ on('ntestwarn',e=>window.dispatchEvent(new CustomEvent('wp-ntestwarn',{detail:JS
 on('ntest',e=>window.dispatchEvent(new CustomEvent('wp-ntest',{detail:JSON.parse(e.data)})));
 on('firesout',()=>window.dispatchEvent(new CustomEvent('wp-firesout')));
 on('announce',e=>window.dispatchEvent(new CustomEvent('wp-announce',{detail:JSON.parse(e.data)})));
- let downT=null,wasDown=false;const nb=(t,ok)=>{const b=document.getElementById('netbar');if(!b)return;b.querySelector('span').textContent=t;b.classList.toggle('ok',!!ok);b.classList.add('on')};
- es.onopen=()=>{lastMsg=Date.now();connFails=0;clearTimeout(downT);downT=null;if(wasDown){wasDown=false;nb('Back online',true);setTimeout(()=>{const b=document.getElementById('netbar');if(b)b.classList.remove('on')},1800)}};
- es.onerror=async()=>{if(curES!==es)return;if(!downT&&!wasDown)downT=setTimeout(()=>{wasDown=true;nb('Reconnecting… the game is updating or your connection dropped')},2500);try{await api('GET','/api/me')}catch(x){if(x.status===401||x.status===403){es.close();location.href='/play';return}}if(es.readyState===2&&curES===es){clearTimeout(es._rt);es._rt=setTimeout(()=>{if(curES===es)reconnect('stream closed',true)},Math.min(30000,3000*Math.pow(2,Math.min(4,(es._n=(connFails=(connFails||0)+1)-1)))))}}}
+ es.onopen=()=>{lastMsg=Date.now();connFails=0;netUp()};
+ es.onerror=async()=>{if(curES!==es)return;if(!NET.downT&&!NET.down)NET.downT=setTimeout(()=>{NET.downT=null;if(curES===es&&es.readyState!==1){NET.down=true;netBar('Reconnecting… the game is updating or your connection dropped')}},2500);try{await api('GET','/api/me')}catch(x){if(x.status===401||x.status===403){es.close();location.href='/play';return}}if(es.readyState===2&&curES===es){clearTimeout(es._rt);es._rt=setTimeout(()=>{if(curES===es)reconnect('stream closed',true)},Math.min(30000,3000*Math.pow(2,Math.min(4,(es._n=(connFails=(connFails||0)+1)-1)))))}}}
 // ---------- sign-in screen ----------
 const CSS=`#auth{position:fixed;inset:0;z-index:60;background:#05080c;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(360px,.8fr);font-family:Inter,system-ui,sans-serif;color:#e6edf3}
 #auth .left{position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#0d1d2d 0%,#05080c 70%)}
@@ -1627,7 +1629,9 @@ const GL=(()=>{
  function size(){if(!st.el)return;const r=st.el.getBoundingClientRect();st.dpr=st.lo?1:Math.min(2,window.devicePixelRatio||1);st.w=Math.max(100,r.width);st.h=Math.max(100,r.height);const W_=Math.round(st.w*st.dpr),H_=Math.round(st.h*st.dpr);if(cv.width!==W_||cv.height!==H_){cv.width=W_;cv.height=H_}cv.style.width=st.w+'px';cv.style.height=st.h+'px'}
  // while the globe is being dragged, zoomed or flown, paint at 1x resolution (much cheaper on phones), then repaint sharp once it settles
  function moving(){st.baseOk=false;if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo){st.lo=false;size();redraw()}},180)}
- const radius=()=>Math.min(st.w,st.h)*.46*st.scale;
+ /* on the World page the globe fills the width of a wide box (the top and bottom of the sphere may run past the edges; drag to see them) */
+ const baseD=()=>st.mode==='world'&&st.w>st.h*1.15?Math.min(st.w*.98,Math.max(st.h,st.w*.62)):Math.min(st.w,st.h),minZ=()=>st.mode==='world'?.55:.8;
+ const radius=()=>baseD()*.46*st.scale;
  const CLOUDS=(()=>{let x=91;const R=()=>(x=(x*16807)%2147483647)/2147483647;return Array.from({length:46},()=>[R()*360-180,(R()-.5)*130,.05+R()*.09,.6+R()*1.4])})();
  const STARS=(()=>{let x=7;const R=()=>(x=(x*16807)%2147483647)/2147483647;return Array.from({length:180},()=>[R(),R(),R()<.15?1.6:1,.15+R()*.5])})();
  let CGP=null;const cgPolys=()=>CGP||(CGP=PD.cg.flatMap(g=>g.type==='Polygon'?[g.coordinates]:g.coordinates).map(coords=>({c:d3.geoCentroid({type:'Polygon',coordinates:coords}),geo:{type:'MultiPolygon',coordinates:[coords]}})));
@@ -1712,17 +1716,18 @@ const GL=(()=>{
  function fastFrame(){if(!st.baseOk||!st.el||!st.el.isConnected)return draw();const w=st.w,h=st.h,r=radius();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(baseCv,0,0);ctx.setTransform(st.dpr,0,0,st.dpr,0,0);proj.rotate(st.rot).scale(r).translate([w/2,h/2]);overlay([-st.rot[0],-st.rot[1]],w,h,r)}
  let labW=null,labC=[],candW=null,candS=null,mineS=[];function labels(){if(labW===W)return labC;labW=W;labC=[];for(const[u,n]of Object.entries(A)){const hs=hexesOf(u);if(!hs.length)continue;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}labC.push([u,n,[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI]])}labC.sort((a,b)=>(b[0]===uid)-(a[0]===uid)||hexesOf(b[0]).length-hexesOf(a[0]).length);return labC}
  const redraw=()=>{st.baseOk=false;if(!st.raf)st.raf=requestAnimationFrame(draw)};
- function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);size();redraw();if(SK.length)setTimeout(kick,50);if(BURN.size)smokeLoop()}
+ const RO=new ResizeObserver(()=>{if(st.el&&st.el.isConnected){size();redraw()}});
+ function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);try{RO.disconnect();RO.observe(slot)}catch(e){}size();redraw();if(SK.length)setTimeout(kick,50);if(BURN.size)smokeLoop()}
  function ll(ev){const r=cv.getBoundingClientRect();proj.rotate(st.rot).scale(radius()).translate([st.w/2,st.h/2]);const p=proj.invert([ev.clientX-r.left,ev.clientY-r.top]);if(!p||!isFinite(p[0]))return null;if(d3.geoDistance(p,[-st.rot[0],-st.rot[1]])>Math.PI/2)return null;return p}
  const ptr=new Map();let moved=0,pinch=0,lastHover=0;
  let downX=0,downY=0,downTouch=false,downRot=null;
  cv.addEventListener('pointerdown',e=>{if(st.fx){st.fx.track=false;st.fx.touched=true}ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;downX=e.clientX;downY=e.clientY;downTouch=e.pointerType!=='mouse';downRot=st.rot.slice();st.anim=null;if(ptr.size===2){const[a,b]=[...ptr.values()];pinch=Math.hypot(a.x-b.x,a.y-b.y)}try{cv.setPointerCapture(e.pointerId)}catch(x){}cv.classList.add('drag')});
  cv.addEventListener('pointermove',e=>{const p=ptr.get(e.pointerId);if(!p){if(e.pointerType!=='mouse')return;const now=performance.now();if(now-lastHover>50){lastHover=now;const q=ll(e);const h=q?findProv(q):null;if(h!==st.hover){st.hover=h;redraw()}showTip(h,e)}return}
   if(ptr.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;moved+=Math.abs(dx)+Math.abs(dy);const k=.25/st.scale;moving();st.rot=[st.rot[0]+dx*k,clamp(st.rot[1]-dy*k,-85,85),0];p.x=e.clientX;p.y=e.clientY;hideTip();redraw()}
-  else if(ptr.size===2){p.x=e.clientX;p.y=e.clientY;const[a,b]=[...ptr.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch){moving();st.scale=clamp(st.scale*d/pinch,.8,9)}pinch=d;moved+=10;redraw()}});
+  else if(ptr.size===2){p.x=e.clientX;p.y=e.clientY;const[a,b]=[...ptr.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch){moving();st.scale=clamp(st.scale*d/pinch,minZ(),9)}pinch=d;moved+=10;redraw()}});
  const up=e=>{const had=ptr.delete(e.pointerId);if(ptr.size<2)pinch=0;if(!ptr.size)cv.classList.remove('drag');if(had&&e.type==='pointerup'&&(downTouch?Math.hypot(e.clientX-downX,e.clientY-downY)<18&&moved<60:moved<8)){if(downRot&&moved>0){st.rot=downRot;redraw()} /* a tap, not a drag: undo the tiny accidental turn and use the spot the finger first touched */const q=ll({clientX:downX,clientY:downY});const h=q?findProv(q):null;if(h!=null)pickProv(h);else if(st.mode==='found')toast(q?'That’s sea — tap on land.':'Tap on the globe itself.')}};
  cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);cv.addEventListener('pointerleave',()=>{if(st.hover!=null){st.hover=null;redraw()}hideTip()});
- cv.addEventListener('wheel',e=>{e.preventDefault();if(st.fx){st.fx.track=false;st.fx.touched=true}moving();st.scale=clamp(st.scale*(e.deltaY>0?.88:1.14),.8,9);redraw()},{passive:false});
+ cv.addEventListener('wheel',e=>{e.preventDefault();if(st.fx){st.fx.track=false;st.fx.touched=true}moving();st.scale=clamp(st.scale*(e.deltaY>0?.88:1.14),minZ(),9);redraw()},{passive:false});
  new ResizeObserver(()=>{if(st.el&&st.el.isConnected){size();redraw()}}).observe(document.body);
  function flyTo(c,scale){const r0=st.rot.slice(),s0=st.scale,r1=[-c[0],-c[1],0],s1=scale||st.scale;let dl=r1[0]-r0[0];dl=((dl+540)%360)-180;const t0=performance.now();st.anim=true;
   const step=t=>{if(!st.anim)return;const k=Math.min(1,(t-t0)/900),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;st.rot=[r0[0]+dl*e,r0[1]+(r1[1]-r0[1])*e,0];st.scale=s0+(s1-s0)*e;if(k<1)moving();draw();if(k<1)requestAnimationFrame(step);else st.anim=null};requestAnimationFrame(step)}
@@ -1752,7 +1757,7 @@ const GL=(()=>{
  // a province on fire: last hit time and number of hits (from the server at login, then live)
  // nuclear test in the ocean: flash, fireball, condensation dome, shock rings on the water, a column of water with a mushroom cap, base surge, then steam that lingers ten minutes
  function flyToVis(c,scale,frac){if(!st.el)return flyTo(c,scale);const R=st.el.getBoundingClientRect();let top=Math.max(R.top,0),bot=Math.min(R.bottom,innerHeight);const dk=document.getElementById('dock');if(dk&&dk.offsetParent){const d=dk.getBoundingClientRect();if(d.top>top+80&&d.top<bot)bot=d.top}
-  const yLocal=top+(bot-top)*frac-R.top,rad=Math.min(st.w,st.h)*.46*scale,dl=(yLocal-st.h/2)/rad;flyTo([c[0],clamp(c[1]+dl*180/Math.PI,-80,80)],scale)}
+  const yLocal=top+(bot-top)*frac-R.top,rad=baseD()*.46*scale,dl=(yLocal-st.h/2)/rad;flyTo([c[0],clamp(c[1]+dl*180/Math.PI,-80,80)],scale)}
  // great-circle ring of a given radius (km), clockwise, for fallout zones and domes
  const ringPts=(c,km)=>{const out=[],d=km/6371,p1=c[1]*RAD,l1=c[0]*RAD;for(let i=0;i<=72;i++){const b=i/72*Math.PI*2,p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(b)),l2=l1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));out.push([((l2/RAD+540)%360)-180,p2/RAD])}return out};
  const ringPath=(c,km)=>{ctx.beginPath();path({type:'Polygon',coordinates:[ringPts(c,km)]})};
@@ -1810,7 +1815,7 @@ const GL=(()=>{
  // the test, slowed down: flash, fireball on the water, a condensation dome, ripples rolling out across the sea, a towering column of water, a steam mushroom and a base surge of mist
  const TXDUR=17500;
  function drawTests(cv,V){if(!TX.length)return;const now=performance.now(),wall=Date.now();for(let i=TX.length-1;i>=0;i--)if(wall-TX[i].wall>10*60e3)TX.splice(i,1);
-  const r=Math.min(st.w,st.h)*.46*st.scale,Z=r/240,ez=x=>1-Math.pow(1-Math.max(0,Math.min(1,x)),3);
+  const r=baseD()*.46*st.scale,Z=r/240,ez=x=>1-Math.pow(1-Math.max(0,Math.min(1,x)),3);
   for(const x of TX){if(dot(x.v,cv)<=V)continue;const g=proj(x.at),t=now-x.t0,age=wall-x.wall,linger=Math.max(0,1-age/600000);
    // steam that hangs over the site for ten minutes
    if(t>12000){const inA=Math.min(1,(t-12000)/5000);for(let j=0;j<9;j++){const a=j/9*Math.PI*2+wall/26000;blit('puff',G_PUFF,g[0]+Math.cos(a)*r*.05+(age/60000)*2*Z,g[1]-r*.2+Math.sin(a)*r*.02,(10+(j%3)*4)*Z,.55*linger*inA)}}
@@ -2075,7 +2080,7 @@ const GL=(()=>{
     for(let k=0;k<11;k++){const a=k/11*Math.PI*2+t/7000;blit('smokeM',G_SMOKEM,cx+Math.cos(a)*R*.6,cy+Math.sin(a)*R*.25-R*.14,R*.55,.8*fade)}
     blit('smoke',G_SMOKE,cx-R*.2,cy-R*.32,R*.6,.55*fade);
     if(heat>0){blit('fire',G_FIRE,cx,cy+R*.05,R*.8,heat*.9);blit('flash',G_FLASH,cx,cy,R*.45,heat*.6)}}}}
- return{xy:c=>{try{return proj(c)}catch(e){return null}},fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,.8,9);redraw()}}})();
+ return{xy:c=>{try{return proj(c)}catch(e){return null}},fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,minZ(),9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
 function globeSlot(mode,h,extra){const full=gFull&&mode==='world';return`<div class="gwrap${full?' gfull':''}" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl">${mode==='world'?`<button data-act="gfull" title="${full?'Exit full screen (Esc)':'Full screen'}">${I(full?'unfull':'full')}</button>`:''}<button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='world'&&extra?extra:''}${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
@@ -2279,7 +2284,13 @@ function landBox(){if(!me)return'';const a=C.adminState(W,uid),held=myHexes().le
   <div style="flex:1;text-align:center"><div class="mu" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase">Administration</div><div style="font-size:30px;font-weight:700;line-height:1.15;color:${col}">${a.used}<span class="mu" style="font-size:18px;font-weight:600"> / ${a.cap}</span></div><div class="mu" style="font-size:11.5px">used / you can hold</div></div></div>
   <div class="xpbar" style="margin:10px 0 8px"><i style="width:${pct}%;background:${col}"></i></div>
   <p style="margin:0;font-size:13px">${msg}</p><p class="mu" style="margin:6px 0 0;font-size:11.5px">Core land costs 1, a new colony ${C.ADMIN.colony}, capital free. <a data-act="page" data-a="gov">Raise your limit →</a></p></div>`}
-function pWorld(){const pi=`<div id="pinfo" class="pinfo">${provInfo()}</div>`;return`<h1 class="pg">World</h1><p class="pgsub">Drag to rotate, scroll or pinch to zoom, tap a province for details. Dashed outlines mark land you can settle.</p><div class="wglobe">${globeSlot('world',isMob()?'min(72vh,720px)':'min(80vh,900px)',`<div class="gfinfo"${selHex==null?' style="display:none"':''}><button class="btn sm ghost gfx" data-act="gfclose" title="Close">✕</button>${pi}</div>`)}</div><div class="wbelow">${gFull?'':landBox()+panel('Expand borders',expBox(),'','expand')+(isMob()?'':panel('Province',pi,'','pin'))}${nukeReplays()}${panel('Nations',Object.keys(A).sort((a,b)=>score(b)-score(a)).map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer" data-act="fly" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span><span>${esc(A[u].name)}${aiTag(u)}</span><span class="mu" style="margin-left:auto;font-size:12px">${hexesOf(u).length} prov.</span></div>`).join('')||'<p class="mu">None yet.</p>')}</div>`}
+/* the World globe on a computer is as tall as the visible part of the page below the title (never under 420px), so all of it fits without scrolling */
+function worldGH(fit){const m=$('main');if(!m)return 640;const g=document.querySelector('.wglobe .gwrap');const mt=m.getBoundingClientRect().top;const off=g&&g.isConnected?g.getBoundingClientRect().top-mt+m.scrollTop:200;if(!fit){clearTimeout(worldGH.t);worldGH.t=setTimeout(worldFit,60)} /* after this redraw, measure where the globe really is and refit */return Math.round(Math.max(320,Math.min(1000,m.clientHeight-off-14)))}
+let wghLast=0,wghT=0;
+/* the globe box is kept as it is when the page redraws (so the globe never flickers), so its height is set directly */
+function worldFit(){if(page!=='world'||isMob()||gFull)return;const g=document.querySelector('.wglobe .gwrap');if(!g)return;const h=worldGH(true);if(Math.abs(h-g.offsetHeight)>6)g.style.height=h+'px'}
+new ResizeObserver(()=>{if(page!=='world'||isMob()||gFull)return;clearTimeout(wghT);wghT=setTimeout(worldFit,150)}).observe(document.getElementById('main')||document.body);
+function pWorld(){const pi=`<div id="pinfo" class="pinfo">${provInfo()}</div>`;return`<h1 class="pg">World</h1><p class="pgsub">Drag to rotate, scroll or pinch to zoom, tap a province for details. Dashed outlines mark land you can settle.</p><div class="wglobe">${globeSlot('world',isMob()?'min(72vh,720px)':worldGH()+'px',`<div class="gfinfo"${selHex==null?' style="display:none"':''}><button class="btn sm ghost gfx" data-act="gfclose" title="Close">✕</button>${pi}</div>`)}</div><div class="wbelow">${gFull?'':landBox()+panel('Expand borders',expBox(),'','expand')+(isMob()?'':panel('Province',pi,'','pin'))}${nukeReplays()}${panel('Nations',Object.keys(A).sort((a,b)=>score(b)-score(a)).map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer" data-act="fly" data-a="${esc(u)}"><span class="dot" style="background:${esc(A[u].color)}"></span><span>${esc(A[u].name)}${aiTag(u)}</span><span class="mu" style="margin-left:auto;font-size:12px">${hexesOf(u).length} prov.</span></div>`).join('')||'<p class="mu">None yet.</p>')}</div>`}
 // outposts: up to 4 staging grounds
 function outpostBtn(h){if(!me)return'';const O=C.OUTPOST,mine=me.outposts||{},cnt=Object.keys(mine).length;
  if(mine[h])return`<div class="opbox on"><b>🏰 Outpost</b><span>Attacks on targets within ${num(O.stageKm)} km launch from here with no distance penalty. This province and your neighbouring ones defend 10% better. Costs just 1 administration.</span><button class="btn sm ghost" data-act="outpostrm" data-a="${h}">Dismantle outpost</button></div>`;
