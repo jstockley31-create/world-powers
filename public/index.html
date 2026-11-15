@@ -3366,7 +3366,7 @@ function renderOnline(){const now=Date.now();const on=[],idle=[];
 // Chat shows war news only (strikes, battles, nukes, wars, falls). Everything else stays in World news on the World page.
 const WARNEWS=/launched (air strikes|missiles)|dirty bomb|broke away|☢|⚠|☠|declared war|captured .* from|repelled|has conquered|last stand|fell in battle|seized .* from|peace treaty|Collective Defense/;
 const HOTNEWS=/launched (air strikes|missiles)|dirty bomb|☢|has conquered|declared war/;
-function chatNews(){const r=[];for(const n of Object.values(A))for(const e of n.out||[])if(e.type==='news'&&WARNEWS.test(e.x)&&!/^🗺|trade deal|trade agreement|traded /.test(e.x))r.push(e); /* trade and land deals stay out of World Chat */r.sort((a,b)=>b.t-a.t);const last=new Map();
+function chatNews(){const r=[];for(const n of Object.values(A))if(!n.ai)for(const e of n.out||[]) /* World Chat only reports what real players do; AI attacks still show at the top of the screen */if(e.type==='news'&&WARNEWS.test(e.x)&&!/^🗺|trade deal|trade agreement|traded /.test(e.x))r.push(e); /* trade and land deals stay out of World Chat */r.sort((a,b)=>b.t-a.t);const last=new Map();
  return r.filter(e=>{const p=last.get(e.x);if(p!=null&&p-e.t<(HOTNEWS.test(e.x)?60e3:6*HOUR))return false;last.set(e.x,e.t);return true}).slice(0,60)}
 let lastChatKey='';
 // ---- alliance (team) chat: a second tab in the chat dock, only for members of your alliance; the messages are the team's private board ----
