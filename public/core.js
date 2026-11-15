@@ -1536,6 +1536,7 @@ function Core(PD, CARDS) {
   }
   function setGov(W, u, g) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(GOV, g)) fail('Unknown government.'); if (g === n.gov) fail('That is already your government.'); if (left(W, n, 'gov')) fail(`Your government can change again in ${fmtT(left(W, n, 'gov'))}.`); n.gov = g; n.stability = clamp(n.stability - 25, 0, 100); n.approval = clamp(n.approval - 10, 0, 100); n.cd.gov = W.now + 6 * HOUR; n.nextElection = g === 'dem' ? W.now + W.cfg.electionH * HOUR : 0; n.campaign = 0; n.rig = 0; news(W, u, `${n.name} is now a ${GOV[g].n}.`); touch(W, u); return { msg: `You now govern a ${GOV[g].n}.` }; }
 
+  const COVERT_ID = { any: .35, assassinate: .6 }; // chance a failed operation's agents are identified
   function covert(W, u, op, v, rng) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
@@ -1570,14 +1571,16 @@ function Core(PD, CARDS) {
       else if (op === 'poison') { const f = Math.floor((them.res.food || 0) / 3); them.res.food -= f; them.health = clamp((them.health || 50) - 6, 0, 100); them.approval = clamp(them.approval - 2, 0, 100); msg = `Your agents spoiled ${num(f)} food in ${them.name}'s warehouses.`; log(them, `☣ ${num(f)} food was found contaminated and destroyed. Health −6.`, W); note(W, v, 'covert', `☣ ${num(f)} of your food stockpile was contaminated and destroyed.`); }
       else if (op === 'rig') { them.rig = (them.rig || 0) + (self ? 8 : -10); msg = self ? 'Your agents quietly secured votes for the next election (+8%).' : `Your agents are swinging ${them.name}'s next election against its government.`; }
     } else {
-      const caught = rng() < (op === 'assassinate' ? .85 : .7); const lost = Math.ceil(o.spies / 2); me.spies -= lost;
+      // spies stay anonymous most of the time: a failed operation always costs agents, but they are only identified now and then
+      const caught = rng() < (self ? .7 : COVERT_ID[op] || COVERT_ID.any); const lost = Math.ceil(o.spies / 2); me.spies -= lost;
+      if (!caught && !self) { log(them, `Your counter-intelligence foiled a foreign plot to ${o.n.toLowerCase()}. The agents would not say who sent them.`, W); note(W, v, 'covert', `🕵 Your counter-intelligence foiled a plot to ${o.n.toLowerCase()}. Nobody knows who sent the agents.`); }
       if (caught && !self) {
         me.aggr = clamp((me.aggr || 0) + 10, 0, 100); setRel(me, v, 'unally', W.now);
-        news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); them.cb = them.cb || {}; const cbH = op === 'assassinate' ? 48 : 24; them.cb[u] = Math.max(them.cb[u] || 0, W.now + cbH * HOUR); if (op === 'assassinate') me.aggr = clamp((me.aggr || 0) + 10, 0, 100); note(W, v, 'covert', `You have a just cause against ${me.name} for ${cbH} hours: attacking it adds no aggression.`);
+        if (op === 'assassinate' || op === 'rebellion') news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); /* small operations stay out of the public news: only the target is told */ them.cb = them.cb || {}; const cbH = op === 'assassinate' ? 48 : 24; them.cb[u] = Math.max(them.cb[u] || 0, W.now + cbH * HOUR); if (op === 'assassinate') me.aggr = clamp((me.aggr || 0) + 10, 0, 100); note(W, v, 'covert', `You have a just cause against ${me.name} for ${cbH} hours: attacking it adds no aggression.`);
         log(them, `Your counter-intelligence caught agents from ${me.name} attempting to ${o.n.toLowerCase()}.`, W); note(W, v, 'covert', `Agents from ${me.name} were caught attempting to ${o.n.toLowerCase()} in your nation!`);
-        msg = `The operation failed and your agents were caught. ${lost} agents lost; the world now knows.`;
+        msg = `The operation failed and your agents were identified. ${lost} agents lost; ${them.name} knows it was you${op === 'assassinate' || op === 'rebellion' ? ', and so does the world' : ''}.`;
       } else if (caught && self) { me.approval = clamp(me.approval - 10, 0, 100); news(W, u, `Election fraud scandal: ${me.name}'s government was caught rigging its own election.`); msg = 'Your vote-rigging was exposed! Approval −10.'; }
-      else msg = `The operation failed, but your agents escaped undetected. ${lost} agents lost.`;
+      else msg = `The operation failed and ${lost} agents were lost, but they didn't talk: nobody knows who sent them.`;
     }
     log(me, msg, W); gainXP(W, u, 10); touch(W, u, v); return { msg, ok };
   }
