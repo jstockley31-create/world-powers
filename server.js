@@ -15,6 +15,7 @@ const core = WP.Core(PROV, SCENARIOS);
 const makeBots = require('./bots.js');
 const PUSH = require('./push.js');
 const MOD = require('./moderation.js');
+const makeSupporters = require('./supporters.js'); let SUPP = null;
 
 const PORT = +process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -78,7 +79,7 @@ if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 // ---------- fair play: a fingerprint of the exact game code running, its release history, and a public log of admin game actions ----------
 const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Triggered a nuclear accident', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
-const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
+const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'supporters.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
 const CODE = CODE_FILES.filter(f => fs.existsSync(path.join(__dirname, f))).map(f => ({ name: f, sha: crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, f))).digest('hex') }));
 const FINGERPRINT = crypto.createHash('sha256').update(CODE.map(c => c.name + ':' + c.sha).join('\n')).digest('hex');
 S.releases = S.releases || [];
@@ -135,7 +136,7 @@ const STATIC = {};
 function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), br: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
-STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
+STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/donate'] = loadFile('donate.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
 STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=604800');
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
@@ -298,7 +299,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -1519,6 +1520,11 @@ const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tec
 async function adminRoute(p, req, res, me) {
   if (!me.admin) return send(res, 403, { error: 'Admins only.' });
   if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, overview());
+  if (p === '/api/admin/supporters') { // donations, claims and the PayPal check log
+    if (req.method === 'GET') return send(res, 200, SUPP.adminView());
+    const sb = await readBody(req, 4096), r = SUPP.adminAct(sb, me.name); if (r.error) return send(res, 400, r);
+    audit(me.name, 'Supporters', sb.op, sb.op === 'cfg' ? 'PayPal settings' : String(sb.u || sb.id || sb.txn || '').slice(0, 60)); return send(res, 200, { ...r, view: SUPP.adminView() });
+  }
   if (p === '/api/admin/viewas' && req.method === 'GET') {
     const id = new URL(req.url, 'http://x').searchParams.get('id') || ''; const u = Object.prototype.hasOwnProperty.call(S.users, id) ? S.users[id] : null; if (!u) return send(res, 404, { error: 'Unknown player.' });
     audit(me.name, 'Viewed the game as', u.name); return send(res, 200, { snap: snapshot(id), me: pub({ id, ...u }) });
@@ -1947,6 +1953,9 @@ function publicStats() {
 }
 
 // ---------- routes ----------
+// supporter rewards (verified PayPal donations); the IPN address is built from this site's own address
+const siteUrl = req => process.env.SITE_URL ? String(process.env.SITE_URL).replace(/\/+$/, '') : ((isHttps(req) ? 'https' : 'http') + '://' + (/^[a-z0-9.-]+(:\d+)?$/i.test(req.headers.host || '') ? req.headers.host : 'worldpowersgame.com'));
+SUPP = makeSupporters({ S, send, readBody, persist, setDoc, sendTo, broadcast, addNote, flag, logErr, MOD, WP, siteUrl });
 async function handle(req, res) {
   let p; try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return notFound(req, res); }
   const minute = Math.floor(Date.now() / 60000); health.reqs.set(minute, (health.reqs.get(minute) || 0) + 1);
@@ -1955,7 +1964,7 @@ async function handle(req, res) {
     res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(BLOCK_PAGE); } }
   try {
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? GAME : LANDING);
-    if (req.method === 'GET' && p === '/donate') { const d = /^https:\/\/[^\s"'<>]+$/i.test(S.config.donateUrl || '') ? S.config.donateUrl : WP.DEFCFG.donateUrl; res.writeHead(302, { Location: d, 'Cache-Control': 'no-store' }); return res.end(); } // anyone can donate, no account needed
+    if (req.method === 'GET' && p === '/donate/paypal') { const d = /^https:\/\/[^\s"'<>]+$/i.test(S.config.donateUrl || '') ? S.config.donateUrl : WP.DEFCFG.donateUrl; res.writeHead(302, { Location: d, 'Cache-Control': 'no-store' }); return res.end(); } // the plain donation link (paypal.me)
     if (req.method === 'GET' && STATIC[p]) return serveStatic(req, res, STATIC[p]);
     if (req.method === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
     if (req.method === 'GET' && p === '/api/nukes') return send(res, 200, { nukes: S.nukes.slice(0, 50) });
@@ -1976,6 +1985,8 @@ async function handle(req, res) {
     if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!me || !me.admin) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
     if (req.method === 'GET' && p.startsWith('/n/')) return await nationPage(req, res, p.slice(3));
     if (!p.startsWith('/api/')) return notFound(req, res);
+    if (p === '/api/paypal/ipn' && req.method === 'POST') { if (limited('ipn:' + ipOf(req), 30, 60e3) || limited('ipn:all', 300, 60 * 60e3)) return send(res, 429, { error: 'Slow down.' }); return SUPP.ipn(req, res); } // each message is checked with PayPal, so floods are capped // PayPal posts here (form-encoded, from PayPal's servers)
+    if (p === '/api/donate/go' && req.method === 'GET') { const who = auth(req); if (!who) { res.writeHead(302, { Location: '/donate/paypal', 'Cache-Control': 'no-store' }); return res.end(); } await SUPP.handle(req, res, p, who); return; }
 
     if (req.method !== 'GET') {
       if (!sameOrigin(req)) return send(res, 403, { error: 'Forbidden.' });
@@ -2034,6 +2045,7 @@ async function handle(req, res) {
 
     const me = auth(req);
     if (!me) return send(res, 401, { error: 'Not signed in.' });
+    if (p === '/api/supporter' || p.startsWith('/api/supporter/')) { if (p !== '/api/supporter' && limited('sup:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); touch(me.id, req); if (await SUPP.handle(req, res, p, me)) return; }
     if (p === '/api/casino/fair') { const f = fairOf(me.id);
       if (req.method === 'GET') return send(res, 200, fairView(f));
       const b = await readBody(req, 1024);
@@ -2128,6 +2140,7 @@ async function handle(req, res) {
       if (S.fresh && b.c === 'relief') { const d = (S.dis || []).find(x => x.id === String(b.id)); if (d && d.u !== me.id && sharesNetwork(me.id, d.u)) return send(res, 400, { error: 'During the season you can\'t send relief to an account on the same network as yours.' }); }
       if (b.c === 'aid' && typeof b.v === 'string' && sharesNetwork(me.id, b.v)) flag(me.id, `Sent aid to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       if (b.c === 'found' && typeof b.name === 'string' && MOD.isProfane(b.name)) return send(res, 400, { error: 'Please choose a different name for your nation.' });
+      if ((b.c === 'found' || b.c === 'movecap') && typeof b.name === 'string' && SUPP.reservedBy(b.name, me.id)) return send(res, 400, { error: 'That nation name is reserved by a World Powers supporter. Please choose another.' });
       if (b.c === 'flag' && typeof b.motto === 'string' && MOD.isProfane(b.motto)) return send(res, 400, { error: 'Please choose a different motto.' });
       if (b.c === 'bloc' && ['name', 'tag', 'motto', 'text'].some(k => typeof b[k] === 'string' && MOD.isProfane(b[k]))) return send(res, 400, { error: 'Please choose different wording.' });
       if (b.c === 'movecap' && typeof b.name === 'string' && MOD.isProfane(b.name)) return send(res, 400, { error: 'Please choose a different name for your nation.' });

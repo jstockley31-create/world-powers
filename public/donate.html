@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Support World Powers</title><link rel="icon" href="/icon.svg">
+<meta name="description" content="Support World Powers with a donation and get supporter perks for your nation.">
+<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+body{margin:0;background:#06090d;color:#e6edf3;font:16px/1.6 Inter,system-ui,sans-serif}
+.w{max-width:960px;margin:0 auto;padding:30px 20px 90px}a{color:#d4a64a}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.top{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.22em;font-size:14px;color:#e6edf3;text-decoration:none}.top img{width:28px;height:28px}
+.play{background:#d4a64a;color:#111;padding:9px 18px;border-radius:8px;font-weight:600;text-decoration:none;font-size:14px}
+h1{font-family:Cinzel,Georgia,serif;font-size:40px;letter-spacing:.03em;margin:34px 0 6px;line-height:1.15}
+.lede{color:#aab6c2;max-width:64ch;margin:0 0 26px}
+.mu{color:#8b98a5}
+.note{border:1px solid #2a3746;border-radius:12px;background:#0c1218;padding:14px 18px;margin:0 0 22px}
+.note.ok{border-color:#2c5a39;background:#0f1d14}.note.warn{border-color:#5d4a1f;background:#1c160b}
+.me{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;border:1px solid rgba(212,166,74,.35);border-radius:16px;background:linear-gradient(180deg,#121a22,#0b1015);padding:18px 20px;margin:0 0 26px}
+.me .bd{font-size:42px;line-height:1}.me h2{margin:0;font-size:20px}.me .perks{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #2a3746;border-radius:20px;padding:5px 12px;font-size:13.5px;color:#c5ced8;background:#0c1218}
+.pill b{color:#fff}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 26px}
+.tier{position:relative;display:flex;flex-direction:column;border:1px solid #2a3746;border-radius:16px;background:#0c1218;padding:20px 18px 18px}
+.tier.t2{border-color:rgba(212,166,74,.45)}.tier.t3{border-color:rgba(212,166,74,.8);background:linear-gradient(180deg,#171309,#0c1218 60%)}
+.tier.mine{box-shadow:0 0 0 2px #d4a64a}
+.tier .ic{font-size:30px;line-height:1}.tier h3{margin:8px 0 0;font-size:20px}.tier .amt{font-family:Cinzel,Georgia,serif;font-size:28px;color:#d4a64a;margin:2px 0 10px}
+.tier .amt small{font-family:Inter,system-ui,sans-serif;font-size:13px;color:#8b98a5;letter-spacing:0}
+.tier ul{margin:0 0 16px;padding-left:18px;color:#c5ced8;font-size:14.5px;flex:1}.tier li{margin:5px 0}.tier li b{color:#fff;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #2a3746;background:#141c25;color:#e6edf3;border-radius:9px;padding:10px 16px;font:600 14.5px Inter,system-ui,sans-serif;cursor:pointer;text-decoration:none}
+.btn:hover{border-color:#3b4b5c}.btn.pri{background:#d4a64a;border-color:#d4a64a;color:#111}.btn.pri:hover{background:#e2b65a}
+.btn:disabled{opacity:.5;cursor:not-allowed}.btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.custom{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 30px}
+input{background:#0c1218;border:1px solid #2a3746;color:#e6edf3;border-radius:8px;padding:9px 12px;font:15px Inter,system-ui,sans-serif}
+input:focus{outline:2px solid #d4a64a;outline-offset:0}
+h2.s{font-size:20px;margin:30px 0 10px}
+details{border:1px solid #1d2731;border-radius:10px;padding:10px 14px;margin:0 0 10px;background:#0a0f14}summary{cursor:pointer;font-weight:600}details p{color:#c5ced8;margin:8px 0 2px;font-size:15px}
+.acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.claim{display:grid;grid-template-columns:1fr 140px auto;gap:10px;margin-top:10px}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:8px}td{border-bottom:1px solid #1a232d;padding:6px}td.r{text-align:right}
+.msg{min-height:22px;margin-top:8px;font-size:14px}.msg.err{color:#ff9a94}.msg.ok{color:#9fe0ae}
+@media(max-width:820px){.tiers{grid-template-columns:1fr}h1{font-size:31px}.claim{grid-template-columns:1fr 1fr}.claim .btn{grid-column:1/-1}.me{grid-template-columns:1fr}}
+</style></head><body><div class="w">
+<div class="bar"><a class="top" href="/"><img src="/icon.svg" alt="">WORLD POWERS</a><a class="play" href="/play">Play</a></div>
+<h1>Support World Powers</h1>
+<p class="lede">World Powers is free to play and run by one person. Donations pay for the server and keep the game growing. As a thank-you, supporters get perks for their nation. Your level is set by everything you have donated in total, so it adds up over time and never runs out.</p>
+<div id="banner"></div>
+<div id="me"></div>
+<div class="tiers" id="tiers"></div>
+<div class="custom" id="custom"></div>
+<div id="more"></div>
+<h2 class="s">Questions</h2>
+<details><summary>How is my donation linked to my nation?</summary><p>Sign in, then press a Donate button on this page. PayPal receives a private code that belongs to your account. When the payment completes, PayPal tells our server directly, we check the payment with PayPal, and your perks switch on within a few minutes. You don't need to do anything else.</p></details>
+<details><summary>I donated another way, or my perks didn't appear</summary><p>Use "Claim a donation" on this page with the transaction ID from your PayPal receipt (17 letters and numbers). An admin checks it in PayPal and adds your perks.</p></details>
+<details><summary>Is this pay-to-win?</summary><p>Perks are capped so effort still decides who wins: a few timer skips a day and a weekly treasury bonus. A supporter can still be beaten, and nobody can buy troops, land, or protection.</p></details>
+<details><summary>What if a donation is refunded?</summary><p>A refunded or charged-back donation no longer counts toward your level, and the perks it unlocked stop.</p></details>
+<details><summary>Do perks work in seasons too?</summary><p>Yes. Your level belongs to your account, so it carries over to every season and to new nations you found.</p></details>
+</div>
+<script>
+const $=id=>document.getElementById(id),esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=v=>'$'+(v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(v>=1e8?0:1)+'M':Math.round(v).toLocaleString('en-US'));
+const TIERS=[{k:1,n:'Supporter',b:'⭐',min:5,perks:['<b>⭐ badge</b> next to your name in chat, rankings and your profile','<b>Reserve your nation name</b> so nobody else can use it','<b>Supporter Monument</b> on your capital, shown on the globe','<b>1 Rush order a day</b>: finish one operation’s timer instantly (not once-a-day ones like International Aid)']},
+ {k:2,n:'Patron',b:'🌟',min:20,perks:['Everything in Supporter, with a <b>🌟 badge</b>','<b>3 Rush orders a day</b>','<b>1 Rapid redeployment a day</b>: instantly clear your attack, strike and spy timers and army regroup','<b>Weekly war chest</b>: 5% of your GDP (at least $10M, up to $100M)']},
+ {k:3,n:'Benefactor',b:'👑',min:50,perks:['Everything in Patron, with a <b>👑 badge</b>','<b>5 Rush orders a day</b>','<b>2 Rapid redeployments a day</b>','<b>Bigger weekly war chest</b>: 10% of your GDP (at least $25M, up to $250M)','<b>Grand Monument</b> on your capital, shown on the globe']}];
+let ME=null,SIGNED=false;
+async function api(m,u,b){const r=await fetch(u,{method:m,credentials:'same-origin',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw Object.assign(new Error(j.error||'Error '+r.status),{status:r.status});return j}
+const go=amt=>SIGNED?'/api/donate/go'+(amt?'?amt='+amt:''):'/donate/paypal';
+function draw(){
+ const q=new URLSearchParams(location.search);
+ $('banner').innerHTML=(q.get('thanks')?`<div class="note ok"><b>Thank you!</b> PayPal is confirming your donation. Your perks switch on within a few minutes of the payment completing. This page updates by itself.</div>`:'')
+  +(!SIGNED?`<div class="note warn"><b>Sign in first</b> so your donation is linked to your nation automatically. <a href="/">Sign in</a>, then come back to this page. You can still donate without signing in, then claim it below.</div>`:'')
+  +(SIGNED&&ME&&!ME.linked?`<div class="note warn">After you donate, use <b>Claim a donation</b> below with the transaction ID from your PayPal receipt, and an admin will add your perks.</div>`:'')
+  +(ME&&ME.pending?`<div class="note">PayPal shows a donation of ${esc(ME.pending.amt)} ${esc(ME.pending.cur)} as <b>${esc(ME.pending.st)}</b>. It counts once PayPal marks it completed.</div>`:'');
+ const k=ME?ME.tier:0;
+ if(ME&&k){const day=ME.rush.max?`<span class="pill">⚡ Rush orders today: <b>${ME.rush.left} of ${ME.rush.max}</b></span>`:'',ins=ME.instant.max?`<span class="pill">🚀 Rapid redeployments today: <b>${ME.instant.left} of ${ME.instant.max}</b></span>`:'',ch=k>=2?`<span class="pill">💰 War chest: <b>${!ME.chest.amt?'found a nation to claim it':ME.chest.ready?'ready ('+money(ME.chest.amt)+')':'next in '+Math.ceil((ME.chest.next-Date.now())/864e5)+' day(s)'}</b></span>`:'',nm=`<span class="pill">🔒 Reserved name: <b>${ME.name?esc(ME.name):'not set'}</b></span>`;
+  $('me').innerHTML=`<div class="me"><div class="bd">${ME.badge}</div><div><h2>You are a ${esc(ME.tierName)}</h2><div class="mu">Total donated: $${ME.total.toFixed(2)}${k<3?` · $${(TIERS[k].min-ME.total).toFixed(2)} more for ${TIERS[k].n}`:' · thank you!'}</div><div class="perks">${nm}${day}${ins}${ch}</div>
+  <div class="acts">${k>=2?`<button class="btn pri" id="chest" ${ME.chest.ready&&ME.chest.amt?'':'disabled'}>Claim war chest</button>`:''}<button class="btn" id="resv">${ME.name?'Change reserved name':'Reserve my nation name'}</button><a class="btn" href="/play">Use Rush orders in the game</a></div><div class="msg" id="memsg"></div></div></div>`;
+  const c=$('chest');if(c)c.onclick=()=>act('/api/supporter/chest',{},'memsg');
+  $('resv').onclick=()=>{const v=prompt('Name to reserve (leave empty to reserve your current nation name):',ME.name||'');if(v===null)return;act('/api/supporter/name',{name:v.trim()},'memsg')};
+ }else $('me').innerHTML='';
+ $('tiers').innerHTML=TIERS.map(t=>`<div class="tier t${t.k}${k===t.k?' mine':''}"><div class="ic">${t.b}</div><h3>${t.n}</h3><div class="amt">$${t.min}<small> total or more</small></div><ul>${t.perks.map(p=>`<li>${p}</li>`).join('')}</ul><a class="btn ${t.k===2?'pri':''}" href="${go(t.min)}" rel="noopener">${k>=t.k?'Donate again':'Donate $'+t.min} with PayPal</a></div>`).join('');
+ $('custom').innerHTML=`<label for="amt" class="mu">Or choose your own amount (USD)</label><input id="amt" type="number" min="1" max="10000" step="1" placeholder="25" style="width:110px"><a class="btn" id="goamt" href="${go(0)}" rel="noopener">Donate with PayPal</a>`;
+ $('amt').oninput=()=>{const v=Math.round(+$('amt').value||0);$('goamt').href=go(v>=1?v:0)};
+ const rows=ME&&ME.donations.length?`<table><tr><td class="mu">Date</td><td class="mu">Amount</td><td class="mu">Status</td></tr>${ME.donations.map(d=>`<tr><td>${new Date(d.t).toLocaleDateString()}</td><td>$${(+d.usd||0).toFixed(2)}</td><td>${d.st==='ok'?'Counted':d.st==='refunded'?'Refunded':d.st==='reversed'?'Charged back':'Removed'}</td></tr>`).join('')}</table>`:'';
+ const cl=ME&&ME.claims.length?`<p class="mu" style="margin:10px 0 0;font-size:14px">Your claims: ${ME.claims.map(c=>`…${esc(c.txn)} ($${c.amt}) ${c.st==='wait'?'waiting for an admin':c.st==='ok'?'approved':'not matched'}`).join(' · ')}</p>`:'';
+ $('more').innerHTML=(rows?`<h2 class="s">Your donations</h2>${rows}`:'')+(SIGNED?`<h2 class="s">Claim a donation</h2><p class="mu" style="margin:0">Donated through a different link, or your perks didn't appear after 30 minutes? Enter the transaction ID from your PayPal receipt.</p><div class="claim"><input id="ctx" placeholder="Transaction ID, e.g. 8MC585209K746392H" maxlength="30" autocomplete="off"><input id="camt" type="number" min="1" placeholder="Amount $"><button class="btn" id="cgo">Send claim</button></div><div class="msg" id="cmsg"></div>${cl}`:'');
+ const cg=$('cgo');if(cg)cg.onclick=()=>act('/api/supporter/claim',{txn:$('ctx').value,amt:+$('camt').value},'cmsg');
+}
+async function act(u,b,box){const m=$(box);try{const r=await api('POST',u,b);if(r.sup)ME=r.sup;draw();const m2=$(box);if(m2){m2.className='msg ok';m2.textContent=r.msg||'Done.'}}catch(e){if(m){m.className='msg err';m.textContent=e.message}}}
+async function load(){try{ME=await api('GET','/api/supporter');SIGNED=true}catch(e){ME=null;SIGNED=false}draw()}
+load();if(new URLSearchParams(location.search).get('thanks'))setInterval(load,20000);
+</script></body></html>
