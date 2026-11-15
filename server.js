@@ -212,6 +212,12 @@ const sessionCookie = (req, token, maxAge) => `wp_s=${token}; Path=/; HttpOnly; 
 // Railway's edge strips any X-Forwarded-For the browser sent and puts the real client address first (per Railway support); the
 // rightmost entries can be Railway/CDN hops shared by many players, so they must not be used for rate limits
 const ipOf = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+// ---------- blocked networks: addresses the admin has shut out of the whole site ("1.2.3.4", or "1.2.3.*" for a whole range) ----------
+S.ipBans = Array.isArray(S.ipBans) ? S.ipBans : [];
+const ipNorm = ip => String(ip || '').trim().replace(/^::ffff:/i, '').toLowerCase();
+const ipMatch = (ip, pat) => { ip = ipNorm(ip); pat = ipNorm(pat); return pat.endsWith('*') ? ip.startsWith(pat.slice(0, -1)) : ip === pat; };
+const ipBlocked = ip => !!ip && S.ipBans.some(x => ipMatch(ip, x.ip));
+const BLOCK_PAGE = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>World Powers</title></head><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#090d12;color:#c5ced8;font:16px system-ui,sans-serif;text-align:center;padding:24px"><div><h1 style="font-size:22px;color:#e6edf3">Access blocked</h1><p>Access to World Powers from your network has been blocked by the administrators.</p></div></body></html>';
 function sameOrigin(req) { const o = req.headers.origin; if (!o) return true; try { return new URL(o).host === req.headers.host; } catch (e) { return false; } }
 function auth(req) {
   const t = cookies(req).wp_s; if (!t || !/^[a-f0-9]{64}$/.test(t)) return null;
@@ -1775,6 +1781,20 @@ async function adminRoute(p, req, res, me) {
       return send(res, 200, { ok: true });
     }
     case '/api/admin/reset-nation': { try { pkStandUser(b.id, null); } catch (e) {} if (!u) return send(res, 404, { error: 'Unknown player.' }); setDoc('nations', b.id, null); audit(me.name, 'Reset nation', target); return send(res, 200, { ok: true }); }
+    case '/api/admin/ipbans': { // the block list, and (with an id) one player's networks with who else uses each
+      const others = ip => Object.entries(S.meta).filter(([k, m]) => m && (m.ips || []).some(x => ipNorm(x) === ipNorm(ip)) && S.users[k]).map(([k]) => ({ id: k, name: S.users[k].name, banned: !!S.users[k].banned }));
+      const list = S.ipBans.map(x => ({ ...x, accounts: x.ip.endsWith('*') ? Object.entries(S.meta).filter(([k, m]) => m && S.users[k] && (m.ips || []).some(y => ipMatch(y, x.ip))).map(([k]) => S.users[k].name) : others(x.ip).map(o => o.name) }));
+      const mine = u ? ((S.meta[b.id] || {}).ips || []).map(ip => ({ ip, blocked: ipBlocked(ip), others: others(ip).filter(o => o.id !== b.id) })) : null;
+      return send(res, 200, { list, mine, myIp: ipOf(req) }); }
+    case '/api/admin/ipblock': {
+      const ips = (Array.isArray(b.ips) ? b.ips : [b.ip]).map(x => ipNorm(x)).filter(Boolean).slice(0, 20); if (!ips.length) return send(res, 400, { error: 'Type an address.' });
+      for (const ip of ips) if (!/^[0-9a-f:.]{2,45}\*?$/.test(ip) || ip === '*') return send(res, 400, { error: `"${ip}" is not an address. Use something like 203.0.113.7, or 203.0.113.* for a whole range.` });
+      const mine = ipOf(req); if (ips.some(ip => ipMatch(mine, ip))) return send(res, 400, { error: 'That would block your own network. (Admins are never locked out, but this is probably a mistake.)' });
+      let n = 0; for (const ip of ips) if (!S.ipBans.some(x => x.ip === ip)) { S.ipBans.unshift({ ip, note: String(b.note || '').slice(0, 120), by: me.name, t: Date.now(), who: u ? u.name : null }); n++; }
+      S.ipBans = S.ipBans.slice(0, 500);
+      for (const c of [...clients]) if (c.ip && ipBlocked(c.ip) && !(S.users[c.uid] || {}).admin) endStream(c); // anyone on a blocked network is disconnected now
+      persist(); audit(me.name, 'Blocked network', `${ips.join(', ')}${u ? ' (' + u.name + ')' : ''}${b.note ? ' — ' + String(b.note).slice(0, 80) : ''}`); return send(res, 200, { ok: true, added: n }); }
+    case '/api/admin/ipunblock': { const ip = ipNorm(b.ip); const before = S.ipBans.length; S.ipBans = S.ipBans.filter(x => x.ip !== ip); if (S.ipBans.length === before) return send(res, 404, { error: 'That address is not blocked.' }); persist(); audit(me.name, 'Unblocked network', ip); return send(res, 200, { ok: true }); }
     case '/api/admin/ban': case '/api/admin/unban': {
       if (p === '/api/admin/ban') try { pkStandUser(b.id, null); } catch (e) {}
       if (!u || b.id === me.id) return send(res, 400, { error: 'Unknown player.' });
@@ -1895,6 +1915,9 @@ function publicStats() {
 async function handle(req, res) {
   let p; try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return notFound(req, res); }
   const minute = Math.floor(Date.now() / 60000); health.reqs.set(minute, (health.reqs.get(minute) || 0) + 1);
+  if (S.ipBans.length && ipBlocked(ipOf(req))) { let adm = null; try { adm = auth(req); } catch (e) {} if (!(adm && adm.admin)) { // an admin is never locked out by a block on their own network
+    if (p.startsWith('/api/')) return send(res, 403, { error: 'Access from your network has been blocked by the administrators.' });
+    res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(BLOCK_PAGE); } }
   try {
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? GAME : LANDING);
     if (req.method === 'GET' && p === '/donate') { const d = /^https:\/\/[^\s"'<>]+$/i.test(S.config.donateUrl || '') ? S.config.donateUrl : WP.DEFCFG.donateUrl; res.writeHead(302, { Location: d, 'Cache-Control': 'no-store' }); return res.end(); } // anyone can donate, no account needed
@@ -2053,7 +2076,7 @@ async function handle(req, res) {
       const zip = new URL(req.url, 'http://x').searchParams.get('z') === '1' && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}) });
       let out = null; if (zip) { out = zlib.createGzip({ level: 6, memLevel: 6, windowBits: 14, flush: zlib.constants.Z_SYNC_FLUSH }); out.on('error', () => {}); out.pipe(res); }
-      const c = { res, out, uid: me.id };
+      const c = { res, out, uid: me.id, ip: ipOf(req) };
       (out || res).write('retry: 3000\n\n'); write(c, 'init', snapshot(me.id));
       const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { endStream(mine[0]); clients.delete(mine[0]); }
       clients.add(c); const bye = () => { clients.delete(c); if (out) try { out.destroy(); } catch (e) {} }; res.on('error', bye); req.on('close', bye);
