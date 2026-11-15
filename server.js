@@ -41,7 +41,7 @@ if (!S.councilAutoOffV1) { S.config.councilAuto = false; S.councilAutoOffV1 = 1;
 // one-time 24-hour pause on overstretch penalties, starting when this update first boots
 if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1; }
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
-for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
+for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) S[k] = S[k] || {};
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
 const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
@@ -70,7 +70,7 @@ if (S.mapVersion !== MAP_VERSION) {
   S.council = { props: [], active: {} }; S.event = null; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.mapVersion = MAP_VERSION;
 }
 // every id-keyed map gets no prototype, so ids like "__proto__" or "constructor" can never match anything
-for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = Object.assign(Object.create(null), S[k]);
+for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) S[k] = Object.assign(Object.create(null), S[k]);
 if (!S.adminPath) S.adminPath = '/hq-' + crypto.randomBytes(12).toString('hex');
 if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
@@ -1281,7 +1281,7 @@ function wipeUser(id) {
   for (const [t, s] of Object.entries(S.sessions)) if (s.uid === id) delete S.sessions[t];
   for (const c of clients) if (c.uid === id) endStream(c);
   for (const k of Object.keys(S.mail)) S.mail[k] = (S.mail[k] || []).filter(m => m.from !== id && m.to !== id);
-  delete S.users[id]; delete S.meta[id]; delete S.actlog[id]; delete S.mail[id]; delete S.notes[id]; delete S.push[id]; broadcast('user', { id, name: null }); persist();
+  delete S.users[id]; delete S.meta[id]; delete S.actlog[id]; delete S.botsig[id]; delete S.mail[id]; delete S.notes[id]; delete S.push[id]; broadcast('user', { id, name: null }); persist();
 }
 // per-player action history for the admin "what happened" timeline (last 150 commands, including refused ones)
 const ACT_SKIP = new Set(['seen', 'ping', 'readlog']);
@@ -1293,6 +1293,43 @@ function actLog(uid, W, b, ok, msg) {
   const L = S.actlog[uid] = S.actlog[uid] || [];
   L.unshift({ t: Date.now(), c: b.c.slice(0, 24), v: tv, x: extra || null, ok, m: String(msg || '').replace(/<[^>]*>/g, '').slice(0, 180) });
   if (L.length > 150) L.length = 150;
+}
+// ---------- script check: signs that a program, not a person, is playing ----------
+// For every action: when it happened, which one, how long after the operation became ready it was run, whether the game page was open, and whether its tab was visible.
+function botRecord(uid, b, readyAt, req) {
+  const now = Date.now(), s = S.botsig[uid] = S.botsig[uid] || { a: [] };
+  const vis = String(req.headers['x-wp-vis'] || '') === 'v' ? 'v' : String(req.headers['x-wp-vis'] || '') === 'h' ? 'h' : 'n';
+  let live = 0; for (const c of clients) if (c.uid === uid) { live = 1; break; }
+  s.a.push([now, b.c === 'act' ? String(b.k).slice(0, 16) : String(b.c).slice(0, 16), readyAt > 0 && readyAt <= now ? now - readyAt : -1, vis, live]);
+  const cut = now - 72 * HOUR; while (s.a.length && (s.a.length > 600 || s.a[0][0] < cut)) s.a.shift();
+}
+function scriptCheck() {
+  const now = Date.now(), from = now - 48 * HOUR, out = [], sd = a => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
+  for (const [uid, s] of Object.entries(S.botsig)) {
+    const u = S.users[uid]; if (!u) continue; const L = (s.a || []).filter(x => x[0] >= from); if (L.length < 10) continue;
+    const why = []; let score = 0;
+    // 1. reaction time: how soon after an operation was ready it was run (only when they were around: within 10 minutes)
+    const D = L.filter(x => x[2] >= 0 && x[2] <= 10 * 60e3).map(x => x[2]), fast = D.filter(d => d < 1500).length, fp = D.length ? fast / D.length : 0;
+    if (D.length >= 15) { if (fp >= .8) score += 3; else if (fp >= .5) score += 2; else if (fp >= .25) score += 1;
+      if (fp >= .25) why.push(`Ran operations within 1.5 seconds of them becoming ready ${Math.round(fp * 100)}% of the time (${fast} of ${D.length}; a typical delay of ${(med(D) / 1000).toFixed(1)} s)`); }
+    const quick = D.filter(d => d < 15000); if (quick.length >= 15 && sd(quick) < 400) { score += 2; why.push(`Almost exactly the same reaction time every time (${(med(quick) / 1000).toFixed(2)} s, varying by only ${Math.round(sd(quick))} ms); people vary by seconds`); }
+    // 2. the same operation at a perfectly regular rhythm
+    const byK = {}; for (const x of L) (byK[x[1]] = byK[x[1]] || []).push(x[0]);
+    for (const [k, ts] of Object.entries(byK)) { if (ts.length < 10) continue; const iv = []; for (let i = 1; i < ts.length; i++) iv.push(ts[i] - ts[i - 1]); const m = iv.reduce((a, b) => a + b, 0) / iv.length; if (m > 0 && sd(iv) / m < .04) { score += 2; why.push(`Ran "${k}" ${ts.length} times at an almost perfectly even rhythm (every ${m < 60e3 ? (m / 1000).toFixed(1) + ' s' : (m / 60e3).toFixed(1) + ' min'})`); break; } }
+    // 3. no game page open, or a hidden tab
+    const off = L.filter(x => !x[4]).length, hid = L.filter(x => x[3] === 'h').length;
+    if (off / L.length >= .3) { score += 3; why.push(`${Math.round(off / L.length * 100)}% of actions were sent with no game page open (straight to the server)`); }
+    if (hid / L.length >= .3) { score += 2; why.push(`${Math.round(hid / L.length * 100)}% of actions came from a hidden browser tab (a person can't click a tab they can't see)`); }
+    // 4. no sleep
+    const span = L[L.length - 1][0] - L[0][0]; let gap = 0; for (let i = 1; i < L.length; i++) gap = Math.max(gap, L[i][0] - L[i - 1][0]); gap = Math.max(gap, now - L[L.length - 1][0] < HOUR ? 0 : 0);
+    const hrs = new Set(L.map(x => Math.floor(x[0] / HOUR))).size;
+    if (span >= 30 * HOUR && gap < 3 * HOUR) { score += 2; why.push(`No break longer than ${(gap / HOUR).toFixed(1)} hours in ${Math.round(span / HOUR)} hours of play (active in ${hrs} different hours)`); }
+    // 5. the existing speed flag
+    const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
+    const n = S.docs['nations/' + uid];
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, score, verdict: score >= 5 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+  }
+  return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
 }
 // a light summary of one nation in each snapshot, for the admin timeline chart (cached; snapshots never change)
 const snapCache = new Map(), provCount = n => new Set([...Object.keys(n.hexes || {}), String(n.cap)]).size;
@@ -1803,6 +1840,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), t: Date.now() });
     case '/api/admin/timeline': { if (!u) return send(res, 404, { error: 'Unknown player.' }); return send(res, 200, timeline(b.id)); }
     case '/api/admin/restore-nation': {
       if (!u) return send(res, 404, { error: 'Unknown player.' }); if (b.confirm !== 'RESTORE') return send(res, 400, { error: 'Type RESTORE to confirm.' });
@@ -2038,10 +2076,11 @@ async function handle(req, res) {
       if (b.c === 'offer' && b.v && S.users[b.v] && sharesNetwork(me.id, b.v)) flag(me.id, `Sent a trade offer to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       let r;
       let fair = null, useRng = rng; if (b.c === 'casino') { fair = fairOf(me.id); W.fairNonce = fair.nonce; W.fairHash = sha256(fair.seed); useRng = fairRng(fair); }
+      const readyAt = b.c === 'act' && W.A[me.id] ? +((W.A[me.id].cd || {})[String(b.k)] || 0) : 0;
       try { r = core.exec(W, me.id, b, useRng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
       if (fair) { if (r.casino) r.casino.fair = { nonce: fair.nonce, hash: W.fairHash }; fair.nonce++; }
-      actLog(me.id, W, b, true, r.msg); pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
+      actLog(me.id, W, b, true, r.msg); try { botRecord(me.id, b, readyAt, req); } catch (e) {} pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); if (!S.fresh) inviteReward(W, me.id); else if (S.seasons.cur && S.seasons.cur.fresh) { const pl = S.seasons.cur.played = S.seasons.cur.played || {}; pl[me.id] = 1; } }
       const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;
       if (W.casinoEv) casinoRecord(W);
