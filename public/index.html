@@ -3366,7 +3366,9 @@ function renderOnline(){const now=Date.now();const on=[],idle=[];
 // Chat shows war news only (strikes, battles, nukes, wars, falls). Everything else stays in World news on the World page.
 const WARNEWS=/launched (air strikes|missiles)|dirty bomb|broke away|☢|⚠|☠|declared war|captured .* from|repelled|has conquered|last stand|fell in battle|seized .* from|peace treaty|Collective Defense/;
 const HOTNEWS=/launched (air strikes|missiles)|dirty bomb|☢|has conquered|declared war/;
-function chatNews(){const r=[];for(const n of Object.values(A))if(!n.ai)for(const e of n.out||[]) /* World Chat only reports what real players do; AI attacks still show at the top of the screen */if(e.type==='news'&&WARNEWS.test(e.x)&&!/^🗺|trade deal|trade agreement|traded /.test(e.x))r.push(e); /* trade and land deals stay out of World Chat */r.sort((a,b)=>b.t-a.t);const last=new Map();
+/* World Chat only reports wars between real players: the line must name another real player's nation and no AI nation (AI wars still show at the top of the screen) */
+function pvpNames(){const fl=(WP.extra&&WP.extra.fallenList)||[],pl=new Set(),ai=new Set();for(const n of Object.values(A))(n.ai?ai:pl).add(n.name);for(const f of fl)if(f&&f.name)(f.ai?ai:pl).add(f.name);return{pl,ai}}
+function chatNews(){const r=[],{pl,ai}=pvpNames(),aiL=[...ai].filter(x=>x&&!pl.has(x));for(const n of Object.values(A))if(!n.ai)for(const e of n.out||[])if(e.type==='news'&&WARNEWS.test(e.x)&&!/^🗺|trade deal|trade agreement|traded /.test(e.x)){const x=e.x;if(aiL.some(a=>x.includes(a)))continue;let other=false;for(const p_ of pl)if(p_&&p_!==n.name&&x.includes(p_)){other=true;break}if(other)r.push(e)} /* trade and land deals stay out of World Chat */r.sort((a,b)=>b.t-a.t);const last=new Map();
  return r.filter(e=>{const p=last.get(e.x);if(p!=null&&p-e.t<(HOTNEWS.test(e.x)?60e3:6*HOUR))return false;last.set(e.x,e.t);return true}).slice(0,60)}
 let lastChatKey='';
 // ---- alliance (team) chat: a second tab in the chat dock, only for members of your alliance; the messages are the team's private board ----
