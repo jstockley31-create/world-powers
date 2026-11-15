@@ -140,6 +140,7 @@ STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
 STATIC['/landing-land.js'] = loadFile('landing-land.js', JS, 'public, max-age=604800');
 STATIC['/prov.js'] = loadFile('prov.js', JS, 'public, max-age=31536000, immutable'); // the URL carries a version number, so browsers keep it until the map changes
 STATIC['/og.jpg'] = loadFile('og.jpg', 'image/jpeg', 'public, max-age=604800');
+for (const f of ['banner-240x100.png', 'banner-468x60.png', 'banner-728x90.png']) STATIC['/' + f] = loadFile(f, 'image/png', 'public, max-age=86400'); // banners for voting and link sites
 for (const f of ['inter-latin.woff2', 'inter-latin-ext.woff2', 'cinzel-700.woff2', 'jbmono-500.woff2']) STATIC['/fonts/' + f] = loadFile('fonts/' + f, 'font/woff2', 'public, max-age=31536000, immutable');
 STATIC['/fonts/fonts.css'] = loadFile('fonts/fonts.css', 'text/css; charset=utf-8', 'public, max-age=86400');
 STATIC['/robots.txt'] = { type: 'text/plain; charset=utf-8', buf: Buffer.from('User-agent: *\nAllow: /$\nAllow: /faq\nAllow: /n/\nAllow: /terms\nAllow: /privacy\nDisallow: /\n'), cache: 'public, max-age=86400' };
