@@ -42,6 +42,8 @@ if (!S.councilAutoOffV1) { S.config.councilAuto = false; S.councilAutoOffV1 = 1;
 if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1; }
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) S[k] = S[k] || {};
+const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
+const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
 const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
@@ -296,7 +298,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: S.fallen.slice(0, 30), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -346,7 +348,7 @@ function commit(W) {
     S.fallen.unshift(rec); S.fallen = S.fallen.slice(0, 100);
     if (!BOTS.isBot(f.id)) { meta(f.id).fallen = rec; sendTo(f.id, 'fallen', rec); addNote(f.id, 'attack', `${f.name} has fallen. ${f.byName} captured your capital. You can found a new nation at any time.`); }
     sendNation(f.id);
-    broadcast('announce', { text: `${f.name} has fallen to ${f.byName}.` }); broadcast('fallenlist', S.fallen.slice(0, 30));
+    broadcast('announce', { text: `${f.name} has fallen to ${f.byName}.` }); broadcast('fallenlist', fallenPub());
   }
   rebelSpawn(W);
   for (const u of W.changed) { if (W.A[u]) S.docs['nations/' + u] = W.A[u]; sendNation(u); }
@@ -2142,7 +2144,25 @@ async function handle(req, res) {
       if (W.casinoEv) casinoRecord(W);
       commit(W); if (pendFound) seasonPendingApply(me.id);
       // your own nation comes back with the answer, so the screen updates the moment the action is done (no waiting on the live stream)
-      return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });
+      const fell = b.c === 'attack' ? (W.fallen || []).find(f => f.by === me.id && !BOTS.isBot(f.id)) : null; /* a player's capital fell: the attacker may leave them a last message */
+      return send(res, 200, { ok: true, fell: fell ? { id: fell.id, t: fell.t, name: fell.name, mins: LASTWORDS_MIN } : undefined, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });
+    }
+
+    // ---- last words: the conqueror of a player's capital may leave one short message on that player's fall screen ----
+    if (p === '/api/lastwords' && req.method === 'POST') {
+      if (limited('lastwords:' + me.id, 10, 10 * 60e3)) return send(res, 429, { error: 'Slow down.' });
+      const b = await readBody(req, 2048); touch(me.id, req);
+      const rec = S.fallen.find(f => f.id === String(b.id || '') && f.t === +b.t && f.by === me.id && !f.ai);
+      if (!rec) return send(res, 400, { error: 'You can only leave a last message for a nation whose capital you captured.' });
+      if (Date.now() - rec.t > LASTWORDS_MIN * 60e3) return send(res, 400, { error: `Last messages can only be sent in the first ${LASTWORDS_MIN} minutes after the capital falls.` });
+      if (rec.msg) return send(res, 400, { error: 'You already left a last message for this nation.' });
+      const text = String(b.text || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, LASTWORDS_MAX);
+      if (!text) return send(res, 400, { error: 'Write a message first.' });
+      if (MOD.isProfane(text)) return send(res, 400, { error: 'Please choose different wording.' });
+      rec.msg = text; const m = S.meta[rec.id]; if (m && m.fallen && m.fallen.t === rec.t) m.fallen.msg = text;
+      sendTo(rec.id, 'lastwords', { t: rec.t, msg: text });
+      addNote(rec.id, 'attack', `${rec.byName} left a last message on the fall of ${rec.name}: “${text}”`);
+      persist(); return send(res, 200, { ok: true });
     }
 
     // ---- mail ----
