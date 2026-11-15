@@ -619,6 +619,17 @@ function councilBribe(uid) {
   systemMessage(`💰 ${n.name} paid the World Council ${WP.moneyS(price)} to make its ${wasRogue ? 'rogue-state status' : 'sanctions'} disappear.`);
   return { msg: `Paid ${WP.money(price)}. ${wasRogue ? 'Your rogue status' : 'Your sanctions'} and all Council measures are lifted${back ? `, and ${WP.money(back)} in frozen assets is back in your treasury` : ''}. Your aggression is now ${Math.round(n.aggr)}.` };
 }
+// penalties players can vote on, and the proof a target must have given first (attacking a real player, nuclear weapons, or spies caught in the last 48 hours, or high aggression)
+const PUNISH = ['sanction', 'embargo', 'freeze', 'condemn'];
+function punishEvidence(W, v) {
+  const n = W.A[v], now = Date.now(); if (!n) return null; if (n.ai) return 'ai';
+  if ((n.aggr || 0) >= 35) return 'aggression';
+  if ((n.out || []).some(e => e.type === 'battle' && e.to && e.to !== v && S.users[e.to] && !BOTS.isBot(e.to) && W.A[e.to] && now - e.t < 48 * HOUR && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === v && x.t < e.t && e.t - x.t < 24 * HOUR)))) return 'attacked a player'; // striking back at someone who hit you first doesn't count
+  if ((n.dirtyAt && now - n.dirtyAt < 48 * HOUR) || (typeof n.nuke === 'number' && now - n.nuke < 48 * HOUR) || (S.nukes || []).some(x => x.by === v && !x.retaliation && now - (x.t || 0) < 48 * HOUR) || (S.strikeLog || []).some(x => x.by === v && S.users[x.to] && now - (x.t || 0) < 48 * HOUR)) return 'weapons';
+  for (const [u, m] of Object.entries(W.A)) if (u !== v && m.cb && (m.cb[v] || 0) > now) return 'spies';
+  if (core.rogue(W, n)) return 'rogue';
+  return null;
+}
 function councilPropose(uid, b) {
   const W = mkWorld(), n = W.A[uid]; if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
@@ -629,8 +640,10 @@ function councilPropose(uid, b) {
   if (isTargeted(type)) {
     target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || (target === uid && !plea)) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
     const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
-    // a nation can face a sanction or embargo vote at most once a day, so a group can't keep piling on the same target
-    if (['sanction', 'embargo'].includes(type)) { const last = S.council.props.filter(p => !p.auto && ['sanction', 'embargo'].includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a sanction or embargo vote today. It can be proposed again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
+    // the Council only punishes nations that did something: a group of players can't vote penalties onto a peaceful nation
+    if (PUNISH.includes(type)) { const ev = punishEvidence(W, target); if (!ev) throw Object.assign(new Error(`${W.A[target].name} hasn't attacked another player, used nuclear weapons or been caught spying recently. The Council only punishes aggression.`), { status: 400 }); }
+    // a nation can face a player-proposed penalty vote at most once a day, so a group can't keep piling on the same target
+    if (PUNISH.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a penalty vote today. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
   }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
