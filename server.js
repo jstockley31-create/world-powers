@@ -43,7 +43,7 @@ if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1;
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog']) S[k] = S[k] || {};
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
-const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'MMORPG50' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
+const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
