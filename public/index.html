@@ -2890,7 +2890,7 @@ function bBoard(){const r=blocRank(),mb=myBloc();if(!r.length)return'<p class="m
 function pAlliance(){const b=myBloc();
  const intro=`<h1 class="pg">Alliance</h1><p class="pgsub">Team up with other leaders: share a treasury, build joint projects that boost every member, and hit daily team goals together. Members trade with each other automatically and can't declare war on each other.</p>`;
  if(!b){if(!bDraft)bDraftFrom(null);const rk=rankOf(me.xp)>=BLOC.rank,cash=me.cash>=BLOC.cost;
-  return intro+pendingPanel()+`<div class="cols">${panel('Found an alliance',`<p class="mu" style="margin-top:0;font-size:13px">Costs ${money(BLOC.cost)} and needs the rank of Mayor. Up to ${BLOC.max} members (${BLOC.hqMax} with an Alliance Headquarters). You lead it: invite members, pick projects and manage the treasury.</p>
+  return intro+pendingPanel()+`<div class="cols">${panel('Found an alliance',`<p class="mu" style="margin-top:0;font-size:13px">Costs ${money(BLOC.cost)} and needs the rank of Mayor. Up to ${BLOC.max} members. You lead it: invite members, pick projects and manage the treasury.</p>
    <div class="bform"><label>Name<input id="bName" maxlength="${BLOC.nameMax}" placeholder="e.g. Northern Accord"></label><label>Tag<input id="bTag" maxlength="4" placeholder="NRA" style="text-transform:uppercase"></label></div>
    <label class="bfull">Motto<input id="bMotto" maxlength="80" placeholder="Stronger together"></label>${bFlagEd()}
    <button class="btn pri" data-act="bcreate" style="margin-top:10px" ${rk&&cash?'':'disabled'}>Found alliance · ${moneyS(BLOC.cost)}</button>${!rk?'<p class="mu dnote">Reach the rank of Mayor first.</p>':!cash?`<p class="mu dnote">You need ${money(BLOC.cost)} in the treasury.</p>`:''}`,'','team')}

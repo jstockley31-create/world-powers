@@ -123,14 +123,14 @@ const COSMETICS = {
   frame: { n: 'Flag frame', d: 'A frame around your flag on your nation card.', items: { silver: { n: 'Silver', cost: 5e9 }, gold: { n: 'Gold', cost: 2.5e10 }, diamond: { n: 'Diamond', cost: 1e11 }, inferno: { n: 'Inferno', cost: 2.5e11 } } }
 };
 // alliances: teams of nations with a shared treasury, a flag, joint projects and daily team goals
-const BLOC = { cost: 10e6, rank: 2, max: 6, hqMax: 8, stageH: 3, wall: 120, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3, coMax: 2, coGrant: .25 };
+const BLOC = { cost: 10e6, rank: 2, max: 4, hqMax: 4, stageH: 3, wall: 120, nameMin: 3, nameMax: 28, inviteH: 72, goalOps: 25, goalDec: 3, coMax: 2, coGrant: .25 };
 const BPROJ = {
   market: { n: 'Common Market', d: '+6% tax revenue for every member.', stages: 3, fx: { tax: 1.06 } },
   defense: { n: 'Mutual Defense Network', d: 'Every member\'s provinces defend 8% better.', stages: 3, fx: { def: 1.08 } },
   research: { n: 'Joint Research Institute', d: 'Research costs 12% less for every member.', stages: 3, fx: { research: .88 } },
   devbank: { n: 'Development Bank', d: '+3% GDP for every member.', stages: 4, fx: { gdp: 1.03 } },
   college: { n: 'War College', d: 'Operations earn 15% more XP for every member.', stages: 3, fx: { xp: 1.15 } },
-  hq: { n: 'Alliance Headquarters', d: '+3 approval and +3 stability for every member, and room for 2 more members (8 instead of 6).', stages: 4, fx: { ap: 3, st: 3 } },
+  hq: { n: 'Alliance Headquarters', d: '+3 approval and +3 stability for every member.', stages: 4, fx: { ap: 3, st: 3 } },
   // second wave: longer projects, several built on an earlier one, so an alliance always has something to work toward
   pipeline: { n: 'Shared Energy Grid', d: 'Every member burns 15% less oil.', stages: 4, fx: { oil: .85 } },
   industry: { n: 'Industrial Consortium', d: 'Every member\'s provinces produce 5% more food, oil, steel and goods.', stages: 4, fx: { prod: 1.05 } },
