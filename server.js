@@ -1323,9 +1323,13 @@ function botRecord(uid, b, readyAt, req, cdLen) {
   const vis = String(req.headers['x-wp-vis'] || '') === 'v' ? 'v' : String(req.headers['x-wp-vis'] || '') === 'h' ? 'h' : 'n';
   let live = 0; for (const c of clients) if (c.uid === uid) { live = 1; break; }
   const ch = String(req.headers['x-wp-c'] || ''), click = ch === 't' || ch === 'u' || ch === 'n' ? ch : 'x', inp = req.headers['x-wp-in'] != null ? Math.max(0, Math.min(99999, +req.headers['x-wp-in'] || 0)) : -1;
-  s.a.push([now, b.c === 'act' ? String(b.k).slice(0, 16) : String(b.c).slice(0, 16), readyAt > 0 && readyAt <= now ? now - readyAt : -1, vis, live, click, inp, cdLen || 0]);
+  let pt = null; { const m = String(req.headers['x-wp-p'] || '').match(/^(-?\d{1,5}),(-?\d{1,5}),(-?\d{1,4}),(\d{1,5}),([mtpk]),(\d{10,14})$/); if (m) pt = [+m[1], +m[2], +m[3], +m[4], m[5], +m[6]]; } // the click behind this action: x, y, press ms, mouse travel, pointer type, click time
+  s.a.push([now, b.c === 'act' ? String(b.k).slice(0, 16) : String(b.c).slice(0, 16), readyAt > 0 && readyAt <= now ? now - readyAt : -1, vis, live, click, inp, cdLen || 0, pt]);
   const cut = now - 72 * HOUR; while (s.a.length && (s.a.length > 600 || s.a[0][0] < cut)) s.a.shift();
 }
+// other warnings about a player from the last 7 days (shared networks, aid between them, speed flags), for the verdict box
+function netWarn(uid) { const from = Date.now() - 7 * 864e5, f = (S.flags || []).filter(x => x.uid === uid && x.t >= from); const kinds = {}; for (const x of f) { const k = /same network|second ac/i.test(x.r) ? 'Shares a network with another account' : /faster than a person|bot|script/i.test(x.r) ? 'Sent actions faster than a person can click' : /charged back/i.test(x.r) ? 'Charged back a donation' : 'Other flag'; kinds[k] = (kinds[k] || 0) + 1; } return Object.entries(kinds).map(([k, n]) => `${k} (${n}×)`); }
+S.cheatReview = S.cheatReview || {};
 function scriptCheck() {
   const now = Date.now(), from = now - 48 * HOUR, out = [], sd = a => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
   for (const [uid, s] of Object.entries(S.botsig)) {
@@ -1366,10 +1370,19 @@ function scriptCheck() {
     // 9. one long session with no real breaks
     let sess = 0, run0 = L[0][0]; for (let i = 1; i <= L.length; i++) { if (i === L.length || L[i][0] - L[i - 1][0] > 20 * 60e3) { sess = Math.max(sess, L[i - 1][0] - run0); if (i < L.length) run0 = L[i][0]; } }
     if (sess >= 8 * HOUR) { score += 1; why.push(`Played ${(sess / HOUR).toFixed(1)} hours in one go without a break of 20 minutes`); }
+    // 10-12. auto-clickers press the real mouse button, so the browser trusts the click; they give themselves away by
+    // clicking the exact same pixel every time, never moving the mouse between clicks, and holding the button for almost no time
+    const seen = new Set(), CL = []; for (const x of L) { const q = x[8]; if (!q || q[4] === 'k' || seen.has(q[5])) continue; seen.add(q[5]); CL.push(q); } // one entry per click (Run all sends many actions from one click)
+    const MC = CL.filter(q => q[4] === 'm'), spots = {}; for (const q of CL) { const k = q[0] + ',' + q[1]; spots[k] = (spots[k] || 0) + 1; }
+    const top = Object.entries(spots).sort((a, b) => b[1] - a[1])[0], same = top ? top[1] / CL.length : 0;
+    const still = MC.length ? MC.filter(q => q[3] === 0).length / MC.length : 0, timed = CL.filter(q => q[2] >= 0), quickP = timed.length ? timed.filter(q => q[2] <= 15).length / timed.length : 0, medP = timed.length ? med(timed.map(q => q[2])) : null;
+    if (CL.length >= 12 && same >= .6) { score += 3; why.push(`${Math.round(same * 100)}% of clicks (${top[1]} of ${CL.length}) landed on exactly the same pixel; a hand is never that precise`); }
+    if (MC.length >= 12 && still >= .7) { score += 2; why.push(`The mouse didn't move at all before ${Math.round(still * 100)}% of mouse clicks (${MC.filter(q => q[3] === 0).length} of ${MC.length}): the cursor stays parked while something clicks`); }
+    if (timed.length >= 12 && quickP >= .6) { score += 3; why.push(`The button was held down for 15 milliseconds or less on ${Math.round(quickP * 100)}% of clicks (typical ${medP} ms); people hold a click for about 60 to 150 ms`); }
     // 5. the existing speed flag
     const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
     const n = S.docs['nations/' + uid];
-    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, score, verdict: score >= 5 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
   return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
 }
@@ -1902,6 +1915,11 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
     case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), t: Date.now() });
+    case '/api/admin/cheatreview': { // your decision on a player after reviewing the evidence (only admins see it)
+      if (!u) return send(res, 404, { error: 'Unknown player.' }); const d = ['cheat', 'clean', 'watch'].includes(b.d) ? b.d : null;
+      if (!d) delete S.cheatReview[b.id]; else S.cheatReview[b.id] = { d, t: Date.now(), by: me.name, note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 300) };
+      audit(me.name, 'Cheat review', target, d ? { cheat: 'Cheating', clean: 'Not cheating', watch: 'Keep watching' }[d] : 'Cleared'); persist(); return send(res, 200, { ok: true, rows: scriptCheck(), t: Date.now() });
+    }
     case '/api/admin/timeline': { if (!u) return send(res, 404, { error: 'Unknown player.' }); return send(res, 200, timeline(b.id)); }
     case '/api/admin/restore-nation': {
       if (!u) return send(res, 404, { error: 'Unknown player.' }); if (b.confirm !== 'RESTORE') return send(res, 400, { error: 'Type RESTORE to confirm.' });

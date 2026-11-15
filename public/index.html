@@ -1288,10 +1288,14 @@ function snap(col){const m=st.cols[col]||{};const docs=Object.keys(m).map(id=>({
 const fireT={},fireFirst={};function fire(col){const run=()=>{clearTimeout(fireT[col]);fireT[col]=0;fireFirst[col]=0;const s=snap(col);for(const x of st.subs.slice())if(x.col===col){try{x.cb(s)}catch(e){console.error(e)}}};const now=Date.now();if(!fireFirst[col])fireFirst[col]=now;clearTimeout(fireT[col]);fireT[col]=setTimeout(run,now-fireFirst[col]>=100?0:50)}
 function mkErr(status,msg){const code=status===401?'revoked':status===429?'unavailable':(status>=400&&status<500)?'invalid_argument':'unavailable';return Object.assign(new Error(msg),{code,status})}
 /* signs of a real person, sent with each game action for the admin script check: when a real mouse, finger or keyboard was last used, and whether the button press behind the action was a real one */
-const HUM={t:0,ct:0,ctr:null};
+const HUM={t:0,ct:0,ctr:null,dn:0,x:0,y:0,ty:'',dur:-1,mv:0,cp:''};
+/* signs of a real hand: where each click lands, how long the button is held, and whether the mouse moved since the last click (auto-clickers hit the same pixel instantly without moving) */
 for(const ev of ['pointerdown','mousedown','touchstart','keydown'])addEventListener(ev,e=>{if(e.isTrusted)HUM.t=Date.now()},{capture:true,passive:true});
-addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('[data-act],[data-cd] button,button')){HUM.ct=Date.now();HUM.ctr=!!e.isTrusted}},true);
-const humHdr=()=>({'X-WP-In':String(HUM.t?Math.min(99999,Math.round((Date.now()-HUM.t)/1000)):99999),'X-WP-C':Date.now()-HUM.ct<20000?(HUM.ctr?'t':'u'):'n'});
+addEventListener('pointerdown',e=>{if(!e.isTrusted)return;HUM.dn=performance.now();HUM.x=Math.round(e.clientX);HUM.y=Math.round(e.clientY);HUM.ty=(e.pointerType||'m')[0]},{capture:true,passive:true});
+addEventListener('pointerup',e=>{if(!e.isTrusted||!HUM.dn)return;HUM.dur=Math.min(9999,Math.round(performance.now()-HUM.dn));HUM.dn=0},{capture:true,passive:true});
+addEventListener('mousemove',e=>{if(e.isTrusted)HUM.mv=Math.min(99999,HUM.mv+Math.abs(e.movementX||0)+Math.abs(e.movementY||0))},{capture:true,passive:true});
+addEventListener('click',e=>{if(e.target&&e.target.closest&&e.target.closest('[data-act],[data-cd] button,button')){HUM.ct=Date.now();HUM.ctr=!!e.isTrusted;HUM.cp=e.isTrusted?(e.detail===0?'0,0,-1,0,k':`${HUM.x},${HUM.y},${HUM.dur},${HUM.mv},${HUM.ty||'m'}`):'';HUM.mv=0;HUM.dur=-1}},true);
+const humHdr=()=>({'X-WP-In':String(HUM.t?Math.min(99999,Math.round((Date.now()-HUM.t)/1000)):99999),'X-WP-C':Date.now()-HUM.ct<20000?(HUM.ctr?'t':'u'):'n',...(Date.now()-HUM.ct<20000&&HUM.cp?{'X-WP-P':HUM.cp+','+HUM.ct}:{})});
 async function api(method,url,body){if(st.me&&st.me.viewAs&&method!=='GET')throw mkErr(403,'Read-only view: you are viewing the game as '+st.me.name+'.');let r;try{r=await fetch(url,{method,credentials:'same-origin',headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),'X-WP-Vis':document.visibilityState==='visible'?'v':'h',...(method!=='GET'?humHdr():{})},body:body!==undefined?JSON.stringify(body):undefined})}catch(e){throw mkErr(0,'Network error — check your connection.')}let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw mkErr(r.status,j.error||('Error '+r.status));return j}
 const db={
  collection(col){return{onSnapshot(cb){const s={col,cb};st.subs.push(s);if(st.ready)setTimeout(()=>cb(snap(col)),0);return()=>{st.subs=st.subs.filter(x=>x!==s)}}}},
