@@ -1315,11 +1315,12 @@ function actLog(uid, W, b, ok, msg) {
 }
 // ---------- script check: signs that a program, not a person, is playing ----------
 // For every action: when it happened, which one, how long after the operation became ready it was run, whether the game page was open, and whether its tab was visible.
-function botRecord(uid, b, readyAt, req) {
+function botRecord(uid, b, readyAt, req, cdLen) {
   const now = Date.now(), s = S.botsig[uid] = S.botsig[uid] || { a: [] };
   const vis = String(req.headers['x-wp-vis'] || '') === 'v' ? 'v' : String(req.headers['x-wp-vis'] || '') === 'h' ? 'h' : 'n';
   let live = 0; for (const c of clients) if (c.uid === uid) { live = 1; break; }
-  s.a.push([now, b.c === 'act' ? String(b.k).slice(0, 16) : String(b.c).slice(0, 16), readyAt > 0 && readyAt <= now ? now - readyAt : -1, vis, live]);
+  const ch = String(req.headers['x-wp-c'] || ''), click = ch === 't' || ch === 'u' || ch === 'n' ? ch : 'x', inp = req.headers['x-wp-in'] != null ? Math.max(0, Math.min(99999, +req.headers['x-wp-in'] || 0)) : -1;
+  s.a.push([now, b.c === 'act' ? String(b.k).slice(0, 16) : String(b.c).slice(0, 16), readyAt > 0 && readyAt <= now ? now - readyAt : -1, vis, live, click, inp, cdLen || 0]);
   const cut = now - 72 * HOUR; while (s.a.length && (s.a.length > 600 || s.a[0][0] < cut)) s.a.shift();
 }
 function scriptCheck() {
@@ -1343,10 +1344,29 @@ function scriptCheck() {
     const span = L[L.length - 1][0] - L[0][0]; let gap = 0; for (let i = 1; i < L.length; i++) gap = Math.max(gap, L[i][0] - L[i - 1][0]); gap = Math.max(gap, now - L[L.length - 1][0] < HOUR ? 0 : 0);
     const hrs = new Set(L.map(x => Math.floor(x[0] / HOUR))).size;
     if (span >= 30 * HOUR && gap < 3 * HOUR) { score += 2; why.push(`No break longer than ${(gap / HOUR).toFixed(1)} hours in ${Math.round(span / HOUR)} hours of play (active in ${hrs} different hours)`); }
+    // 6. no real person behind the action: no real mouse, finger or keyboard (only pages updated after this check was added send these signs)
+    const H = L.filter(x => x[5] && x[5] !== 'x'), uC = H.filter(x => x[5] === 'u').length, nC = H.filter(x => x[5] === 'n' && x[4]).length, idle = H.filter(x => x[6] >= 120).length;
+    if (H.length >= 10) {
+      if (uC / H.length >= .2) { score += 4; why.push(`${Math.round(uC / H.length * 100)}% of actions came from buttons pressed by code, not a real mouse, finger or keyboard`); }
+      if (nC / H.length >= .3) { score += 3; why.push(`${Math.round(nC / H.length * 100)}% of actions were sent by code without any button being pressed`); }
+      if (idle / H.length >= .3) { score += 3; why.push(`${Math.round(idle / H.length * 100)}% of actions happened after 2+ minutes without any mouse, touch or keyboard use`); }
+    }
+    // 7. always on time: ran within 10 seconds of being ready nearly every time, and never slower than a short limit
+    const D10 = D.filter(d => d <= 10000).length, srt = D.slice().sort((a, b) => a - b), p95 = srt.length ? srt[Math.floor(srt.length * .95)] : 0;
+    if (D.length >= 30 && D10 / D.length >= .85) { score += 2; why.push(`Ran operations within 10 seconds of them becoming ready ${Math.round(D10 / D.length * 100)}% of the time (${D10} of ${D.length}); people get distracted`); }
+    if (D.length >= 40 && p95 <= 15000) { score += 1; why.push(`95% of reactions were under ${Math.max(1, Math.round(p95 / 1000))} seconds over ${D.length} operations: never slow, never distracted`); }
+    // 8. never missing a cycle: the same operation run every time it came ready, for hours on end
+    let streak = { h: 0, k: '' };
+    for (const [k, ts] of Object.entries(byK)) { const rows = L.filter(x => x[1] === k); for (let i = 0, st = 0; i < rows.length; i++) { const cd = rows[i][7] || 0; if (!cd) { st = i + 1; continue; } const nx = rows[i + 1]; if (nx && nx[0] - rows[i][0] <= cd * 1.25 + 30e3) continue; const dur = rows[i][0] - rows[st][0]; if (dur > streak.h) streak = { h: dur, k, n: i - st + 1 }; st = i + 1; } }
+    if (streak.h >= 6 * HOUR) { score += 3; why.push(`Ran "${streak.k}" every time it was ready for ${(streak.h / HOUR).toFixed(1)} hours straight (${streak.n} times in a row)`); }
+    else if (streak.h >= 3 * HOUR) { score += 2; why.push(`Ran "${streak.k}" every time it was ready for ${(streak.h / HOUR).toFixed(1)} hours straight (${streak.n} times in a row)`); }
+    // 9. one long session with no real breaks
+    let sess = 0, run0 = L[0][0]; for (let i = 1; i <= L.length; i++) { if (i === L.length || L[i][0] - L[i - 1][0] > 20 * 60e3) { sess = Math.max(sess, L[i - 1][0] - run0); if (i < L.length) run0 = L[i][0]; } }
+    if (sess >= 8 * HOUR) { score += 1; why.push(`Played ${(sess / HOUR).toFixed(1)} hours in one go without a break of 20 minutes`); }
     // 5. the existing speed flag
     const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
     const n = S.docs['nations/' + uid];
-    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, score, verdict: score >= 5 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, score, verdict: score >= 5 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
   return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
 }
@@ -2116,7 +2136,7 @@ async function handle(req, res) {
       try { r = core.exec(W, me.id, b, useRng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
       if (fair) { if (r.casino) r.casino.fair = { nonce: fair.nonce, hash: W.fairHash }; fair.nonce++; }
-      actLog(me.id, W, b, true, r.msg); try { botRecord(me.id, b, readyAt, req); } catch (e) {} pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
+      actLog(me.id, W, b, true, r.msg); try { botRecord(me.id, b, readyAt, req, b.c === 'act' && W.A[me.id] ? Math.max(0, +((W.A[me.id].cd || {})[String(b.k)] || 0) - Date.now()) : 0); } catch (e) {} pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); if (!S.fresh) inviteReward(W, me.id); else if (S.seasons.cur && S.seasons.cur.fresh) { const pl = S.seasons.cur.played = S.seasons.cur.played || {}; pl[me.id] = 1; } }
       const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;
       if (W.casinoEv) casinoRecord(W);
