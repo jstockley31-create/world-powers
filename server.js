@@ -47,7 +47,7 @@ const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the 
 const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
 const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
-const voteBonus = n => Math.min(25e6, Math.max(1e6, Math.round((n.gdp || 0) * .01 / 1e5) * 1e5));
+const voteBonus = n => Math.min(25e6, Math.max(2e6, Math.round((n.gdp || 0) * .02 / 1e5) * 1e5)); // at least $2M per vote (2% of GDP for bigger nations, up to $25M)
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
 function armTest(fx) { setTimeout(() => fireTest(fx.id), Math.max(0, fx.go - Date.now())); }
@@ -232,11 +232,17 @@ function auth(req) {
   return { id: s.uid, ...u, token: t };
 }
 function newSession(uid) { for (const [t, s] of Object.entries(S.sessions)) if (s.exp < Date.now()) delete S.sessions[t]; const token = crypto.randomBytes(32).toString('hex'); S.sessions[tokHash(token)] = { uid, exp: Date.now() + SESSION_DAYS * 864e5 }; persist(); return token; }
-const pub = u => ({ id: u.id, name: u.name, email: u.email, guest: !!u.guest, admin: !!u.admin, ...(u.admin ? { adminPath: S.adminPath } : {}) });
+const pub = u => ({ id: u.id, name: u.name, email: u.email, guest: !!u.guest, admin: !!u.admin, coadmin: !u.admin && !!u.coadmin, ...(u.admin || u.coadmin ? { adminPath: S.adminPath } : {}) });
 function meta(uid) { return S.meta[uid] || (S.meta[uid] = { ips: [], lastSeen: 0 }); }
 const today = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
 function stat(key, uid) { const d = S.stats[today()] || (S.stats[today()] = { active: [], signups: 0, cmds: 0, chat: 0, mail: 0, nations: 0 }); if (key === 'active') { if (!d.active.includes(uid)) d.active.push(uid); } else d[key] = (d[key] || 0) + 1; }
 function touch(uid, req) { const m = meta(uid); if (m.lastSeen && Date.now() - m.lastSeen > 30 * 60e3) m.prevSeen = m.lastSeen; m.lastSeen = Date.now(); stat('active', uid); const ip = req && ipOf(req); if (ip && !m.ips.includes(ip)) { m.ips.unshift(ip); m.ips = m.ips.slice(0, 8); persist(); } }
+// co-admins: helpers the owner (a full admin) can add from the admin page. They can moderate but never touch the
+// world's history, money, settings or accounts, and everything they do is recorded in a log only the owner can read.
+const COADMIN_OK = new Set(['overview', 'player', 'timeline', 'scriptcheck', 'cheatreview', 'ipbans', 'ipblock', 'ipunblock', 'ban', 'unban', 'mute', 'kick', 'clear-chat', 'clear-user-chat', 'clear-flags', 'report-done', 'bug-done', 'announce', 'poll', 'event-start', 'event-end', 'council-cancel', 'crisis', 'peace', 'fires-out', 'schedule-add', 'schedule-cancel', 'blocs', 'bloc', 'bug-img']);
+const isStaff = u => !!(u && (u.admin || u.coadmin));
+S.coLog = Array.isArray(S.coLog) ? S.coLog : [];
+function coLog(me, p, b, ok, note) { S.coLog.unshift({ t: Date.now(), by: me.name, id: me.id, act: p.replace('/api/admin/', ''), target: b && typeof b.id === 'string' && S.users[b.id] ? S.users[b.id].name : null, detail: b ? JSON.stringify(Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'id' && k !== 'password'))).slice(0, 300) : '', ok, note: note || null }); S.coLog = S.coLog.slice(0, 2000); persist(); }
 function audit(by, action, target, detail) { S.audit.unshift({ t: Date.now(), by, action, target: target || null, detail: detail || null }); S.audit = S.audit.slice(0, 500);
   if (FAIR_ACTIONS.has(action)) { S.fairlog.unshift({ t: Date.now(), action, target: target || null, detail: detail || null }); S.fairlog = S.fairlog.slice(0, 3000); }
   persist(); }
@@ -652,6 +658,7 @@ function councilPropose(uid, b) {
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
   if (open.filter(p => !p.auto).length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
   if (type !== 'custom' && open.some(p => p.type === type && p.target === target && (type !== 'pact' || p.scope === b.scope))) throw Object.assign(new Error('That resolution is already being voted on.'), { status: 400 });
+  if (type === 'debt' && core.debtRatio(n) >= WP.DEBT_PROPOSE_MAX) throw Object.assign(new Error(`Only nations with debt under ${Math.round(WP.DEBT_PROPOSE_MAX * 100)}% of GDP can propose debt relief. Yours is ${Math.round(core.debtRatio(n) * 100)}%.`), { status: 400 }); // no voting yourself out of your own debt
   if (type === 'debt' && Date.now() - ((S.council.passed || {}).debt || 0) < 72 * HOUR) throw Object.assign(new Error(`Debt relief can only pass once every 72 hours. It can be proposed again in ${Math.ceil((72 * HOUR - (Date.now() - S.council.passed.debt)) / HOUR)} hours.`), { status: 400 });
   if (WP.RESOLUTIONS[type].kind === 'global' && (S.council.active[type] || 0) > Date.now()) { const h = Math.ceil((S.council.active[type] - Date.now()) / HOUR); throw Object.assign(new Error(`“${R.n}” is already in force for another ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   let scope = null, text = null, hours = null;
@@ -1531,11 +1538,32 @@ function warRoom(W, nations) {
 }
 const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl'];
 async function adminRoute(p, req, res, me) {
-  if (!me.admin) return send(res, 403, { error: 'Admins only.' });
-  if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, overview());
+  if (!isStaff(me)) return send(res, 403, { error: 'Admins only.' });
+  if (!me.admin) { // a co-admin: only the allowed actions, never against an admin or another co-admin, and every request is logged
+    const act = p.replace('/api/admin/', '').split('/')[0], b0 = req.method === 'POST' ? await readBody(req, 16 * 1024).catch(() => ({})) : null;
+    req._body = b0;
+    if (!COADMIN_OK.has(act)) { if (req.method !== 'GET') coLog(me, p, b0, false, 'Blocked: owner only'); return send(res, 403, { error: 'Only the owner can do that.' }); }
+    const tgt = b0 && typeof b0.id === 'string' ? S.users[b0.id] : null;
+    if (tgt && isStaff(tgt) && ['ban', 'unban', 'mute', 'kick', 'ipblock', 'clear-user-chat', 'cheatreview'].includes(act)) { coLog(me, p, b0, false, 'Blocked: target is an admin'); return send(res, 403, { error: 'Co-admins cannot act against admins.' }); }
+    if (req.method !== 'GET') coLog(me, p, b0, true);
+    if (p === '/api/admin/overview' && req.method === 'GET') { const o = overview(); for (const pl of o.players || []) delete pl.email; return send(res, 200, { ...o, role: 'coadmin' }); }
+  }
+  if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner' });
+  if (p === '/api/admin/coadmins') { // the owner adds or removes co-admins and reads everything they have done
+    if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' });
+    if (req.method === 'POST') { const b = (req._body || await readBody(req, 2048)), q = String(b.who || '').trim().toLowerCase();
+      let id = typeof b.id === 'string' && S.users[b.id] ? b.id : null; if (!id && q) id = Object.keys(S.users).find(k => (S.users[k].name || '').toLowerCase() === q || (S.users[k].email || '').toLowerCase() === q) || null;
+      if (!id) return send(res, 404, { error: 'No player with that leader name or email.' }); const u = S.users[id];
+      if (u.admin) return send(res, 400, { error: `${u.name} is already a full admin.` }); if (u.banned) return send(res, 400, { error: `${u.name} is banned.` });
+      u.coadmin = !!b.on; audit(me.name, b.on ? 'Added a co-admin' : 'Removed a co-admin', u.name); persist();
+      for (const c of [...clients]) if (c.uid === id) endStream(c); // their page reloads with (or without) the admin link
+      if (b.on) addNote(id, 'admin', 'You are now a co-admin of World Powers. Open the admin page from the menu (More → Admin page). Everything you do there is recorded.');
+    }
+    return send(res, 200, { list: Object.entries(S.users).filter(([, u]) => u.coadmin && !u.admin).map(([id, u]) => ({ id, name: u.name, last: (S.meta[id] || {}).lastSeen || 0, acts: S.coLog.filter(x => x.id === id).length })), log: S.coLog.slice(0, 500), allowed: [...COADMIN_OK] });
+  }
   if (p === '/api/admin/supporters') { // donations, claims and the PayPal check log
     if (req.method === 'GET') return send(res, 200, SUPP.adminView());
-    const sb = await readBody(req, 4096), r = SUPP.adminAct(sb, me.name); if (r.error) return send(res, 400, r);
+    const sb = (req._body || await readBody(req, 4096)), r = SUPP.adminAct(sb, me.name); if (r.error) return send(res, 400, r);
     audit(me.name, 'Supporters', sb.op, sb.op === 'cfg' ? 'PayPal settings' : String(sb.u || sb.id || sb.txn || '').slice(0, 60)); return send(res, 200, { ...r, view: SUPP.adminView() });
   }
   if (p === '/api/admin/viewas' && req.method === 'GET') {
@@ -1559,7 +1587,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 200, { ...S.casino, players, limits: { min: WP.CASINO ? WP.CASINO.min : 1e4, max: WP.CASINO ? WP.CASINO.maxAbs : 1e9 } });
   }
   if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
-    const b = await readBody(req, 16384), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
+    const b = (req._body || await readBody(req, 16384)), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
     if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined, played: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title, fresh: !!v.fresh }])), awards: { fresh: FRESH_AWARDS, normal: NORMAL_AWARDS }, freshActive: S.fresh || null, freshFile: fs.existsSync(FRESH_FILE) });
     if (op === 'create') {
       if (S.seasons.cur) return send(res, 400, { error: 'A season is already scheduled or running. End or cancel it first.' });
@@ -1602,7 +1630,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 400, { error: 'Unknown operation.' });
   }
   if (p === '/api/admin/poll' && req.method === 'POST') { // Admin page → Polls: questions sent to every player
-    const b = await readBody(req, 32768), op = String(b.op || ''), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim();
+    const b = (req._body || await readBody(req, 32768)), op = String(b.op || ''), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim();
     const find = () => S.polls.find(x => x.id === b.id);
     if (op === 'list') return send(res, 200, { polls: S.polls, players: Object.keys(S.users).filter(id => !S.users[id].banned && S.docs['nations/' + id]).length });
     if (op === 'create') {
@@ -1619,7 +1647,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 400, { error: 'Unknown action.' });
   }
   if (p === '/api/admin/finance' && req.method === 'POST') { // Admin page → Money: donations and expenses shown on the public Fair play page
-    const b = await readBody(req, 8192), op = String(b.op || '');
+    const b = (req._body || await readBody(req, 8192)), op = String(b.op || '');
     const clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f]/g, ' ').trim();
     const entry = (e = {}) => { const amt = Math.round(Math.abs(+b.amount) * 100) / 100; if (!isFinite(amt) || amt <= 0 || amt > 1e7) throw new Error('Enter an amount above $0.'); const label = clean(b.label).slice(0, 80); if (!label) throw new Error('Add a short description.');
       const d = Date.parse(String(b.date || '')); return { ...e, kind: b.kind === 'expense' ? 'expense' : 'donation', amount: amt, label, note: clean(b.note).slice(0, 300), date: isFinite(d) ? d : Date.now() }; };
@@ -1632,7 +1660,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 400, { error: 'Unknown action.' });
   }
   if (p === '/api/admin/crisis' && req.method === 'POST') { // Admin page → World crises
-    const b = await readBody(req, 4096), op = String(b.op || '');
+    const b = (req._body || await readBody(req, 4096)), op = String(b.op || '');
     if (op === 'start') { const cr = crisisStart(String(b.key), b.hours, String(b.diff || ''), me.name); audit(me.name, 'Started world crisis', WP.CRISES[cr.key].n, `${Math.round((cr.end - cr.start) / HOUR)}h · ${cr.diff} · goal ${WP.moneyS(cr.goal)}`); return send(res, 200, { ok: true }); }
     if (op === 'settings') { const c = crisisCfg(); if (b.auto != null) c.auto = !!b.auto; if (isFinite(+b.everyD) && b.everyD !== '') c.everyD = Math.max(.5, Math.min(30, +b.everyD)); if (isFinite(+b.hours) && b.hours !== '') c.hours = Math.max(2, Math.min(96, Math.round(+b.hours))); if (WP.CRISIS.diff[b.diff]) c.diff = b.diff; if (Array.isArray(b.types)) c.types = b.types.filter(k => WP.CRISES[k]);
       S.config.crisis = c; if (b.nextH != null && isFinite(+b.nextH) && b.nextH !== '') S.nextCrisis = Date.now() + Math.max(0, +b.nextH) * HOUR; persist(); audit(me.name, 'Changed world crisis settings', JSON.stringify(c)); return send(res, 200, { ok: true }); }
@@ -1650,7 +1678,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 400, { error: 'Unknown action.' });
   }
   if (p === '/api/admin/boss' && req.method === 'POST') { // Admin page → Rising Power
-    const b = await readBody(req, 4096), op = String(b.op || '');
+    const b = (req._body || await readBody(req, 4096)), op = String(b.op || '');
     const W = mkWorld(), id = Object.keys(W.A).find(k => BOTS.isBot(k) && W.A[k].ai && W.A[k].ai.boss);
     if (op === 'settings') {
       const c = b.settings || {}, bs = { ...BOTS.BOSS_DEF, ...(S.config.boss || {}) };
@@ -1700,7 +1728,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 400, { error: 'Unknown request.' });
   }
   if (p === '/api/admin/peace' && req.method === 'POST') {
-    const b = await readBody(req, 1024), A_ = S.docs['nations/' + b.a], B_ = S.docs['nations/' + b.b];
+    const b = (req._body || await readBody(req, 1024)), A_ = S.docs['nations/' + b.a], B_ = S.docs['nations/' + b.b];
     if (typeof b.a !== 'string' || typeof b.b !== 'string' || b.a === b.b || !A_ || !B_ || !Object.prototype.hasOwnProperty.call(S.docs, 'nations/' + b.a) || !Object.prototype.hasOwnProperty.call(S.docs, 'nations/' + b.b)) return send(res, 400, { error: 'Pick two nations.' });
     const t = Date.now(); for (const [x, y] of [[A_, b.b], [B_, b.a]]) { x.rel = x.rel || {}; x.rel[y] = { ...(x.rel[y] || {}), peace: t }; }
     setDoc('nations', b.a, A_); setDoc('nations', b.b, B_); systemMessage(`🕊 The administrators have imposed peace between ${A_.name} and ${B_.name}.`);
@@ -1708,7 +1736,7 @@ async function adminRoute(p, req, res, me) {
   }
   // ---------- admin fix-it tools: repair one nation, an alliance, the whole world; compensate players ----------
   if (p === '/api/admin/fix' && req.method === 'POST') { // Players → a nation → Fix problems (also works on AI nations)
-    const b = await readBody(req, 2048), id = String(b.id || ''), key = 'nations/' + id; if (!Object.prototype.hasOwnProperty.call(S.docs, key) || !S.docs[key]) return send(res, 404, { error: 'Unknown nation.' });
+    const b = (req._body || await readBody(req, 2048)), id = String(b.id || ''), key = 'nations/' + id; if (!Object.prototype.hasOwnProperty.call(S.docs, key) || !S.docs[key]) return send(res, 404, { error: 'Unknown nation.' });
     const n = S.docs[key], ops = Array.isArray(b.ops) ? b.ops.map(String) : [], done = [], t = Date.now();
     if (ops.includes('rogue')) { const was = Math.round(n.aggr || 0); n.rogue = 0; n.rogueT = 0; n.aggr = 0; done.push(`rogue status cleared, aggression ${was} → 0`); }
     if (ops.includes('sanctions')) { n.embargo = 0; n.armsEmb = 0; if ((n.aggr || 0) >= 50) n.aggr = 40; done.push('sanctions, embargo and arms embargo lifted'); }
@@ -1727,7 +1755,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 200, { blocs: Object.values(S.blocs || {}).map(b => ({ id: b.id, name: b.name, tag: b.tag, leader: b.leader, co: (b.co || []).filter(m => (b.members || []).includes(m)), members: (b.members || []).map(m => ({ id: m, name: nm(m), seen: (S.meta[m] || {}).lastSeen || 0 })), bank: b.bank || 0, done: Object.keys(b.done || {}).length, proj: b.proj ? { k: b.proj.k, stage: b.proj.stage } : null, open: !!b.open, created: b.created || 0, log: (b.log || []).slice(0, 15) })) });
   }
   if (p === '/api/admin/bloc' && req.method === 'POST') {
-    const b = await readBody(req, 2048), bl = Object.prototype.hasOwnProperty.call(S.blocs || {}, String(b.bid)) ? S.blocs[String(b.bid)] : null; if (!bl) return send(res, 404, { error: 'That alliance no longer exists.' });
+    const b = (req._body || await readBody(req, 2048)), bl = Object.prototype.hasOwnProperty.call(S.blocs || {}, String(b.bid)) ? S.blocs[String(b.bid)] : null; if (!bl) return send(res, 404, { error: 'That alliance no longer exists.' });
     const v = String(b.v || ''), nm = id => (S.docs['nations/' + id] || {}).name || '?', blog = x => { bl.log = [{ t: Date.now(), x }, ...(bl.log || [])].slice(0, 30); }, mem = () => (bl.members || []).includes(v);
     let msg = '';
     switch (String(b.op)) {
@@ -1748,7 +1776,7 @@ async function adminRoute(p, req, res, me) {
     persist(); sendBlocs(); audit(me.name, 'Alliance: ' + msg, bl.name); return send(res, 200, { ok: true, msg });
   }
   if (p === '/api/admin/give' && req.method === 'POST') { // compensation, to one player or every player
-    const b = await readBody(req, 4096), cash = Math.round(+b.cash || 0), xp = Math.round(+b.xp || 0), res_ = {}, note = String(b.note || '').trim().slice(0, 300);
+    const b = (req._body || await readBody(req, 4096)), cash = Math.round(+b.cash || 0), xp = Math.round(+b.xp || 0), res_ = {}, note = String(b.note || '').trim().slice(0, 300);
     for (const r of ['food', 'oil', 'steel', 'goods', 'mun']) { const v = Math.round(+((b.res || {})[r]) || 0); if (v) res_[r] = v; }
     if (!(cash > 0) && !(xp > 0) && !Object.values(res_).some(v => v > 0)) return send(res, 400, { error: 'Enter something to give.' });
     if (cash < 0 || xp < 0 || Object.values(res_).some(v => v < 0)) return send(res, 400, { error: 'Amounts must be positive. To take something away, edit the nation instead.' });
@@ -1761,7 +1789,7 @@ async function adminRoute(p, req, res, me) {
     return send(res, 200, { ok: true, n: ids.length, parts });
   }
   if (p === '/api/admin/cleanup' && req.method === 'POST') { // World → Repair tools
-    const b = await readBody(req, 1024), op = String(b.op || ''), t = Date.now(), all = Object.entries(S.docs).filter(([k, d]) => k.startsWith('nations/') && d); let msg = '';
+    const b = (req._body || await readBody(req, 1024)), op = String(b.op || ''), t = Date.now(), all = Object.entries(S.docs).filter(([k, d]) => k.startsWith('nations/') && d); let msg = '';
     if (op === 'wars') { let k = 0; const touched = new Set(); for (const [key, n] of all) { const id = key.slice(8); for (const [v, r] of Object.entries(n.rel || {})) { const o = S.docs['nations/' + v]; const or = (o && o.rel && o.rel[id]) || {}; const w = Math.max((r && r.war) || 0, or.war || 0); if (!w || ((r.peace || 0) > w && (or.peace || 0) > w)) continue; n.rel[v] = { ...r, peace: t }; touched.add(id); if (o) { o.rel = o.rel || {}; o.rel[id] = { ...or, peace: t }; touched.add(v); } k++; } } for (const id of touched) setDoc('nations', id, S.docs['nations/' + id]); systemMessage('🕊 The administrators have ended every war. The world is at peace.'); msg = `ended every war (${k})`; }
     else if (op === 'nukes') { let k = 0; for (const [key, n] of all) if (n.nuked || n.fallout || n.winter || n.rad) { n.nuked = null; n.fallout = 0; n.winter = 0; n.rad = null; setDoc('nations', key.slice(8), n); k++; } S.nukes = []; msg = `cleared nuclear effects on ${k} nations`; }
     else if (op === 'rogue') { let k = 0; for (const [key, n] of all) if ((n.rogue || 0) > t || (n.aggr || 0) >= 50) { n.rogue = 0; n.rogueT = 0; n.aggr = Math.min(n.aggr || 0, 20); setDoc('nations', key.slice(8), n); k++; } msg = `cleared rogue and sanctioned status on ${k} nations`; }
@@ -1796,7 +1824,7 @@ async function adminRoute(p, req, res, me) {
     persist(); audit(me.name, 'World repair: ' + msg); return send(res, 200, { ok: true, msg });
   }
   if (p === '/api/admin/poker') { // Casino tab → Poker
-    if (req.method === 'POST') { const b = await readBody(req, 256); if (b.op === 'cashout') { pkCashAll('The administrators closed the poker tables for a moment'); audit(me.name, 'Poker: cashed out every table'); return send(res, 200, { ok: true }); } return send(res, 400, { error: 'Unknown action.' }); }
+    if (req.method === 'POST') { const b = (req._body || await readBody(req, 256)); if (b.op === 'cashout') { pkCashAll('The administrators closed the poker tables for a moment'); audit(me.name, 'Poker: cashed out every table'); return send(res, 200, { ok: true }); } return send(res, 400, { error: 'Unknown action.' }); }
     const nm = u => (S.docs['nations/' + u] || {}).name || (S.users[u] || {}).name || '?';
     return send(res, 200, { rake: S.poker.rake, hands: S.poker.hands, tables: Object.values(S.poker.tables).map(t => ({ id: t.id, name: t.name, sb: t.sb, bb: t.bb, seats: t.seats.map(x => x ? { name: nm(x.u), stack: x.stack, sitOut: !!x.sitOut } : null), live: !!(t.hand && !t.hand.done), pot: t.hand ? PK.potTotal(t.hand) : 0, hist: t.hist.slice(0, 5).map(h => ({ t: h.t, pot: h.pot, rake: h.rake, win: h.win.map(w => ({ name: nm(w.u), amt: w.amt, hand: w.hand })) })) })),
       top: Object.entries(S.poker.stats).map(([u, x]) => ({ name: nm(u), ...x })).sort((a, b) => b.net - a.net).slice(0, 10) });
@@ -1815,13 +1843,13 @@ async function adminRoute(p, req, res, me) {
     return fs.createReadStream(fs.existsSync(f) ? f : path.join(DATA_DIR, bm[1])).pipe(res);
   }
   if (req.method !== 'POST') return send(res, 404, { error: 'Not found.' });
-  const b = await readBody(req, 16 * 1024);
+  const b = req._body || await readBody(req, 16 * 1024);
   const u = typeof b.id === 'string' && Object.prototype.hasOwnProperty.call(S.users, b.id) ? S.users[b.id] : null;
   const target = u ? u.name : null;
   switch (p) {
     case '/api/admin/player': {
       if (!u) return send(res, 404, { error: 'Unknown player.' });
-      return send(res, 200, { id: b.id, name: u.name, email: u.email, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, meta: S.meta[b.id] || {}, nation: S.docs['nations/' + b.id] || null, flags: S.flags.filter(f => f.uid === b.id).slice(0, 100), reports: S.reports.filter(r => r.about === b.id).slice(0, 50) });
+      return send(res, 200, { id: b.id, name: u.name, email: me.admin ? u.email : undefined, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, meta: S.meta[b.id] || {}, nation: S.docs['nations/' + b.id] || null, flags: S.flags.filter(f => f.uid === b.id).slice(0, 100), reports: S.reports.filter(r => r.about === b.id).slice(0, 50) });
     }
     case '/api/admin/nation': {
       const n = S.docs['nations/' + b.id]; if (!u || !n) return send(res, 404, { error: 'That player has no nation.' });
@@ -2000,7 +2028,7 @@ async function handle(req, res) {
     }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
     if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: HOF, cur }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
-    if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!me || !me.admin) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
+    if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!isStaff(me)) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
     if (req.method === 'GET' && p.startsWith('/n/')) return await nationPage(req, res, p.slice(3));
     if (!p.startsWith('/api/')) return notFound(req, res);
     if (p === '/api/paypal/ipn' && req.method === 'POST') { if (limited('ipn:' + ipOf(req), 30, 60e3) || limited('ipn:all', 300, 60 * 60e3)) return send(res, 429, { error: 'Slow down.' }); return SUPP.ipn(req, res); } // each message is checked with PayPal, so floods are capped // PayPal posts here (form-encoded, from PayPal's servers)

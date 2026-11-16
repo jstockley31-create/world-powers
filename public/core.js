@@ -335,6 +335,7 @@ const HEAVY = {
   sub: { n: 'Submarine strike', ic: '🌊', tech: 60, mun: 60, rank: 3, ships: 5, cash: 1e7, steel: 300, oil: 300, cdH: 6, aggr: 9, sink: .2 },
   orbital: { n: 'Orbital strike', ic: '🛰', tech: 175, mun: 400, rank: 7, cash: 2.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
 };
+const DEBT_PROPOSE_MAX = .15; // only nations with debt under this share of GDP may propose debt relief in the Council
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
 const DEFBUDGET = { spend: 15, mil: 30, health: 25, edu: 25, infra: 20 };
 const COVERT = {
@@ -375,7 +376,7 @@ const RESOLUTIONS = {
   health: { kind: 'global', h: 24, n: 'Global health initiative', d: 'For 24 hours every nation\'s health drifts 12 higher (faster population growth) and pandemics kill half as many people. Every nation pays 0.5% of its treasury when it passes.' },
   science: { kind: 'global', h: 24, n: 'Science cooperation', d: 'For 24 hours research costs 25% less for every nation.' },
   food: { kind: 'global', h: 24, n: 'Food security program', d: 'For 24 hours farms everywhere produce 20% more food and the world food price is 15% lower.' },
-  debt: { kind: 'global', h: 24, n: 'Debt relief', d: 'Every nation in debt has 20% of it forgiven the moment it passes. Printing the money pushes inflation 1 point higher worldwide for 24 hours.' },
+  debt: { kind: 'global', h: 24, n: 'Debt relief', d: 'Every nation in debt has 20% of the debt it held when this was proposed forgiven the moment it passes. Debt taken on during or after the vote is not forgiven. Only nations with debt under 15% of GDP can propose it. Printing the money pushes inflation 1 point higher worldwide for 24 hours.' },
   nonukes: { kind: 'global', h: 24, n: 'Nuclear weapons ban', d: 'For 24 hours no nation may launch a nuclear missile, drop a dirty bomb or test a nuclear weapon.' },
   tariffs: { kind: 'global', h: 24, n: 'Tariff war', d: 'For 24 hours market fees double and trade routes pay half their usual bonus. Self-sufficient nations come out ahead.' },
   freemarket: { kind: 'global', h: 72, n: 'Free market week', d: 'For 72 hours market fees are slashed, every nation earns 3% more tax, and GDP is 2% higher everywhere.' },
@@ -2566,5 +2567,5 @@ function Core(PD, CARDS) {
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { UWONDERS, UW, GRAND, GRANDC, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { DEBT_PROPOSE_MAX, UWONDERS, UW, GRAND, GRANDC, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });
