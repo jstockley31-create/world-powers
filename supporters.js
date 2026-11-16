@@ -18,7 +18,7 @@ const TIERS = [ // lifetime USD total needed, name, badge
   { min: 50, n: 'Benefactor', b: '👑' }
 ];
 const PERKS = { // per tier index
-  rushDay: [0, 1, 10, 20],        // Rush orders per day: finish one operation's cooldown at once
+  rushDay: [0, 1, 5, 10],        // Rush orders per day: finish one operation's cooldown at once
   instantDay: [0, 0, 2, 4],       // Rapid redeployment per day: clear attack, strike and spy cooldowns and the army regroup
   chestMin: [0, 0, 10e6, 25e6],   // weekly war chest: the larger of this and a share of GDP, capped
   chestGdp: [0, 0, .05, .10],
