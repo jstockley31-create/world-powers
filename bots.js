@@ -231,7 +231,7 @@ module.exports = function makeBots(core, WP, rng) {
     // 1) decisions
     if (n.cards.length && rng() < .5) { const c = n.cards[0]; const card = core.getCard(c.i); if (card) return tryExec(W, u, { c: 'decide', id: c.id, o: chooseOption(W, u, card) }); }
     // finances: borrow when broke, repay when flush, campaign before elections
-    if (n.cash < 1e5 && core.maxBorrow(n) > 3e5 && !core.left(W, n, 'bonds')) { n.cd.bonds = W.now + 2 * HOUR; return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(core.maxBorrow(n), n.gdp * .1)) }); }
+    if (n.cash < 1e5 && core.maxBorrow(n, W) > 3e5 && !core.left(W, n, 'bonds')) { n.cd.bonds = W.now + 2 * HOUR; return tryExec(W, u, { c: 'bonds', amt: Math.round(Math.min(core.maxBorrow(n, W), n.gdp * .1)) }); }
     if (n.debt >= 1 && n.cash > 4e6) return tryExec(W, u, { c: 'bonds', amt: Math.min(n.debt, Math.round(n.cash * .4)), repay: true });
     if (n.gov === 'dem' && n.nextElection && n.nextElection - W.now < 24 * HOUR && !core.left(W, n, 'campaign') && (n.campaign || 0) < 12 && n.cash > 4e5) return tryExec(W, u, { c: 'act', k: 'campaign' });
     // walk away from partners the World Council condemned or sanctioned (warlords care least)

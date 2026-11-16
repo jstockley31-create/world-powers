@@ -560,8 +560,16 @@ function Core(PD, CARDS) {
   // ---------- economy ----------
   const budget = n => ({ ...DEFBUDGET, ...(n.budget || {}) });
   const debtRatio = n => (n.debt || 0) / Math.max(1, n.gdp || 1);
-  function rating(W, n) { if ((n.defaulted || 0) > W.now - 48 * HOUR) return 'D'; const r = debtRatio(n); return r < .3 ? 'AAA' : r < .6 ? 'AA' : r < .9 ? 'A' : r < 1.2 ? 'BBB' : r < 1.5 ? 'BB' : r < 2 ? 'B' : 'CCC'; }
-  function interestRate(W, n) { return 3 + Math.max(0, debtRatio(n) - .4) * 12 + ((n.defaulted || 0) > W.now - 48 * HOUR ? 10 : 0) + W.m.rate; }
+  // the credit rating drives the cost of borrowing, how much lenders allow, and investor confidence (GDP), approval and stability
+  const CREDIT = { defaultH: 72,
+    prem: { AAA: 0, AA: 1, A: 2.5, BBB: 5, BB: 9, B: 14, CCC: 22, D: 30 },          // added to the 3% base interest rate (per game year = one real day)
+    cap: { AAA: 1.2, AA: 1.1, A: 1, BBB: .9, BB: .8, B: .7, CCC: 0, D: 0 },          // lenders stop once total debt reaches this share of GDP
+    gdp: { AAA: 1.02, AA: 1, A: 1, BBB: .98, BB: .95, B: .91, CCC: .86, D: .8 },     // investor confidence on GDP
+    ap: { AAA: 0, AA: 0, A: 0, BBB: 0, BB: -2, B: -5, CCC: -9, D: -12 },              // approval target
+    st: { AAA: 0, AA: 0, A: 0, BBB: 0, BB: -1, B: -3, CCC: -6, D: -10 } };            // stability target
+  const defaultedRecently = (W, n) => (n.defaulted || 0) > W.now - CREDIT.defaultH * HOUR;
+  function rating(W, n) { if (defaultedRecently(W, n)) return 'D'; const r = debtRatio(n); return r < .3 ? 'AAA' : r < .6 ? 'AA' : r < .9 ? 'A' : r < 1.2 ? 'BBB' : r < 1.5 ? 'BB' : r < 2 ? 'B' : 'CCC'; }
+  function interestRate(W, n) { return 3 + CREDIT.prem[rating(W, n)] + W.m.rate; }
   // combined effect of a nation's laws and wonders: multipliers (gdp, tax, research, xp, def, spend, oil) and additions (ap, st, unemp, health, edu, spread, tcap)
   const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); const bl = n.bloc && BL[n.bloc]; if (bl) for (const k of Object.keys(bl.done || {})) if (BPROJ[k]) o.push(BPROJ[k].fx); for (const k of Object.keys(n.uwon || {})) if (UWONDERS[k]) o.push(UWONDERS[k].fx); for (const k of Object.keys(n.gpdone || {})) if (GRAND[k]) o.push(GRAND[k].fx); return o; };
   const fxMul = (n, k) => { let v = 1; for (const f of fxOf(n)) if (f[k] != null) v *= f[k]; return v; };
@@ -574,7 +582,7 @@ function Core(PD, CARDS) {
     const n = W.A[u], b = budget(n);
     const pc = 187.5 * (1 + soft(n.tech, 10) * .04) * (1 + soft(n.infra, 10) * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
       * (1 + tradeVal(W, u) * .03) * (1 + soft(devTotal(W, u), 20) * DEV.gdp) * fxMul(n, 'gdp') * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
-      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * ((n.defaulted || 0) > W.now - 48 * HOUR ? .85 : 1) * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * W.m.gdp;
+      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * CREDIT.gdp[rating(W, n)] * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * W.m.gdp;
     return n.pop * pc;
   }
   // development aid: nations far behind the world leader earn up to +50% tax revenue, shrinking as they catch up
@@ -627,7 +635,7 @@ function Core(PD, CARDS) {
   // price multiplier at the very end of an order of q units, relative to the price before it (for "sensible max" buttons)
   function orderEdge(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75; return mktMult(W, other + clamp(mine + q, -cap, cap)) / mktMult(W, other + mine); }
   function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(tcap(n), traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1) * W.m.tradeMul; const inf = Math.max(0, (n.infl || 0) - 3) / 200; const lx = fxAdd(n, 'spread'); return { buy: Math.max(1.02 + sp + inf, 1.08 + sp - tb - W.m.spread + inf - lx), sell: Math.min(.98 - sp, .92 - sp + tb + W.m.spread + lx) }; } // trade bonuses narrow the fee but can never cross it: buying and selling straight back always loses at least 4%
-  const maxBorrow = n => Math.max(0, (n.gdp || 0) * 1.2 - (n.debt || 0));
+  const maxBorrow = (n, W0) => { const W_ = W0 || { now: Date.now() }; return Math.max(0, (n.gdp || 0) * CREDIT.cap[rating(W_, n)] - (n.debt || 0)); };
 
   // ---------- costs ----------
   const troopCap = n => Math.floor((n.pop || 0) * ((n.laws || []).includes('conscription') ? .06 : .04));
@@ -1530,8 +1538,8 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.');
     amt = Math.floor(Number(amt)); if (!(amt > 0) || amt > 1e13) fail('Enter an amount.');
     if (repay) { if (!(n.debt > 0)) fail('You have no debt to repay.'); if (amt > n.debt) amt = n.debt; if (amt > n.cash) fail('You do not have that much cash.'); n.cash -= amt; n.debt -= amt; if (n.debt < 1) n.debt = 0; /* no leftover cents that can never be repaid */ log(n, `Repaid ${money(amt)} of national debt.`, W); touch(W, u); return { msg: `Repaid ${money(amt)}. Debt is now ${moneyS(n.debt)}.` }; }
-    if ((n.defaulted || 0) > W.now - 48 * HOUR) fail('No one will lend to you for 48 hours after a default.');
-    if (amt > maxBorrow(n)) fail(`Lenders will only lend up to ${money(maxBorrow(n))} more (120% of GDP in total).`);
+    if (defaultedRecently(W, n)) fail(`No one will lend to you for ${CREDIT.defaultH} hours after a default.`);
+    { const rt = rating(W, n), mb = maxBorrow(n, W); if (!CREDIT.cap[rt]) fail(`With a ${rt} credit rating, no lender will buy your bonds. Repay debt to improve your rating.`); if (amt > mb) fail(mb > 0 ? `With a ${rt} credit rating, lenders will only lend up to ${money(mb)} more (${Math.round(CREDIT.cap[rt] * 100)}% of GDP in total).` : `With a ${rt} credit rating, lenders won't lend more until your debt falls below ${Math.round(CREDIT.cap[rt] * 100)}% of GDP.`); }
     n.cash += amt; n.debt += amt; n.infl = clamp(n.infl + amt / Math.max(1, n.gdp) * 4, -2, 80);
     log(n, `Issued ${money(amt)} in government bonds at ${interestRate(W, n).toFixed(1)}% interest.`, W); touch(W, u);
     return { msg: `Bonds issued: +${money(amt)}. Interest rate ${interestRate(W, n).toFixed(1)}% per year.` };
@@ -1695,8 +1703,8 @@ function Core(PD, CARDS) {
     // interest and bankruptcy
     const interest = n.debt * interestRate(W, n) / 100 / TICKS_PER_YEAR; if (interest > 0) { if (n.cash >= interest) n.cash -= interest; else n.debt += interest; }
     if (n.debt > n.gdp * 2 || n.cash < -n.gdp * .2) {
-      n.debt = Math.round(n.debt * .4); n.cash = Math.max(0, n.cash); n.stability = clamp(n.stability - 30, 0, 100); n.approval = clamp(n.approval - 20, 0, 100); n.gdp *= .85; n.infl = clamp(n.infl + 15, -2, 80); n.defaulted = W.now;
-      news(W, u, `${n.name} has defaulted on its national debt. Its economy is in crisis.`); note(W, u, 'economy', 'Your government has gone bankrupt and defaulted on its debt. Lenders will not lend for 48 hours.');
+      n.debt = Math.round(n.debt * .6); n.cash = Math.max(0, n.cash); n.stability = clamp(n.stability - 35, 0, 100); n.approval = clamp(n.approval - 25, 0, 100); n.gdp *= .8; n.infl = clamp(n.infl + 20, -2, 80); n.morale = clamp((n.morale || 50) - 15, 0, 100); n.defaulted = W.now; // defaulting is a disaster, never a cheap way out of debt
+      news(W, u, `${n.name} has defaulted on its national debt. Its economy is in crisis.`); note(W, u, 'economy', `Your government has gone bankrupt and defaulted on its debt. Only 40% was written off, the economy crashed, and lenders will not lend for ${CREDIT.defaultH} hours.`);
     }
     const short = []; for (const r in n.res) if (n.res[r] < 0) { short.push(r); n.res[r] = 0; }
     const foodShort = short.includes('food'), goodsShort = short.includes('goods');
@@ -1715,10 +1723,10 @@ function Core(PD, CARDS) {
     if (n.cash < 0) n.morale = clamp(n.morale - 3, 0, 100);
     // public opinion
     const apT = 55 - (n.tax - 20) * 1.2 + g.ap - w * (n.gov === 'dem' ? 10 : n.gov === 'dic' ? 3 : 6) - (foodShort ? 15 : 0) - (goodsShort ? 8 : 0) - (sanctioned(n) ? 6 : 0) + Math.min(5, traders(W, u).length) * 1.5
-      - Math.max(0, n.unemp - 6) * .8 - Math.max(0, n.infl - 4) * .5 + (n.health - 50) * .08 + (n.edu - 50) * .03 + W.m.apBonus + fxAdd(n, 'ap');
+      - Math.max(0, n.unemp - 6) * .8 - Math.max(0, n.infl - 4) * .5 + (n.health - 50) * .08 + (n.edu - 50) * .03 + W.m.apBonus + fxAdd(n, 'ap') + CREDIT.ap[rating(W, n)];
     n.approval = clamp(n.approval + (apT - n.approval) * .1, 0, 100);
     if (n.overC) delete n.overC; // (the old size upkeep is gone)
-    const stT = 30 + n.approval * .5 + g.st + n.fort + fxAdd(n, 'st') - w * 5 - (n.aggr || 0) * .1 - Math.max(0, n.unemp - 10) * .5; n.stability = clamp(n.stability + (stT - n.stability) * .08, 0, 100);
+    const stT = 30 + n.approval * .5 + g.st + n.fort + fxAdd(n, 'st') + CREDIT.st[rating(W, n)] - w * 5 - (n.aggr || 0) * .1 - Math.max(0, n.unemp - 10) * .5; n.stability = clamp(n.stability + (stT - n.stability) * .08, 0, 100);
     n.aggr = Math.max(0, (n.aggr || 0) - W.m.aggrDecay); if (n.hitBy) for (const k of Object.keys(n.hitBy)) if (W.now - n.hitBy[k] > 48 * HOUR) delete n.hitBy[k];
     if (nuked(W, n)) { n.pop *= .998; n.stability = clamp(n.stability - .2, 0, 100); }
     if (n.rad) { if (radOn(W, n)) { n.pop *= .9993; n.stability = clamp(n.stability - .05, 0, 100); n.approval = clamp(n.approval - .03, 0, 100); } else delete n.rad; }
@@ -2554,7 +2562,7 @@ function Core(PD, CARDS) {
 
 
   return { AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
-    noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
+    noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
