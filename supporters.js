@@ -175,7 +175,8 @@ module.exports = function makeSupporters(ctx) {
     }
     const n = nationOf(uid);
     if (!k) return fail(res, 'Supporter perks unlock with a donation of $5 or more.'), true;
-    if (p === '/api/supporter/name') {
+    if (p === '/api/supporter/name') { // supporter levels no longer include a reserved name: it is the separate forever purchase now
+      return fail(res, 'Reserving a name is now a separate one-time purchase: use “Reserve your nation name forever” on the Donate page.'), true;
       if (u.nameT && now - u.nameT < WEEK && u.name) return fail(res, `You can change your reserved name again in ${Math.ceil((u.nameT + WEEK - now) / DAY)} day(s).`), true;
       const name = String(b.name || (n && n.name) || '').trim().replace(/\s+/g, ' ');
       if (name.length < 2 || name.length > 28 || !/^[\p{L}\p{N} .,'&()-]+$/u.test(name)) return fail(res, 'Choose a name of 2–28 letters, numbers and basic punctuation.'), true;
