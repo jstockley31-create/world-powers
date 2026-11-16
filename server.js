@@ -46,7 +46,7 @@ for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) 
 const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
 const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
-const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
+const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(2e6, Math.round((n.gdp || 0) * .02 / 1e5) * 1e5)); // at least $2M per vote (2% of GDP for bigger nations, up to $25M)
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
