@@ -136,7 +136,7 @@ const STATIC = {};
 function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), br: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
-STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/donate'] = loadFile('donate.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
+STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/donate'] = loadFile('donate.html', HTML, 'no-cache'); STATIC['/updates'] = loadFile('updates.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
 STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=604800');
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
@@ -239,7 +239,7 @@ function stat(key, uid) { const d = S.stats[today()] || (S.stats[today()] = { ac
 function touch(uid, req) { const m = meta(uid); if (m.lastSeen && Date.now() - m.lastSeen > 30 * 60e3) m.prevSeen = m.lastSeen; m.lastSeen = Date.now(); stat('active', uid); const ip = req && ipOf(req); if (ip && !m.ips.includes(ip)) { m.ips.unshift(ip); m.ips = m.ips.slice(0, 8); persist(); } }
 // co-admins: helpers the owner (a full admin) can add from the admin page. They can moderate but never touch the
 // world's history, money, settings or accounts, and everything they do is recorded in a log only the owner can read.
-const COADMIN_OK = new Set(['overview', 'player', 'timeline', 'scriptcheck', 'cheatreview', 'ipbans', 'ipblock', 'ipunblock', 'ban', 'unban', 'mute', 'kick', 'clear-chat', 'clear-user-chat', 'clear-flags', 'report-done', 'bug-done', 'announce', 'poll', 'event-start', 'event-end', 'council-cancel', 'crisis', 'peace', 'fires-out', 'schedule-add', 'schedule-cancel', 'blocs', 'bloc', 'bug-img']);
+const COADMIN_OK = new Set(['overview', 'player', 'ipbans', 'ipblock', 'ipunblock', 'ban', 'unban', 'mute', 'kick', 'clear-chat', 'clear-user-chat', 'report-done', 'bug-done', 'announce', 'poll', 'bug-img']); // moderation only: co-admins also play, so they never see other players' nations, actions or the world's numbers
 const isStaff = u => !!(u && (u.admin || u.coadmin));
 S.coLog = Array.isArray(S.coLog) ? S.coLog : [];
 function coLog(me, p, b, ok, note) { S.coLog.unshift({ t: Date.now(), by: me.name, id: me.id, act: p.replace('/api/admin/', ''), target: b && typeof b.id === 'string' && S.users[b.id] ? S.users[b.id].name : null, detail: b ? JSON.stringify(Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'id' && k !== 'password'))).slice(0, 300) : '', ok, note: note || null }); S.coLog = S.coLog.slice(0, 2000); persist(); }
@@ -1126,6 +1126,31 @@ function worldLoop() {
   health.loopMs = Number(process.hrtime.bigint() - t0) / 1e6;
 }
 setInterval(worldLoop, 30000).unref(); setTimeout(worldLoop, 1000);
+// a peace offer to a player who has gone inactive (not seen for a day) is signed for them after a short wait,
+// so nobody stays stuck in a war against someone who is no longer playing
+const PEACE_IDLE = { awayH: 24, waitH: 2 };
+function peaceSweep() {
+  const now = Date.now(), online = new Set([...clients].map(c => c.uid)); let changed = 0;
+  for (const [key, n] of Object.entries(S.docs)) {
+    if (!key.startsWith('nations/') || !n || !n.rel) continue; const u = key.slice(8);
+    for (const [v, r] of Object.entries(n.rel)) {
+      const o = S.docs['nations/' + v]; if (!o || !S.users[v] || BOTS.isBot(v) || online.has(v)) continue;
+      const or = (o.rel && o.rel[u]) || {}, w = Math.max(r.war || 0, or.war || 0); if (!w) continue;
+      const mine = r.peace || 0, theirs = or.peace || 0; if (!(mine > w) || theirs > w) continue;      // I offered, they haven't answered
+      if (now - mine < PEACE_IDLE.waitH * 36e5) continue;                                           // give them a chance first
+      if (now - ((S.meta[v] || {}).lastSeen || 0) < PEACE_IDLE.awayH * 36e5) continue;               // they've been around: their choice
+      o.rel = o.rel || {}; o.rel[u] = { ...(o.rel[u] || {}), peace: now };
+      const away = Math.floor((now - ((S.meta[v] || {}).lastSeen || 0)) / 864e5);
+      (o.log = o.log || []).unshift({ t: now, x: `While you were away, peace with ${n.name} was signed on your behalf (you had been inactive ${away >= 1 ? away + ' day' + (away > 1 ? 's' : '') : 'over a day'} and they offered peace).` }); o.log = o.log.slice(0, 60);
+      (n.log = n.log || []).unshift({ t: now, x: `${o.name} has been inactive, so your peace offer was accepted on their behalf. The war is over.` }); n.log = n.log.slice(0, 60);
+      addNote(u, 'diplo', `${o.name} has been inactive for over a day, so your peace offer was accepted on their behalf. The war is over.`);
+      addNote(v, 'diplo', `While you were away, peace with ${n.name} was signed on your behalf. The war is over.`);
+      sendNation(u); sendNation(v); changed++;
+    }
+  }
+  if (changed) persist();
+}
+setInterval(() => { try { peaceSweep(); } catch (e) { logErr('peaceSweep: ' + e.message); } }, 5 * 60e3).unref(); setTimeout(() => { try { peaceSweep(); } catch (e) {} }, 8000);
 // remind players by push when their main operations are ready (at most once an hour, only if they were active today)
 // scheduled events: announce on start and end, start world events on time
 function runSchedule() {
@@ -1546,7 +1571,11 @@ async function adminRoute(p, req, res, me) {
     const tgt = b0 && typeof b0.id === 'string' ? S.users[b0.id] : null;
     if (tgt && isStaff(tgt) && ['ban', 'unban', 'mute', 'kick', 'ipblock', 'clear-user-chat', 'cheatreview'].includes(act)) { coLog(me, p, b0, false, 'Blocked: target is an admin'); return send(res, 403, { error: 'Co-admins cannot act against admins.' }); }
     if (req.method !== 'GET') coLog(me, p, b0, true);
-    if (p === '/api/admin/overview' && req.method === 'GET') { const o = overview(); for (const pl of o.players || []) delete pl.email; return send(res, 200, { ...o, role: 'coadmin' }); }
+    if (p === '/api/admin/overview' && req.method === 'GET') { // names and moderation status only: nothing about anyone's nation
+      const players = Object.entries(S.users).filter(([, u]) => !u.guest || S.docs['nations/' + u]).map(([id, u]) => { const n = S.docs['nations/' + id]; return { id, name: u.name, guest: !!u.guest, admin: !!u.admin, coadmin: !!u.coadmin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }; });
+      return send(res, 200, { role: 'coadmin', players, reports: S.reports.slice(0, 100), bugs: S.bugs.filter(x => x.kind !== 'idea').slice(0, 100), ideas: S.bugs.filter(x => x.kind === 'idea').slice(0, 150), flags: [], audit: [], bots: [], config: {}, health: {} }); }
+    if (p === '/api/admin/player' && req.method === 'POST') { const u = b0 && typeof b0.id === 'string' ? S.users[b0.id] : null; if (!u) return send(res, 404, { error: 'Unknown player.' }); const n = S.docs['nations/' + b0.id];
+      return send(res, 200, { lite: true, id: b0.id, name: u.name, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[b0.id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }); }
   }
   if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner' });
   if (p === '/api/admin/coadmins') { // the owner adds or removes co-admins and reads everything they have done
@@ -2197,6 +2226,7 @@ async function handle(req, res) {
       try { r = core.exec(W, me.id, b, useRng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
       if (fair) { if (r.casino) r.casino.fair = { nonce: fair.nonce, hash: W.fairHash }; fair.nonce++; }
+      if (b.c === 'dip' && b.kind === 'peace' && typeof b.v === 'string' && S.users[b.v] && !BOTS.isBot(b.v) && r.msg !== undefined && core.atWar(W, me.id, b.v)) { const seen = (S.meta[b.v] || {}).lastSeen || 0, on = [...clients].some(c => c.uid === b.v); if (!on && Date.now() - seen >= PEACE_IDLE.awayH * 36e5) r.msg = `Peace offered. They haven't played for over a day, so if they don't answer within ${PEACE_IDLE.waitH} hours, peace is signed for them automatically.`; }
       actLog(me.id, W, b, true, r.msg); try { botRecord(me.id, b, readyAt, req, b.c === 'act' && W.A[me.id] ? Math.max(0, +((W.A[me.id].cd || {})[String(b.k)] || 0) - Date.now()) : 0); } catch (e) {} pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); if (!S.fresh) inviteReward(W, me.id); else if (S.seasons.cur && S.seasons.cur.fresh) { const pl = S.seasons.cur.played = S.seasons.cur.played || {}; pl[me.id] = 1; } }
       const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;

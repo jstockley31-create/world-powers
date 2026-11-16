@@ -33,10 +33,12 @@ input:focus{outline:2px solid #d4a64a;outline-offset:0}
 h2.s{font-size:20px;margin:30px 0 10px}
 details{border:1px solid #1d2731;border-radius:10px;padding:10px 14px;margin:0 0 10px;background:#0a0f14}summary{cursor:pointer;font-weight:600}details p{color:#c5ced8;margin:8px 0 2px;font-size:15px}
 .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-.claim{display:grid;grid-template-columns:1fr 140px auto;gap:10px;margin-top:10px}
+.claim{display:grid;grid-template-columns:1fr 120px 140px auto;gap:10px;margin-top:10px}
 table{border-collapse:collapse;width:100%;font-size:14px;margin-top:8px}td{border-bottom:1px solid #1a232d;padding:6px}td.r{text-align:right}
 .msg{min-height:22px;margin-top:8px;font-size:14px}.msg.err{color:#ff9a94}.msg.ok{color:#9fe0ae}
-@media(max-width:820px){.tiers{grid-template-columns:1fr}h1{font-size:31px}.claim{grid-template-columns:1fr 1fr}.claim .btn{grid-column:1/-1}.me{grid-template-columns:1fr}}
+.forever{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;border:1px solid #2a3746;border-radius:16px;background:#0c1218;padding:18px 20px;margin:0 0 26px}.forever .ic{font-size:30px}.forever h3{margin:0;font-size:19px}.forever p{margin:4px 0 0;color:#aab6c2;font-size:14.5px}.forever .own{color:#9fe0ae;font-weight:600}
+.mback{position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}.mbox{width:min(460px,100%);background:#0f151c;border:1px solid rgba(212,166,74,.5);border-radius:16px;padding:22px}.mbox h3{margin:0 0 6px;font-size:20px}.mbox p{margin:0 0 14px;color:#aab6c2;font-size:14.5px}.mbox input{width:100%;box-sizing:border-box;font-size:16px;margin-bottom:12px}
+@media(max-width:820px){.forever{grid-template-columns:1fr}.tiers{grid-template-columns:1fr}h1{font-size:31px}.claim{grid-template-columns:1fr 1fr}.claim .btn{grid-column:1/-1}.me{grid-template-columns:1fr}}
 </style></head><body><div class="w">
 <div class="bar"><a class="top" href="/"><img src="/icon.svg" alt="">WORLD POWERS</a><a class="play" href="/play">Play</a></div>
 <h1>Support World Powers</h1>
@@ -45,11 +47,12 @@ table{border-collapse:collapse;width:100%;font-size:14px;margin-top:8px}td{borde
 <div id="me"></div>
 <div class="tiers" id="tiers"></div>
 <div class="custom" id="custom"></div>
+<div id="forever"></div>
 <div id="more"></div>
 <h2 class="s">Questions</h2>
 <details><summary>How is my donation linked to my nation?</summary><p>Sign in, then press a Donate button on this page. PayPal receives a private code that belongs to your account. When the payment completes, PayPal tells our server directly, we check the payment with PayPal, and your perks switch on within a few minutes. You don't need to do anything else.</p></details>
 <details><summary>I donated another way, or my perks didn't appear</summary><p>Use "Claim a donation" on this page with the transaction ID from your PayPal receipt (17 letters and numbers). An admin checks it in PayPal and adds your perks.</p></details>
-<details><summary>Is this pay-to-win?</summary><p>Perks are capped so effort still decides who wins: a few timer skips a day and a weekly treasury bonus. A supporter can still be beaten, and nobody can buy troops, land, or protection.</p></details>
+<details><summary>Is this pay-to-win?</summary><p>Perks are capped so effort still decides who wins: a set number of timer skips a day and a weekly treasury bonus. A supporter can still be beaten, and nobody can buy troops, land, or protection.</p></details>
 <details><summary>What if a donation is refunded?</summary><p>A refunded or charged-back donation no longer counts toward your level, and the perks it unlocked stop.</p></details>
 <details><summary>Do perks work in seasons too?</summary><p>Yes. Your level belongs to your account, so it carries over to every season and to new nations you found.</p></details>
 </div>
@@ -57,14 +60,14 @@ table{border-collapse:collapse;width:100%;font-size:14px;margin-top:8px}td{borde
 const $=id=>document.getElementById(id),esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=v=>'$'+(v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(v>=1e8?0:1)+'M':Math.round(v).toLocaleString('en-US'));
 const TIERS=[{k:1,n:'Supporter',b:'⭐',min:5,perks:['<b>⭐ badge</b> next to your name in chat, rankings and your profile','<b>Reserve your nation name</b> so nobody else can use it','<b>Supporter Monument</b> on your capital, shown on the globe','<b>1 Rush order a day</b>: finish one operation’s timer instantly (not once-a-day ones like International Aid)']},
- {k:2,n:'Patron',b:'🌟',min:20,perks:['Everything in Supporter, with a <b>🌟 badge</b>','<b>3 Rush orders a day</b>','<b>1 Rapid redeployment a day</b>: instantly clear your attack, strike and spy timers and army regroup','<b>Weekly war chest</b>: 5% of your GDP (at least $10M, up to $100M)']},
- {k:3,n:'Benefactor',b:'👑',min:50,perks:['Everything in Patron, with a <b>👑 badge</b>','<b>5 Rush orders a day</b>','<b>2 Rapid redeployments a day</b>','<b>Bigger weekly war chest</b>: 10% of your GDP (at least $25M, up to $250M)','<b>Grand Monument</b> on your capital, shown on the globe']}];
+ {k:2,n:'Patron',b:'🌟',min:20,perks:['Everything in Supporter, with a <b>🌟 badge</b>','<b>10 Rush orders a day</b>','<b>2 Rapid redeployments a day</b>: instantly clear your attack, strike and spy timers and army regroup','<b>Weekly war chest</b>: 5% of your GDP (at least $10M, up to $100M)']},
+ {k:3,n:'Benefactor',b:'👑',min:50,perks:['Everything in Patron, with a <b>👑 badge</b>','<b>20 Rush orders a day</b>','<b>4 Rapid redeployments a day</b>','<b>Bigger weekly war chest</b>: 10% of your GDP (at least $25M, up to $250M)','<b>Grand Monument</b> on your capital, shown on the globe']}];
 let ME=null,SIGNED=false;
 async function api(m,u,b){const r=await fetch(u,{method:m,credentials:'same-origin',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw Object.assign(new Error(j.error||'Error '+r.status),{status:r.status});return j}
 const go=amt=>SIGNED?'/api/donate/go'+(amt?'?amt='+amt:''):'/donate/paypal';
 function draw(){
  const q=new URLSearchParams(location.search);
- $('banner').innerHTML=(q.get('thanks')?`<div class="note ok"><b>Thank you!</b> PayPal is confirming your donation. Your perks switch on within a few minutes of the payment completing. This page updates by itself.</div>`:'')
+ $('banner').innerHTML=(q.get('named')&&!(ME&&(ME.nameCred||ME.forever))?`<div class="note ok"><b>Thank you!</b> PayPal is confirming your payment. A box will pop up here to choose your forever name within a minute or two.</div>`:'')+(q.get('thanks')?`<div class="note ok"><b>Thank you!</b> PayPal is confirming your donation. Your perks switch on within a few minutes of the payment completing. This page updates by itself.</div>`:'')
   +(!SIGNED?`<div class="note warn"><b>Sign in first</b> so your donation is linked to your nation automatically. <a href="/">Sign in</a>, then come back to this page. You can still donate without signing in, then claim it below.</div>`:'')
   +(SIGNED&&ME&&!ME.linked?`<div class="note warn">After you donate, use <b>Claim a donation</b> below with the transaction ID from your PayPal receipt, and an admin will add your perks.</div>`:'')
   +(ME&&ME.pending?`<div class="note">PayPal shows a donation of ${esc(ME.pending.amt)} ${esc(ME.pending.cur)} as <b>${esc(ME.pending.st)}</b>. It counts once PayPal marks it completed.</div>`:'');
@@ -78,12 +81,20 @@ function draw(){
  $('tiers').innerHTML=TIERS.map(t=>`<div class="tier t${t.k}${k===t.k?' mine':''}"><div class="ic">${t.b}</div><h3>${t.n}</h3><div class="amt">$${t.min}<small> total or more</small></div><ul>${t.perks.map(p=>`<li>${p}</li>`).join('')}</ul><a class="btn ${t.k===2?'pri':''}" href="${go(t.min)}" rel="noopener">${k>=t.k?'Donate again':'Donate $'+t.min} with PayPal</a></div>`).join('');
  $('custom').innerHTML=`<label for="amt" class="mu">Or choose your own amount (USD)</label><input id="amt" type="number" min="1" max="10000" step="1" placeholder="25" style="width:110px"><a class="btn" id="goamt" href="${go(0)}" rel="noopener">Donate with PayPal</a>`;
  $('amt').oninput=()=>{const v=Math.round(+$('amt').value||0);$('goamt').href=go(v>=1?v:0)};
+ const price=ME?ME.namePrice:10,fv=ME&&ME.forever,cred=ME&&ME.nameCred;
+ $('forever').innerHTML=`<div class="forever"><div class="ic">🔒</div><div><h3>Reserve your nation name forever</h3><p>${fv?`<span class="own">“${esc(fv)}” is yours forever.</span> Nobody else can ever found or rename a nation with it, in any season.`:cred?'<span class="own">Paid: choose your name now.</span>':`A one-time $${price} payment. Your nation name is locked to your account for good: no one else can ever use it, in any season or after your nation falls. This is separate from the supporter levels.`}</p></div>${fv?'':cred?'<button class="btn pri" id="fvpick">Choose my name</button>':`<a class="btn pri" href="${SIGNED&&ME&&ME.linked?'/api/donate/go?item=name':'/donate/paypal'}" rel="noopener">Reserve for $${price}</a>`}</div>`;
+ const fp=$('fvpick');if(fp)fp.onclick=nameBox;
  const rows=ME&&ME.donations.length?`<table><tr><td class="mu">Date</td><td class="mu">Amount</td><td class="mu">Status</td></tr>${ME.donations.map(d=>`<tr><td>${new Date(d.t).toLocaleDateString()}</td><td>$${(+d.usd||0).toFixed(2)}</td><td>${d.st==='ok'?'Counted':d.st==='refunded'?'Refunded':d.st==='reversed'?'Charged back':'Removed'}</td></tr>`).join('')}</table>`:'';
  const cl=ME&&ME.claims.length?`<p class="mu" style="margin:10px 0 0;font-size:14px">Your claims: ${ME.claims.map(c=>`…${esc(c.txn)} ($${c.amt}) ${c.st==='wait'?'waiting for an admin':c.st==='ok'?'approved':'not matched'}`).join(' · ')}</p>`:'';
- $('more').innerHTML=(rows?`<h2 class="s">Your donations</h2>${rows}`:'')+(SIGNED?`<h2 class="s">Claim a donation</h2><p class="mu" style="margin:0">Donated through a different link, or your perks didn't appear after 30 minutes? Enter the transaction ID from your PayPal receipt.</p><div class="claim"><input id="ctx" placeholder="Transaction ID, e.g. 8MC585209K746392H" maxlength="30" autocomplete="off"><input id="camt" type="number" min="1" placeholder="Amount $"><button class="btn" id="cgo">Send claim</button></div><div class="msg" id="cmsg"></div>${cl}`:'');
- const cg=$('cgo');if(cg)cg.onclick=()=>act('/api/supporter/claim',{txn:$('ctx').value,amt:+$('camt').value},'cmsg');
+ $('more').innerHTML=(rows?`<h2 class="s">Your donations</h2>${rows}`:'')+(SIGNED?`<h2 class="s">Claim a donation</h2><p class="mu" style="margin:0">Donated through a different link, or your perks didn't appear after 30 minutes? Enter the transaction ID from your PayPal receipt.</p><div class="claim"><input id="ctx" placeholder="Transaction ID, e.g. 8MC585209K746392H" maxlength="30" autocomplete="off"><input id="camt" type="number" min="1" placeholder="Amount $"><select id="ckind" style="background:#0c1218;border:1px solid #2a3746;color:#e6edf3;border-radius:8px;padding:9px"><option value="donation">Donation</option><option value="name">Forever name</option></select><button class="btn" id="cgo">Send claim</button></div><div class="msg" id="cmsg"></div>${cl}`:'');
+ const cg=$('cgo');if(cg)cg.onclick=()=>act('/api/supporter/claim',{txn:$('ctx').value,amt:+$('camt').value,kind:$('ckind').value},'cmsg');
 }
+function nameBox(){const old=$('nmb');if(old)old.remove();const d=document.createElement('div');d.className='mback';d.id='nmb';d.innerHTML=`<div class="mbox" role="dialog" aria-modal="true" aria-labelledby="nmbh"><h3 id="nmbh">Choose your forever name</h3><p>This name will be reserved for you permanently. Choose carefully: it can only be changed by an admin.</p><input id="nmbin" maxlength="28" placeholder="Your nation name" autocomplete="off"><div class="msg" id="nmbmsg"></div><div class="acts" style="margin-top:4px"><button class="btn pri" id="nmbok">Reserve this name</button><button class="btn" id="nmbx">Later</button></div></div>`;document.body.appendChild(d);
+ const inp=$('nmbin');api('GET','/api/me').then(m=>{}).catch(()=>{});inp.focus();$('nmbx').onclick=()=>d.remove();
+ $('nmbok').onclick=async()=>{const v=inp.value.trim(),m=$('nmbmsg');if(v.length<2){m.className='msg err';m.textContent='Enter a name of at least 2 characters.';return}try{const r=await api('POST','/api/supporter/forever',{name:v});ME=r.sup;d.remove();draw();const b=$('banner');b.insertAdjacentHTML('afterbegin',`<div class="note ok">${esc(r.msg)}</div>`)}catch(e){m.className='msg err';m.textContent=e.message}};inp.onkeydown=e=>{if(e.key==='Enter')$('nmbok').click()}}
 async function act(u,b,box){const m=$(box);try{const r=await api('POST',u,b);if(r.sup)ME=r.sup;draw();const m2=$(box);if(m2){m2.className='msg ok';m2.textContent=r.msg||'Done.'}}catch(e){if(m){m.className='msg err';m.textContent=e.message}}}
 async function load(){try{ME=await api('GET','/api/supporter');SIGNED=true}catch(e){ME=null;SIGNED=false}draw()}
-load();if(new URLSearchParams(location.search).get('thanks'))setInterval(load,20000);
+let boxShown=false;const NAMED=new URLSearchParams(location.search).get('named');
+async function loadAndPop(){await load();if(ME&&ME.nameCred>0&&!ME.forever&&!boxShown&&!document.getElementById('nmb')){boxShown=true;nameBox()}}
+loadAndPop();if(new URLSearchParams(location.search).get('thanks')||NAMED)setInterval(loadAndPop,10000);
 </script></body></html>

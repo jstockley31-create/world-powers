@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Updates — World Powers</title><link rel="icon" href="/icon.svg">
+<meta name="description" content="What's new in World Powers: the latest changes to the game.">
+<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+body{margin:0;background:#06090d;color:#e6edf3;font:16px/1.6 Inter,system-ui,sans-serif}
+.w{max-width:760px;margin:0 auto;padding:30px 20px 90px}a{color:#d4a64a}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.top{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.22em;font-size:14px;color:#e6edf3;text-decoration:none}.top img{width:28px;height:28px}
+.play{background:#d4a64a;color:#111;padding:9px 18px;border-radius:8px;font-weight:600;text-decoration:none;font-size:14px}
+h1{font-family:Cinzel,Georgia,serif;font-size:40px;letter-spacing:.03em;margin:34px 0 6px;line-height:1.15}
+.lede{color:#aab6c2;margin:0 0 28px}
+.up{position:relative;padding:0 0 26px 26px;border-left:2px solid #1d2731;margin-left:6px}
+.up:last-child{border-left-color:transparent}
+.up::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:#06090d;border:2px solid #d4a64a}
+.up:first-child::before{background:#d4a64a}
+.when{font-size:13px;color:#8b98a5}
+.up h2{margin:2px 0 8px;font-size:19px;line-height:1.35}
+.up ul{margin:0;padding-left:18px;color:#c5ced8;font-size:15px}.up li{margin:5px 0}.up li b{color:#fff;font-weight:600}
+.new{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:600;color:#111;background:#d4a64a;border-radius:20px;padding:1px 8px;vertical-align:3px;letter-spacing:.02em}
+@media(max-width:600px){h1{font-size:31px}}
+</style></head><body><div class="w">
+<div class="bar"><a class="top" href="/"><img src="/icon.svg" alt="">WORLD POWERS</a><a class="play" href="/play">Play</a></div>
+<h1>Updates</h1>
+<p class="lede">The latest changes to World Powers, newest first. Have an idea? Send it from the game's menu with “Report a bug or idea”.</p>
+<div id="list"></div>
+</div>
+<script>
+/* newest first; keep the last 10 */
+const UPDATES=[
+ {when:'Nov 15',title:'Bigger supporter perks and forever names',items:[
+  '<b>🌟 Patrons</b> now get 10 Rush orders and 2 Rapid redeployments a day; <b>👑 Benefactors</b> get 20 Rush orders and 4 Rapid redeployments a day.',
+  '<b>New: reserve your nation name forever.</b> A one-time payment on the Donate page locks your name to your account in every season. Nobody else can ever use it.']},
+ {when:'Nov 15',title:'No more stuck wars',items:[
+  'At war with someone who stopped playing? <b>Offer them peace.</b> If they haven’t played for over a day and don’t answer within 2 hours, peace is signed for them automatically.',
+  'Active players still decide for themselves.']},
+ {when:'Nov 15',title:'Debt relief rules, bigger vote rewards and a tidier menu',items:[
+  'Only nations with debt under 15% of GDP can propose <b>debt relief</b> in the World Council, and it only forgives debt held when the vote started. Borrowing during the vote doesn’t get wiped.',
+  'Each voting site now pays at least <b>$2M per vote</b> (2% of GDP for bigger nations, up to $25M).',
+  'Military and Intelligence now sit right under World on the left menu.']},
+ {when:'Nov 15',title:'Debt now has real consequences',items:[
+  'Your <b>credit rating</b> sets your interest rate and how much lenders will give you. A bad rating slows GDP and lowers approval and stability; AAA nations get a +2% GDP bonus.',
+  'Lenders stop lending as debt grows, and CCC nations can’t borrow at all.',
+  '<b>Defaulting</b> forgives only 40% of debt, crashes your economy and locks you out of lending for 72 hours. See the credit rating table on the Economy page.']},
+ {when:'Nov 15',title:'Supporter rewards, AI labels and fair play',items:[
+  'The <b>Donate</b> button now opens a page with supporter perks: a badge, a reserved name, a gold monument on your capital, Rush orders and more. Sign in first and your donation links to your nation by itself.',
+  'Computer-run nations now show <b>🤖 AI Nation</b> on the globe, in profiles and in chat.',
+  'Cheat detection now catches <b>auto-clickers and scripts</b>. Play it yourself!']},
+ {when:'Nov 15',title:'The fall screen and last words',items:[
+  'If your capital is captured, you now see a fall screen showing who conquered you, how long you lasted and your rank, before founding a new nation.',
+  'When you capture a player’s capital, you can leave them <b>one last message</b> (up to 200 characters) that appears on their fall screen. Only they can see it.',
+  'In the <b>alliance chat</b>, the list on the right now shows only your alliance members.']},
+ {when:'Nov 15',title:'Operation padlocks and fairer taxes',items:[
+  'Every operation has a <b>padlock</b>: lock it and Run all skips it. You can still run it yourself with Execute.',
+  'A tax <b>increase</b> now takes 30 minutes to reach your collections, so raising taxes just to collect and lowering them again no longer pays. Lowering taxes works right away.']},
+ {when:'Earlier',title:'Smaller alliances and a fairer World Council',items:[
+  'Alliances are now limited to <b>4 members</b>.',
+  'The Council can only vote penalties onto nations that actually attacked another player, used nuclear weapons or were caught spying, and each nation can face at most one player-proposed penalty vote a day.']},
+ {when:'Earlier',title:'Chat pictures and quieter spies',items:[
+  'Post <b>pictures and GIFs</b> in chat by pasting a link (Giphy, Tenor, Imgur and more). Tap the 🖼 button to hide them.',
+  'Unread message counts are back, and they clear as soon as you open the chat.',
+  'Spy operations are more anonymous: a foiled plot no longer reveals who sent the agents.']},
+ {when:'Earlier',title:'A bigger globe and a cleaner chat',items:[
+  'The <b>World</b> page now fills the screen with the globe, with your land and province list below it.',
+  'On phones, <b>Log out</b> moved into the More menu.',
+  'World Chat now only shows wars and attacks between <b>real players</b>; AI battles stay in the news at the top of the screen.']}
+];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+document.getElementById('list').innerHTML=UPDATES.slice(0,10).map((u,i)=>`<section class="up"><div class="when">${esc(u.when)}</div><h2>${esc(u.title)}${i===0?'<span class="new">NEW</span>':''}</h2><ul>${u.items.map(x=>`<li>${x}</li>`).join('')}</ul></section>`).join('');
+</script></body></html>
