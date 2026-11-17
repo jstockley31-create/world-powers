@@ -548,7 +548,7 @@ function Core(PD, CARDS) {
   const techF = n => (1 + soft(n.tech, 10) * .05) * (1 + n.train * .02);
   const devLvl = (n, h) => (n && n.dev && n.dev[h]) || 0;
   const devTotal = (W, u) => { const n = W.A[u]; if (!n || !n.dev) return 0; let t = 0; for (const h of Object.keys(n.dev)) if (W.OWN[h] && W.OWN[h].u === u) t += n.dev[h] || 0; return t; };
-  const devCost = (W, u, lvl) => { const n = W.A[u], i = lvl - 1; return { cash: Math.round(Math.max(DEV.base, (n.gdp || 0) * DEV.gdpPct) * DEV.mult[i] / 1e5) * 1e5, steel: DEV.steel[i], goods: DEV.goods[i] }; };
+  const devCost = (W, u, lvl) => { const n = W.A[u], i = lvl - 1; return { cash: Math.round(DEV.base * Math.sqrt(Math.max(1, (n.gdp || 0) * DEV.gdpPct / DEV.base)) * DEV.mult[i] / 1e5) * 1e5, /* rises with the square root of GDP: a nation 35x richer pays about 6x more, so growing actually makes development feel cheaper */ steel: DEV.steel[i], goods: DEV.goods[i] }; };
   // a province changes hands: the new owner gets its development, one level lower (war and upheaval damage it)
   function xferDev(W, from, to, h, drop) { const a = W.A[from], b = W.A[to], l = devLvl(a, h); if (a && a.dev) delete a.dev[h]; if (b && l - (drop || 0) > 0) { b.dev = b.dev || {}; b.dev[h] = l - (drop || 0); } }
   // trade routes grow with age: a route counts once when new and up to twice after 7 days
