@@ -1162,7 +1162,7 @@ function Core(PD, CARDS) {
       if (k === 'orbital' && devLvl(d, h) > 0 && lv(1)) { d.dev[h]--; dmg.dev = 1; } if (k === 'orbital') from = h;
       sum = `${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? `, infrastructure −${dmg.infra}` : ''}${dmg.dev ? `, ${place} lost a development level` : ''}, GDP −${Math.round(H.gdp * 100)}%. No shield could stop it`;
     } else if (k === 'drones') {
-      const lostP = Math.min(.8, (d.air || 0) / ((d.air || 0) + 200)); lost = Math.round(100 * lostP); dmg.troops = Math.floor((d.troops || 0) * H.troops * (1 - lostP)); d.troops -= dmg.troops; dmg.air = Math.floor((d.air || 0) * H.air * (1 - lostP)); d.air -= dmg.air;
+      const lostP = Math.min(.6, (d.air || 0) / ((d.air || 0) + 200 + (me.air || 0) * .5)); /* your own air force escorts the swarm, and at least 40% always gets through */ lost = Math.round(100 * lostP); dmg.troops = Math.floor((d.troops || 0) * H.troops * (1 - lostP)); d.troops -= dmg.troops; dmg.air = Math.floor((d.air || 0) * H.air * (1 - lostP)); d.air -= dmg.air;
       sum = `${num(dmg.troops)} troops${dmg.air ? ` and ${num(dmg.air)} aircraft` : ''} destroyed${lost ? ` (their air force shot down ${lost}% of the swarm)` : ''}`; lost = 0;
     } else if (k === 'blockade') {
       const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .2)); me.ships -= lost; penalty(W, d, { tax: H.tax, gdp: H.gdp }, H.h); d.blockade = W.now + H.h * HOUR; d.blockH = h;

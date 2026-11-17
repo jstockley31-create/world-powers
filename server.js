@@ -250,6 +250,72 @@ const buckets = new Map();
 function limited(key, max, windowMs) { const now = Date.now(); let b = buckets.get(key); if (!b || now > b.reset) { b = { n: 0, reset: now + windowMs }; buckets.set(key, b); } return ++b.n > max; }
 setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now > b.reset) buckets.delete(k); const cut = Math.floor(now / 60000) - 60; for (const k of health.reqs.keys()) if (k < cut) health.reqs.delete(k); }, 60000).unref();
 function flag(uid, r) { if (S.flags.some(f => f.uid === uid && f.r === r && Date.now() - f.t < 10 * 60e3)) return; S.flags.unshift({ t: Date.now(), uid, r }); S.flags = S.flags.slice(0, 2000); persist(); }
+// ---------- human check: now and then an operation asks the player to tap one shape in a small picture ----------
+// It comes at random, about once every 60-140 operations (never twice in 30 minutes), and about twice as often for accounts with
+// cheat flags. The picture is drawn here and sent as an image, so a page script can't read the answer. Every answer is logged for Cheat watch.
+const HC = { min: 60, max: 140, gapMs: 30 * 60e3, expireMs: 10 * 60e3, tries: 3, lockMs: 2 * 60e3, fastMs: 600, refreshes: 3, W: 300, H: 180 };
+S.hc = S.hc || {};
+const HC_NAMES = ['star', 'heart', 'triangle', 'circle', 'square', 'diamond', 'cross', 'moon'];
+const HC_COLS = ['#e5484d', '#f5a524', '#3dd68c', '#3e9bff', '#b072ff', '#ff6fb1', '#f2e55c', '#5fd4e6'];
+function hcPath(k, r) { // a shape centred on 0,0 with radius r
+  const P = (pts) => 'M' + pts.map(p => p.map(v => v.toFixed(1)).join(',')).join('L') + 'Z', poly = (n, rr, off) => Array.from({ length: n }, (_, i) => { const a = off + i * 2 * Math.PI / n; return [Math.cos(a) * rr, Math.sin(a) * rr]; });
+  if (k === 'star') return P(Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .45 : r; return [Math.cos(a) * rr, Math.sin(a) * rr]; }));
+  if (k === 'triangle') return P(poly(3, r, -Math.PI / 2));
+  if (k === 'square') return P(poly(4, r * 1.1, Math.PI / 4));
+  if (k === 'diamond') return P([[0, -r], [r * .7, 0], [0, r], [-r * .7, 0]]);
+  if (k === 'circle') return `M${-r},0a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0Z`;
+  if (k === 'cross') { const t = r * .35; return P([[-t, -r], [t, -r], [t, -t], [r, -t], [r, t], [t, t], [t, r], [-t, r], [-t, t], [-r, t], [-r, -t], [-t, -t]]); }
+  if (k === 'heart') return `M0,${r * .9}C${-r * 1.4},${-r * .1} ${-r * .6},${-r * 1.1} 0,${-r * .35}C${r * .6},${-r * 1.1} ${r * 1.4},${-r * .1} 0,${r * .9}Z`;
+  if (k === 'moon') return `M${r * .2},${-r}A${r},${r} 0 1,0 ${r * .2},${r}A${r * .75},${r * .75} 0 1,1 ${r * .2},${-r}Z`;
+  return '';
+}
+function hcMake() {
+  const R = () => crypto.randomInt(1e6) / 1e6, pick = HC_NAMES.slice().sort(() => R() - .5).slice(0, 6), want = pick[crypto.randomInt(6)], cols = HC_COLS.slice().sort(() => R() - .5);
+  const cells = [0, 1, 2, 3, 4, 5].sort(() => R() - .5), items = [];
+  let g = `<svg xmlns="http://www.w3.org/2000/svg" width="${HC.W}" height="${HC.H}" viewBox="0 0 ${HC.W} ${HC.H}"><rect width="${HC.W}" height="${HC.H}" rx="10" fill="#141c26"/>`;
+  for (let i = 0; i < 40; i++) g += `<line x1="${(R() * HC.W).toFixed(0)}" y1="${(R() * HC.H).toFixed(0)}" x2="${(R() * HC.W).toFixed(0)}" y2="${(R() * HC.H).toFixed(0)}" stroke="hsl(${(R() * 360) | 0},40%,45%)" stroke-opacity=".35" stroke-width="${(.5 + R() * 1.5).toFixed(1)}"/>`;
+  pick.forEach((k, i) => { const c = cells[i], cx = 50 + (c % 3) * 100 + (R() - .5) * 26, cy = 45 + Math.floor(c / 3) * 90 + (R() - .5) * 20, r = 20 + R() * 9, rot = ((R() - .5) * 50) | 0;
+    g += `<path d="${hcPath(k, r)}" transform="translate(${cx.toFixed(1)},${cy.toFixed(1)}) rotate(${rot})" fill="${cols[i]}" stroke="#0b1016" stroke-width="2"/>`; items.push({ k, b: [cx - r - 8, cy - r - 8, cx + r + 8, cy + r + 8] }); });
+  for (let i = 0; i < 60; i++) g += `<circle cx="${(R() * HC.W).toFixed(0)}" cy="${(R() * HC.H).toFixed(0)}" r="${(R() * 1.6 + .4).toFixed(1)}" fill="#fff" fill-opacity="${(R() * .25).toFixed(2)}"/>`;
+  g += '</svg>';
+  return { id: crypto.randomBytes(8).toString('hex'), want, items, img: 'data:image/svg+xml;base64,' + Buffer.from(g).toString('base64'), t: Date.now(), tries: 0, refresh: 0 };
+}
+const hcState = uid => (S.hc[uid] = S.hc[uid] || { log: [] });
+const hcPub = p => p ? { id: p.id, img: p.img, prompt: `Tap the ${p.want}`, want: p.want } : null;
+function hcLog(uid, r, info) { const h = hcState(uid); h.log.unshift({ t: Date.now(), r, ...(info || {}) }); h.log = h.log.slice(0, 60); }
+const hcSus = uid => (S.flags || []).some(f => f.uid === uid && Date.now() - f.t < 72 * HOUR) || ['cheat', 'watch'].includes(((S.cheatReview || {})[uid] || {}).d);
+// called before every operation: returns a refusal with a picture when a check is due or still open
+function hcGate(uid) {
+  if (S.config && S.config.humanCheck === false) return null;
+  const h = hcState(uid), now = Date.now();
+  if (h.lock > now) return { error: `Too many wrong answers. Operations unlock in ${Math.ceil((h.lock - now) / 1000)} seconds.`, hc: hcPub(h.pend), lock: h.lock };
+  if (h.pend) { if (now - h.pend.t > HC.expireMs) { hcLog(uid, 'expired', { want: h.pend.want }); h.pend = hcMake(); persist(); } return { error: 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) }; }
+  if (h.n == null) h.n = HC.min + crypto.randomInt(HC.max - HC.min);
+  h.n -= hcSus(uid) ? 2 : 1;
+  if (h.n > 0 || now - (h.last || 0) < HC.gapMs) return null;
+  h.pend = hcMake(); persist(); return { error: 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) };
+}
+function hcAnswer(uid, b) {
+  const h = hcState(uid), p = h.pend, now = Date.now(); if (!p) return { ok: true, done: true };
+  if (b.refresh) { if (p.refresh >= HC.refreshes) return { ok: false, msg: 'No more new pictures. Pick a shape in this one.', hc: hcPub(p) }; hcLog(uid, 'new picture', { want: p.want }); const n = hcMake(); n.refresh = p.refresh + 1; n.tries = p.tries; h.pend = n; persist(); return { ok: false, hc: hcPub(n) }; }
+  if (String(b.id || '') !== p.id) return { ok: false, msg: 'That picture changed. Try this one.', hc: hcPub(p) };
+  if (h.lock > now) return { ok: false, lock: h.lock, msg: `Wait ${Math.ceil((h.lock - now) / 1000)} seconds, then try again.`, hc: hcPub(p) };
+  const W = +b.w, H = +b.h, x = +b.x / W * HC.W, y = +b.y / H * HC.H;
+  const info = { want: p.want, ms: Math.max(0, Math.min(6e5, Math.round(+b.ms || 0))), mv: Math.max(-1, Math.min(1e5, Math.round(b.mv == null ? -1 : +b.mv))), press: Math.max(-1, Math.min(9999, Math.round(b.press == null ? -1 : +b.press))), pt: ['m', 't', 'p', 'k'].includes(b.pt) ? b.pt : 'x', trusted: b.tr === 1 ? 1 : 0 };
+  const hit = isFinite(x) && isFinite(y) && W > 0 && H > 0 ? p.items.find(it => x >= it.b[0] && x <= it.b[2] && y >= it.b[1] && y <= it.b[3]) : null; info.pick = hit ? hit.k : 'empty space';
+  if (hit && hit.k === p.want) {
+    const odd = []; if (info.ms < HC.fastMs) odd.push(`solved in ${info.ms} ms`); if (info.pt === 'm' && info.mv === 0) odd.push('mouse never moved'); if (!info.trusted) odd.push('click made by code');
+    hcLog(uid, odd.length ? 'pass (odd)' : 'pass', { ...info, odd: odd.join(', ') });
+    if (odd.length) flag(uid, `Human check passed oddly: ${odd.join(', ')}`);
+    h.pend = null; h.last = now; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
+  }
+  p.tries++; hcLog(uid, 'miss', info);
+  if (p.tries >= HC.tries) { hcLog(uid, 'fail', { want: p.want }); flag(uid, `Failed the human check ${HC.tries} times in a row`); h.lock = now + HC.lockMs; h.pend = hcMake(); persist(); return { ok: false, lock: h.lock, msg: `Three wrong answers. Operations are paused for ${HC.lockMs / 60e3} minutes.`, hc: hcPub(h.pend) }; }
+  persist(); return { ok: false, msg: `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
+}
+// a summary of one player's human checks over the last 48 hours, for Cheat watch
+function hcSummary(uid) { const L = ((S.hc[uid] || {}).log || []).filter(x => Date.now() - x.t < 48 * HOUR); if (!L.length && !(S.hc[uid] || {}).pend) return null; const c = k => L.filter(x => x.r === k).length, ms = L.filter(x => /^pass/.test(x.r)).map(x => x.ms).sort((a, b) => a - b);
+  return { pass: c('pass'), odd: c('pass (odd)'), miss: c('miss'), fail: c('fail'), expired: c('expired'), pics: c('new picture'), medMs: ms.length ? ms[Math.floor(ms.length / 2)] : null, open: !!(S.hc[uid] || {}).pend, last: L.slice(0, 12) }; }
 // same network = a home connection both accounts used. An address many players share (satellite internet like Starlink, mobile carriers,
 // schools: one public address for thousands of people) says nothing about who owns an account, so it doesn't count.
 let ipUseT = 0, ipUse = new Map();
@@ -629,7 +695,8 @@ function councilBribe(uid) {
   return { msg: `Paid ${WP.money(price)}. ${wasRogue ? 'Your rogue status' : 'Your sanctions'} and all Council measures are lifted${back ? `, and ${WP.money(back)} in frozen assets is back in your treasury` : ''}. Your aggression is now ${Math.round(n.aggr)}.` };
 }
 // penalties players can vote on, and the proof a target must have given first (attacking a real player, nuclear weapons, or spies caught in the last 48 hours, or high aggression)
-const PUNISH = ['sanction', 'embargo', 'freeze', 'condemn'];
+const PUNISH = ['sanction', 'embargo', 'armsEmb', 'freeze', 'condemn'];
+const PUNISH_DAILY = [...PUNISH, 'inspect']; // penalty votes a target can face at most once a day (inspections only need a nuclear program, so they skip the aggression check)
 function punishEvidence(W, v) {
   const n = W.A[v], now = Date.now(); if (!n) return null; if (n.ai) return 'ai';
   if ((n.aggr || 0) >= 35) return 'aggression';
@@ -652,7 +719,7 @@ function councilPropose(uid, b) {
     // the Council only punishes nations that did something: a group of players can't vote penalties onto a peaceful nation
     if (PUNISH.includes(type)) { const ev = punishEvidence(W, target); if (!ev) throw Object.assign(new Error(`${W.A[target].name} hasn't attacked another player, used nuclear weapons or been caught spying recently. The Council only punishes aggression.`), { status: 400 }); }
     // a nation can face a player-proposed penalty vote at most once a day, so a group can't keep piling on the same target
-    if (PUNISH.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a penalty vote today. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
+    if (PUNISH_DAILY.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH_DAILY.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a penalty vote today. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
   }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
@@ -1419,10 +1486,17 @@ function scriptCheck() {
     if (CL.length >= 12 && same >= .6) { score += 3; why.push(`${Math.round(same * 100)}% of clicks (${top[1]} of ${CL.length}) landed on exactly the same pixel; a hand is never that precise`); }
     if (MC.length >= 12 && still >= .7) { score += 2; why.push(`The mouse didn't move at all before ${Math.round(still * 100)}% of mouse clicks (${MC.filter(q => q[3] === 0).length} of ${MC.length}): the cursor stays parked while something clicks`); }
     if (timed.length >= 12 && quickP >= .6) { score += 3; why.push(`The button was held down for 15 milliseconds or less on ${Math.round(quickP * 100)}% of clicks (typical ${medP} ms); people hold a click for about 60 to 150 ms`); }
+    // 13. the human check: failed it, kept tapping the wrong shape, or solved it too fast / without moving the mouse / with a click made by code
+    const hs = hcSummary(uid); if (hs) {
+      if (hs.fail) { score += Math.min(6, hs.fail * 3); why.push(`Failed the human check ${hs.fail} time${hs.fail > 1 ? 's' : ''} (three wrong shapes in a row)`); }
+      else if (hs.miss >= 3) { score += 1; why.push(`Tapped the wrong shape ${hs.miss} times on human checks`); }
+      if (hs.odd >= 2) { score += 2; why.push(`Passed ${hs.odd} human checks in a way a person rarely does (instantly, without moving the mouse, or with a click made by code)`); }
+      if (hs.expired >= 2) { score += 1; why.push(`Left ${hs.expired} human checks unanswered for over 10 minutes`); }
+    }
     // 5. the existing speed flag
     const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
     const n = S.docs['nations/' + uid];
-    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hcSummary(uid), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
   return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
 }
@@ -1979,7 +2053,8 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
-    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), t: Date.now() });
+    case '/api/admin/hcset': { S.config.humanCheck = !!b.on; if (!b.on) for (const h of Object.values(S.hc || {})) { h.pend = null; h.lock = 0; } persist(); return send(res, 200, { ok: true, on: !!b.on }); } // turn the human check on or off (turning it off clears any open checks)
+    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), t: Date.now() });
     case '/api/admin/cheatreview': { // your decision on a player after reviewing the evidence (only admins see it)
       if (!u) return send(res, 404, { error: 'Unknown player.' }); const d = ['cheat', 'clean', 'watch'].includes(b.d) ? b.d : null;
       if (!d) delete S.cheatReview[b.id]; else S.cheatReview[b.id] = { d, t: Date.now(), by: me.name, note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 300) };
@@ -2218,6 +2293,7 @@ async function handle(req, res) {
       if (limited('cmd:' + me.id, 30, 10e3)) { flag(me.id, 'Sending game actions faster than a person can click (possible bot/script)'); return send(res, 429, { error: 'Slow down.' }); }
       const b = await readBody(req, 8 * 1024);
       touch(me.id, req); health.cmds++; stat('cmds');
+      if (b && b.c === 'act') { const g = hcGate(me.id); if (g) return send(res, 428, g); } // now and then, a quick human check before an operation
       const W = mkWorld();
       if (S.fresh && ['aid', 'offer'].includes(b.c) && typeof b.v === 'string' && b.v !== me.id && sharesNetwork(me.id, b.v)) return send(res, 400, { error: 'During the season you can\'t send aid or trade offers to an account on the same network as yours.' });
       if (S.fresh && b.c === 'relief') { const d = (S.dis || []).find(x => x.id === String(b.id)); if (d && d.u !== me.id && sharesNetwork(me.id, d.u)) return send(res, 400, { error: 'During the season you can\'t send relief to an account on the same network as yours.' }); }
@@ -2313,6 +2389,7 @@ async function handle(req, res) {
       S.reports = S.reports.slice(0, 500); persist(); return send(res, 200, { ok: true });
     }
     // ---- World Council ----
+    if (p === '/api/hc' && req.method === 'POST') { if (limited('hc:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); const b = await readBody(req, 512); touch(me.id, req); return send(res, 200, hcAnswer(me.id, b || {})); }
     if (p === '/api/council/propose' && req.method === 'POST') { const b = await readBody(req, 2048); touch(me.id, req); councilPropose(me.id, b); return send(res, 200, { ok: true }); }
     // daily thank-you for voting for the game: once every 24 hours per account, 1% of GDP ($1M to $25M). The vote itself can't be checked, so the daily limit keeps it fair.
     if (p === '/api/vote-bonus' && req.method === 'POST') { // every voting site pays its own bonus whenever its button is lit (6 hours after the last claim on that site)
