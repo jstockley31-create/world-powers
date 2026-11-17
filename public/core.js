@@ -721,12 +721,11 @@ function Core(PD, CARDS) {
     if (W.cfg.weakRule && !theyHitMe && !fairWar && !n.ai && score(W, v) < score(W, u) * .4) return `${n.name} is far weaker than you. Attacking them is not permitted.`;
     if (W.OWN[h].cap) {
       if (!W.cfg.conquest) return 'Capitals cannot be captured.';
-      if (n.nuke && !rogue(W, n)) return `${n.name} has a nuclear deterrent. Its capital cannot be besieged unless it becomes a rogue state.`;
       if (Object.keys(n.hexes || {}).length > 1) return `The capital can only be besieged once ${n.name} has lost all its other provinces.`;
       // the defender always gets a warning period: from losing its last other province, or from the declaration of war (none for AI)
       const start = n.ai ? 1 : n.lastStand || warSince(W, u, v);
-      const ls = start + (W.cfg.lastStandH ?? 24) * HOUR;
-      if (W.now < ls) return `${n.name} is making its last stand. The capital can be besieged in ${fmtT(ls - W.now)}.`;
+      const nukeCap = n.nuke && !rogue(W, n), ls = start + (W.cfg.lastStandH ?? 24) * HOUR * (nukeCap ? 2 : 1); // a nuclear power holds out twice as long
+      if (W.now < ls) return `${n.name} is making its last stand${nukeCap ? ' behind its nuclear deterrent' : ''}. The capital can be besieged in ${fmtT(ls - W.now)}.${nukeCap ? ' Beware: if it falls, its last nuclear missile fires at the conqueror.' : ''}`;
     }
     const r = reachBy(W, u, h); if (!r) return 'Found a nation first.';
     const orAir = ` Or fly troops in: an airborne invasion needs tech level ${AIRBORNE.tech} and at least ${num(AIRBORNE.min)} aircraft (each carries ${num(AIRBORNE.per)} troops).`;
@@ -756,10 +755,12 @@ function Core(PD, CARDS) {
   }
   const terrainF = (h, rt) => (P[h].m ? 1.25 : 1) * (P[h].r && rt === 'land' ? 1.15 : 1);
   const outpostDef = (W, n, h) => { const o = n && n.outposts; if (!o) return 1; if (o[h]) return OUTPOST.def; return land(h).some(k => o[k] && owner(W, k) === owner(W, h)) ? OUTPOST.def : 1; };
+  // a big empire's army is spread thin: every province past 10 weakens the defence of each non-capital province a little (30 provinces 72%, 60 58%, 100 50%)
+  const spreadF = (W, v) => { const k = hexesOf(W, v).length; return k > 10 ? Math.pow(10 / k, .3) : 1; };
   function defense(W, h, attacker) {
-    const v = owner(W, h), n = W.A[v]; let t = (n.troops || 0) * .5 + (n.air || 0) * .5 * 20; for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
+    const v = owner(W, h), n = W.A[v], tp = (n.troops || 0) * .5; let t = tp + Math.min((n.air || 0) * 10, tp); /* the air force supports the army: it can add at most as much again as the troops, so a nation can't hold every province with planes alone */ for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : 1) * genF(n, 'defense') * puF(n, 'def') * fxMul(n, 'def') * outpostDef(W, n, h) * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
+    return t * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) * (n.nuke && !rogue(W, n) ? 2 : 1) : spreadF(W, v)) * genF(n, 'defense') * puF(n, 'def') * fxMul(n, 'def') * outpostDef(W, n, h) * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const bestGen = (n, type) => (n.gens || []).filter(g => g.type === type).reduce((b, g) => !b || g.stars > b.stars ? g : b, null);
@@ -1012,8 +1013,16 @@ function Core(PD, CARDS) {
       const days = Math.max(0, (W.now - (d.created || W.now)) / 864e5);
       news(W, u, `${me.name} has conquered ${d.name}. ${d.name} has fallen after ${days < 1 ? 'less than a day' : Math.floor(days) + ' day' + (Math.floor(days) === 1 ? '' : 's')}.`);
       log(me, `You conquered ${d.name}, seizing ${pname(h)}, ${money(loot)} and half its stockpiles.`, W);
-      fallNation(W, v, { by: u, byName: me.name, h, days, peakRank: rankName(d), xp: d.xp, name: d.name, color: d.color });
-      touch(W, u); return { msg: 'Conquest.', battle: result };
+      let deadHand = null;
+      if (d.nuke && me.cap != null && P[me.cap]) { // ☢ dead hand: the fallen nation's last nuclear missile fires at the conqueror's capital
+        if (domeOn(W, me) && rng() < domeNuke(me)) { interceptNuke(W, v, u, me.cap, true); deadHand = 'stopped'; }
+        else { detonate(W, v, u, me.cap, true); deadHand = 'hit'; }
+        news(W, u, deadHand === 'hit' ? `☢ DEAD HAND — as ${d.name} fell, its last nuclear missile struck ${me.name}'s capital ${pname(me.cap)}.` : `☢ DEAD HAND — as ${d.name} fell, it fired its last nuclear missile at ${me.name}, but ${me.name}'s Golden Dome shot it down.`);
+        note(W, u, 'attack', deadHand === 'hit' ? `☢ Dead hand! As ${d.name} fell, its last nuclear missile struck your capital.` : `🛡 Dead hand! As ${d.name} fell, it fired its last nuclear missile at you. Your Golden Dome shot it down.`);
+        result.deadHand = deadHand;
+      }
+      fallNation(W, v, { by: u, byName: me.name, h, days, peakRank: rankName(d), xp: d.xp, name: d.name, color: d.color, deadHand });
+      touch(W, u); return { msg: deadHand === 'hit' ? `Conquest — but ${d.name}'s last nuclear missile struck your capital.` : deadHand === 'stopped' ? `Conquest — ${d.name}'s last nuclear missile was shot down by your Golden Dome.` : 'Conquest.', battle: result };
     }
     const how = AIRB ? 'an airborne invasion of' : OCEAN ? 'an overseas invasion of' : rt === 'sea' ? 'an amphibious assault on' : MARCH ? 'a long-range offensive against' : 'an invasion of';
     log(d, win ? `${me.name} captured ${pname(h)} in ${how.replace('an ', '')}. Losses: ${num(lossD)} troops${loot ? ', ' + money(loot) : ''}.` : `Your forces repelled ${how} ${pname(h)} by ${me.name}. Losses: ${num(lossD)} troops.`, W);
@@ -1308,7 +1317,7 @@ function Core(PD, CARDS) {
     if (n.cash < NUKE.cash || n.res.steel < NUKE.steel || n.res.oil < NUKE.oil || n.res.goods < NUKE.goods) fail(`Requires ${money(NUKE.cash)}, ${num(NUKE.steel)} steel, ${num(NUKE.oil)} oil and ${num(NUKE.goods)} goods.`);
     n.cash -= NUKE.cash; n.res.steel -= NUKE.steel; n.res.oil -= NUKE.oil; n.res.goods -= NUKE.goods; n.nuke = W.now;
     n.aggr = Math.min(100, (n.aggr || 0) + 40); n.stability = clamp(n.stability + 5, 0, 100); rogueCheck(W, u);
-    news(W, u, `☢ ${n.name} has tested a nuclear weapon. The world is on alert.`); log(n, 'Your nuclear deterrent is operational. Your capital can no longer be besieged, but the world will not forget.', W);
+    news(W, u, `☢ ${n.name} has tested a nuclear weapon. The world is on alert.`); log(n, 'Your nuclear deterrent is operational. Your capital now defends twice as hard and makes a last stand twice as long, and if it ever falls your last missile fires at the conqueror. The world will not forget.', W);
     for (const v of Object.keys(W.A)) if (v !== u) note(W, v, 'war', `☢ ${n.name} has tested a nuclear weapon.`);
     gainXP(W, u, 50); touch(W, u); return { msg: 'Your nuclear deterrent is operational.' };
   }
@@ -2579,7 +2588,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
