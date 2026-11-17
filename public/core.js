@@ -324,7 +324,7 @@ const HEAVY = {
   ballistic: { n: 'Ballistic missile', ic: '🚀', tech: 75, mun: 120, rank: 3, cash: 3e7, steel: 900, oil: 700, goods: 200, cdH: 6, aggr: 14, domeX: .5, pop: .04, troops: .1, gdp: .05, infra: 1, st: 6 },
   bombard: { n: 'Naval bombardment', ic: '⚓', tech: 10, mun: 40, rank: 2, ships: 10, oilPer: 5, cdH: 3, aggr: 7 },
   cyber: { n: 'Cyber attack', ic: '💻', tech: 40, mun: 0, rank: 2, cash: 2e7, goods: 300, cdH: 8, aggr: 5, h: 12, tax: .75, research: 1.5, trace: .35 },
-  emp: { n: 'EMP strike', ic: '⚡', tech: 100, mun: 150, rank: 5, cash: 8e7, steel: 1500, oil: 1500, goods: 1000, cdH: 24, aggr: 25, h: 12, air: .3, gdp: .08, tax: .6 },
+  emp: { n: 'EMP strike', ic: '⚡', tech: 110, mun: 500, rank: 7, cash: 1e9, steel: 5000, oil: 5000, goods: 4000, cdH: 72, aggr: 40, h: 12, air: .3, gdp: .08, tax: .6, domeP: [1, .9, .8, .7, .6], domeH: [12, 10, 8, 6, 4] }, // a dome's level decides how likely the pulse knocks it out and how soon it comes back
   drones: { n: 'Drone swarm', ic: '🛸', tech: 20, mun: 30, rank: 2, cash: 5e6, oil: 200, goods: 300, cdH: 2, aggr: 6, troops: .06, air: .04 },
   hypersonic: { n: 'Hypersonic missile', ic: '☄', tech: 125, mun: 200, rank: 5, cash: 6e7, steel: 1200, oil: 900, goods: 400, cdH: 12, aggr: 18, pop: .06, troops: .15, gdp: .07, infra: 2, st: 8 },
   blockade: { n: 'Naval blockade', ic: '⛴', tech: 25, mun: 40, rank: 2, ships: 20, oilPer: 3, cdH: 12, aggr: 8, h: 12, tax: .7, gdp: .95 },
@@ -380,7 +380,7 @@ const RESOLUTIONS = {
   nonukes: { kind: 'global', h: 24, n: 'Nuclear weapons ban', d: 'For 24 hours no nation may launch a nuclear missile, drop a dirty bomb or test a nuclear weapon.' },
   tariffs: { kind: 'global', h: 24, n: 'Tariff war', d: 'For 24 hours market fees double and trade routes pay half their usual bonus. Self-sufficient nations come out ahead.' },
   freemarket: { kind: 'global', h: 72, n: 'Free market week', d: 'For 72 hours market fees are slashed, every nation earns 3% more tax, and GDP is 2% higher everywhere.' },
-  truce: { kind: 'global', h: 24, n: 'World truce', d: 'For 24 hours no nation may declare a new war. Wars already declared go on.' },
+  truce: { kind: 'global', h: 24, n: 'World truce', d: 'For 24 hours no nation may declare a new war. Wars already declared go on. The Council votes on a world truce at most once a week.' },
   // pacts and declarations
   pact: { kind: 'pact', h: 72, n: 'Collective defense pact', d: 'Every nation that votes yes becomes a member for 72 hours. If anyone attacks a member (a battle, a strike or a nuke), every other member automatically declares war on the attacker. Choose whether it covers attacks by AI nations only or by anyone.' },
   custom: { kind: 'custom', h: 48, n: 'Custom resolution', d: 'Write your own resolution (up to 500 characters). If it passes it is listed as in force with everyone who voted for it, for 24, 48 or 72 hours. It is a public commitment: the game cannot enforce typed text. AI nations do not vote on custom resolutions.' }
@@ -486,7 +486,7 @@ function Core(PD, CARDS) {
   const seasonNukes = on => { NUKE.tech = on ? 60 : 100; WARHEAD.tech = on ? 75 : 120; WARHEAD.holdH = on ? 12 : 24; WARHEAD.buildH = on ? 12 : 24; DOME.tech = on ? 55 : 80; DOME.lv.tech = on ? [55, 60, 65, 70, 75] : [80, 85, 90, 95, 100];
     WARHEAD.warH = on ? 12 : 24; WARHEAD.rogueH = on ? 36 : 72; WARHEAD.nukedH = on ? 36 : 72; WARHEAD.falloutH = on ? 24 : 48; WARHEAD.winterH = on ? 18 : 36; WARHEAD.angerD = on ? 3 : 7; NUKE.upkeep = on ? 1.5e6 : 3e5; INSPECT.cap = on ? 1e9 : 80e6;
     // every other multi-day timer, sized for a 7-day season
-    DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 12 : 24; HEAVY.orbital.cdH = on ? 24 : 48;
+    DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 36 : 72; HEAVY.orbital.cdH = on ? 24 : 48;
     CAPMOVE.cdH = on ? 24 : 72; CAPMOVE.holdH = on ? 12 : 24; CAPMOVE.weakH = on ? 12 : 24; VASSAL.freeH = on ? 24 : 48; COMEBACK.gapH = on ? 24 : 72; COMEBACK.shieldH = on ? 12 : 24;
     NTEST.cdD = on ? 2 : 7; DISARM.banD = on ? 2 : 7; BRIBE.windowD = on ? 2 : 7; NUKEACC.gapD = on ? 2 : 7; BLOC.inviteH = on ? 24 : 72; ROUTE_D = on ? 2 : 7; };
   function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = mods(ev, council, now); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
@@ -1198,9 +1198,13 @@ function Core(PD, CARDS) {
       fxKind = 'sea'; { const tc = coastOf(W, v); fxH = tc.length ? tc[Math.floor(R() * tc.length)] : h; } from = nearOwn(coastOf(W, u)); fxN = 3; const E = d.ships || 0, sunk = Math.max(G < .6 ? 0 : 1, Math.round(E * H.sink)); dmg.ships = Math.min(E, sunk); d.ships -= dmg.ships; lost = R() < .3 ? 1 : 0; me.ships -= lost;
       sum = dmg.ships ? `${dmg.ships} of their warship${dmg.ships > 1 ? 's' : ''} torpedoed and sunk${lost ? ' (you lost a submarine)' : ''}` : `their far more advanced fleet evaded every torpedo${lost ? ' (you lost a submarine)' : ''}`;
     } else if (k === 'emp') {
-      d.empT = W.now + H.h * HOUR; dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
-      sum = `${num(dmg.air)} aircraft knocked out, GDP −${Math.round(H.gdp * 100)}%, tax revenue −${Math.round((1 - H.tax) * 100)}%${d.dome ? ' and the Golden Dome offline' : ''} for ${H.h} hours`;
-      if (d.dome && d.dome.ready <= W.now) note(W, v, 'attack', `⚡ ${me.name}'s EMP knocked out your Golden Dome. It is offline for ${H.h} hours and cannot stop missiles or nuclear strikes until it comes back.`);
+      // a stronger Golden Dome is hardened against the pulse: it may survive, and if it does go down it comes back sooner
+      const hasDome = d.dome && d.dome.ready <= W.now, dl = hasDome ? domeLvl(d) : 0, knock = hasDome && R() < (H.domeP[dl - 1] ?? 1), offH = hasDome ? (H.domeH[dl - 1] ?? H.h) : 0;
+      if (knock) d.empT = W.now + offH * HOUR;
+      dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
+      sum = `${num(dmg.air)} aircraft knocked out, GDP −${Math.round(H.gdp * 100)}% and tax revenue −${Math.round((1 - H.tax) * 100)}% for ${H.h} hours${knock ? `, and the Golden Dome offline for ${offH} hours` : hasDome ? `, but their level ${dl} Golden Dome withstood the pulse` : ''}`;
+      if (knock) note(W, v, 'attack', `⚡ ${me.name}'s EMP knocked out your Golden Dome. It is offline for ${offH} hours and cannot stop missiles or nuclear strikes until it comes back.`);
+      else if (hasDome) note(W, v, 'attack', `🛡 ${me.name} hit you with an EMP, but your level ${dl} Golden Dome withstood the pulse and is still protecting you.`);
     }
     const def = defending(W, u, v), add = !traced || rogue(W, d) || def ? 0 : Math.round(H.aggr * aggrScale(W, v)); me.aggr = addAggr(W, me, v, add); rogueCheck(W, u);
     if (traced) me.approval = clamp(me.approval - (k === 'emp' ? 5 : k === 'ballistic' ? 4 : 2), 0, 100);

@@ -578,10 +578,11 @@ function nukeAccidentNow(W, u) {
 }
 // one world law a day goes to the Council, so world politics never sleeps
 const DAILY_LAWS = ['climate', 'arms', 'freetrade', 'science', 'food', 'health', 'peacekeeping', 'nonukes', 'tariffs', 'freemarket', 'truce'];
+if (S.council && S.council.lastTruce == null) { const t = (S.council.props || []).filter(p => p.type === 'truce' && p.status !== 'cancelled').reduce((m, p) => Math.max(m, p.t || 0), 0); S.council.lastTruce = t; }
 function councilDaily(W) {
   if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
-  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)];
+  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(k === 'truce' && now - (S.council.lastTruce || 0) < 7 * 24 * HOUR)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (type === 'truce') S.council.lastTruce = now;
   S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
   systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); councilCast();
 }
@@ -721,6 +722,7 @@ function councilPropose(uid, b) {
     // a nation can face a player-proposed penalty vote at most once a day, so a group can't keep piling on the same target
     if (PUNISH_DAILY.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH_DAILY.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a penalty vote today. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
   }
+  if (type === 'truce') { const last = S.council.lastTruce || 0, wait = 7 * 24 * HOUR - (Date.now() - last); if (wait > 0) { const tH = Math.ceil(wait / HOUR), d = Math.floor(tH / 24), h = tH % 24, when = [d ? `${d} day${d > 1 ? 's' : ''}` : '', h ? `${h} hour${h > 1 ? 's' : ''}` : ''].filter(Boolean).join(' '); throw Object.assign(new Error(`The World Council votes on a world truce only once a week. The next one can be proposed in ${when}.`), { status: 400 }); } }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
   if (open.filter(p => !p.auto).length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
@@ -740,6 +742,7 @@ function councilPropose(uid, b) {
   if (!plea) { const cost = b.anon ? 1e7 : 1e6; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' };
+  if (type === 'truce') S.council.lastTruce = p.t; // starts the one-a-week clock
   if (b.anon && !plea) p.anon = true; // proposer stays secret: never sent to players (kept only in the saved game data)
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
   if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
