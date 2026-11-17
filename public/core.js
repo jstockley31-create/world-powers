@@ -511,6 +511,9 @@ function Core(PD, CARDS) {
   const adminF = (W, u) => { const n = W.A[u]; return !n || overPaused(W) || (n.ai && n.ai.boss) ? 1 : adminState(W, u).prodF; };
   const officeCost = n => { const l = (n.office || 0) + 1, O = ADMIN.office; return { cash: Math.round(O.cash * Math.pow(l, 1.5)), steel: O.steel * l, goods: O.goods * l }; };
   const R = (W, a, b) => (W.A[a] && W.A[a].rel && W.A[a].rel[b]) || {};
+  // when the last war between two nations ended in peace (0 if they never made peace); a peace treaty holds for PEACE_H hours
+  const PEACE_H = 24;
+  function peaceSince(W, a, b) { const x = R(W, a, b), y = R(W, b, a), w = Math.max(x.war || 0, y.war || 0); if (!w) return 0; const pa = x.peace || 0, pb = y.peace || 0; return pa > w && pb > w ? Math.max(pa, pb) : 0; }
   function atWar(W, a, b) { const x = R(W, a, b), y = R(W, b, a); const w = Math.max(x.war || 0, y.war || 0); if (!w) return false; return !((x.peace || 0) > w && (y.peace || 0) > w); }
   const warSince = (W, a, b) => Math.max(R(W, a, b).war || 0, R(W, b, a).war || 0);
   // a cancellation by either side ends the deal, and both sides must agree again afterwards
@@ -602,7 +605,10 @@ function Core(PD, CARDS) {
   const bribePrice = (W, n) => Math.round(Math.max(BRIBE.min, (n.cash || 0) * BRIBE.pct) * (rogue(W, n) ? BRIBE.rogueX : 1) * Math.pow(2, bribeRecent(n, W.now).length) / 1e5) * 1e5;
   const overstretch = n => { const at = overAt(n), x = isFinite(at) ? Math.max(0, hexN(n) - at) : 0; return { at, extra: x, cost: x ? Math.round(Math.max(2e5, (n.gdp || 0) * OVER.cost) * x) : 0, st: x ? OVER.st : 0, since: n.overSince || 0, rebelAt: n.overSince ? n.overSince + OVER.graceH * HOUR : 0 }; };
   const inspectFee = n => Math.round(Math.min(INSPECT.cap, INSPECT.base + (n.gdp || 0) * INSPECT.pct) * (n.warhead ? INSPECT.warhead : 1));
-  const radOn = (W, n) => !!(n && n.rad && n.rad.until > W.now);
+  const radOn = (W, n) => !!(n && ((n.rad && n.rad.until > W.now) || (n.rads || []).some(r => r.until > W.now)));
+  // every radioactive cloud over a nation: one per province hit by a dirty bomb, plus the newest one (n.rad, which may be a nuclear accident)
+  const radClouds = (W, n) => { const out = (n.rads || []).filter(r => r.until > W.now); if (n.rad && n.rad.until > W.now && !out.some(r => r.h === n.rad.h)) out.push(n.rad); /* one cloud per province */ return out; };
+  const RAD_MAX = 5; // at most this many clouds drain a nation at once
   const armyF = n => 1 + ARMYUP.max * clamp(((n.troops || 0) - ARMYUP.from) / (ARMYUP.to - ARMYUP.from), 0, 1);
   const upkeep = (W, n) => ((n.troops || 0) * 8 * armyF(n) + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + 0) * W.m.upkeep;
   function production(W, u) {
@@ -1092,6 +1098,7 @@ function Core(PD, CARDS) {
       dmg.troops = Math.floor((d.troops || 0) * .06 * g); d.troops -= dmg.troops; dmg.pop = Math.floor((d.pop || 0) * .02 * g); d.pop -= dmg.pop; dmg.food = Math.floor((d.res.food || 0) * .1 * g); d.res.food -= dmg.food;
       d.gdp = (d.gdp || 0) * .97; d.approval = clamp(d.approval - 5, 0, 100); d.stability = clamp(d.stability - 6, 0, 100);
       d.rad = { h, t: W.now, until: W.now + DIRTY.h * HOUR, by: u };
+      d.rads = (d.rads || []).filter(r => r.until > W.now && r.h !== h); d.rads.push({ h, t: W.now, until: W.now + DIRTY.h * HOUR, by: u }); d.rads = d.rads.slice(-RAD_MAX); // clouds stack, one per province
     }
     const def = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) || def ? 0 : Math.round(DIRTY.aggr * aggrScale(W, v))); if (!d.ai && !def && !rogue(W, d)) me.dirtyAt = W.now;
     rogueCheck(W, u); me.approval = clamp(me.approval - 5, 0, 100);
@@ -1424,6 +1431,7 @@ function Core(PD, CARDS) {
       if (rankOf(me.xp) < 2) fail('You must reach the rank of Mayor to declare war.');
       if (atWar(W, u, v)) fail('You are already at war.');
       if (W.m.truce) fail('A World Council truce is in force: no new wars may be declared until it ends.');
+      { const pt = peaceSince(W, u, v); if (pt && W.now - pt < PEACE_H * HOUR) fail(`You signed a peace treaty with ${them.name} ${fmtT(W.now - pt)} ago. Neither side can declare war on the other for ${PEACE_H} hours after peace: you can in ${fmtT(pt + PEACE_H * HOUR - W.now)}.`); }
       if (sameBloc(W, u, v)) fail(`${them.name} is in your alliance. Leave the alliance or remove them before declaring war.`);
       breakRoute(W, u, v, 'war'); setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
       news(W, u, `${me.name} has declared war on ${them.name}.`); log(them, `${me.name} has declared war on you.`, W); note(W, v, 'war', `${me.name} has declared war on you!`);
@@ -1730,7 +1738,9 @@ function Core(PD, CARDS) {
     const stT = 30 + n.approval * .5 + g.st + n.fort + fxAdd(n, 'st') + CREDIT.st[rating(W, n)] - w * 5 - (n.aggr || 0) * .1 - Math.max(0, n.unemp - 10) * .5; n.stability = clamp(n.stability + (stT - n.stability) * .08, 0, 100);
     n.aggr = Math.max(0, (n.aggr || 0) - W.m.aggrDecay); if (n.hitBy) for (const k of Object.keys(n.hitBy)) if (W.now - n.hitBy[k] > 48 * HOUR) delete n.hitBy[k];
     if (nuked(W, n)) { n.pop *= .998; n.stability = clamp(n.stability - .2, 0, 100); }
-    if (n.rad) { if (radOn(W, n)) { n.pop *= .9993; n.stability = clamp(n.stability - .05, 0, 100); n.approval = clamp(n.approval - .03, 0, 100); } else delete n.rad; }
+    if (n.rad || n.rads) { const k = Math.min(RAD_MAX, radClouds(W, n).length); // each cloud drains on its own
+      if (k) { n.pop *= Math.pow(.9993, k); n.stability = clamp(n.stability - .05 * k, 0, 100); n.approval = clamp(n.approval - .03 * k, 0, 100); }
+      if (n.rads) { n.rads = n.rads.filter(r => r.until > W.now); if (!n.rads.length) delete n.rads; } if (n.rad && !(n.rad.until > W.now)) delete n.rad; }
     // (big empires no longer rebel for being big: size only costs money, via the size upkeep above)
     if (rogue(W, n)) { n.approval = clamp(n.approval - .1, 0, 100); n.stability = clamp(n.stability - .1, 0, 100); }
     if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; breakAway(W, u, h, 'fell to separatists, who declared independence'); } }
@@ -2563,7 +2573,7 @@ function Core(PD, CARDS) {
 
 
   return { AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
-    noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
+    noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
