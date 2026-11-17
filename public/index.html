@@ -1787,7 +1787,13 @@ const GL=(()=>{
   ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;ctx.beginPath();path({type:'Sphere'});ctx.stroke()}
  // a strike frame: the cached globe plus the moving parts (much cheaper than redrawing every province)
  function fastFrame(){if(!st.baseOk||!st.el||!st.el.isConnected)return draw();const w=st.w,h=st.h,r=radius();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.drawImage(baseCv,0,0);ctx.setTransform(st.dpr,0,0,st.dpr,0,0);proj.rotate(st.rot).scale(r).translate([w/2,h/2]);overlay([-st.rot[0],-st.rot[1]],w,h,r)}
- let labW=null,labC=[],candW=null,candS=null,mineS=[];function labels(){if(labW===W)return labC;labW=W;labC=[];for(const[u,n]of Object.entries(A)){const hs=hexesOf(u);if(!hs.length)continue;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}labC.push([u,n,[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI]])}labC.sort((a,b)=>(b[0]===uid)-(a[0]===uid)||hexesOf(b[0]).length-hexesOf(a[0]).length);return labC}
+ let labW=null,labC=[],candW=null,candS=null,mineS=[];function labels(){if(labW===W)return labC;labW=W;labC=[];for(const[u,n]of Object.entries(A)){const all=hexesOf(u);if(!all.length)continue;
+   /* the label sits on the nation's biggest connected stretch of land (the one with the capital on a tie), at the province nearest its middle, so it never floats in the sea between two continents */
+   const own=new Set(all.map(Number)),seen=new Set();let best=null;for(const h0 of own){if(seen.has(h0))continue;const g=[h0];seen.add(h0);for(let i=0;i<g.length;i++)for(const k of nbrs(g[i])){const kk=Number(k);if(own.has(kk)&&!seen.has(kk)){seen.add(kk);g.push(kk)}}
+    if(!best||g.length>best.length||(g.length===best.length&&g.includes(Number(n.cap))))best=g}
+   const hs=best||all;let x=0,y=0,z=0;for(const h of hs){const[lo,la]=P[h].c.map(v=>v*Math.PI/180);x+=Math.cos(la)*Math.cos(lo);y+=Math.cos(la)*Math.sin(lo);z+=Math.sin(la)}
+   const cc=[Math.atan2(y,x)*180/Math.PI,Math.atan2(z,Math.hypot(x,y))*180/Math.PI];let nh=hs[0],nd=9;for(const h of hs){const d=d3.geoDistance(cc,P[h].c);if(d<nd){nd=d;nh=h}}
+   labC.push([u,n,P[nh].c])}labC.sort((a,b)=>(b[0]===uid)-(a[0]===uid)||hexesOf(b[0]).length-hexesOf(a[0]).length);return labC}
  const redraw=()=>{st.baseOk=false;if(!st.raf)st.raf=requestAnimationFrame(draw)};
  const RO=new ResizeObserver(()=>{if(st.el&&st.el.isConnected){size();redraw()}});
  function attach(slot,mode){st.mode=mode;st.el=slot;slot.appendChild(cv);try{RO.disconnect();RO.observe(slot)}catch(e){}size();redraw();if(SK.length)setTimeout(kick,50);if(BURN.size)smokeLoop()}
