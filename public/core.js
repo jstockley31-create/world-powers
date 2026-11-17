@@ -2292,10 +2292,11 @@ function Core(PD, CARDS) {
   // tribute: half a tax collection and 10% of production every tick
 
   // COMEBACK SUPPORT: a player who loses more than half their land within a day (not by releasing it) gets help to rebuild
-  const COMEBACK = { min: 6, frac: .5, gapH: 72, shieldH: 24, cash: 5e7, perProv: 1.5e7, cashMax: 1e9, troopsF: .3 };
+  const COMEBACK = { off: true, min: 6, frac: .5, gapH: 72, shieldH: 24, cash: 5e7, perProv: 1.5e7, cashMax: 1e9, troopsF: .3 }; // retired: off stops it entirely
   const shieldOn = (W, n) => !!(n && n.shield && n.shield > W.now);
   const dropShield = n => { if (n && n.shield) delete n.shield; };
   function comebackTick(W, u) {
+    if (COMEBACK.off) return false;
     const n = W.A[u]; if (!n || n.ai) return false; const cnt = hexesOf(W, u).length; let lh = (n.lh || []).filter(x => W.now - x[0] <= 25 * HOUR);
     if (!lh.length || W.now - lh[lh.length - 1][0] >= HOUR) lh.push([W.now, cnt]); n.lh = lh;
     const peak = Math.max(...lh.filter(x => W.now - x[0] <= 24 * HOUR).map(x => x[1]), cnt);

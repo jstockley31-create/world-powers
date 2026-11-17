@@ -579,6 +579,16 @@ function nukeAccidentNow(W, u) {
 // one world law a day goes to the Council, so world politics never sleeps
 const DAILY_LAWS = ['climate', 'arms', 'freetrade', 'science', 'food', 'health', 'peacekeeping', 'nonukes', 'tariffs', 'freemarket', 'truce'];
 if (S.council && S.council.lastTruce == null) { const t = (S.council.props || []).filter(p => p.type === 'truce' && p.status !== 'cancelled').reduce((m, p) => Math.max(m, p.t || 0), 0); S.council.lastTruce = t; }
+// comeback support was retired on Nov 17: take back everything it handed out since 11:27 AM Mountain (18:27 UTC) that day, once.
+// Cash comes back from the treasury first and any shortfall becomes debt; troops, stability, approval and the protection shield are taken back too.
+setTimeout(() => { if (!S.cbkRevert1) { const cut = Date.UTC(2026, 10, 17, 18, 27), done = [];
+  for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n || !n.cbk || n.cbk.revoked || !(n.cbk.t >= cut)) continue; const c = n.cbk;
+    const fromCash = Math.max(0, Math.min(n.cash || 0, c.cash || 0)), owed = Math.max(0, (c.cash || 0) - fromCash); n.cash = (n.cash || 0) - fromCash; if (owed) n.debt = (n.debt || 0) + owed;
+    const tr = Math.min(n.troops || 0, c.troops || 0); n.troops = (n.troops || 0) - tr; n.stability = Math.max(0, (n.stability || 0) - 15); n.approval = Math.max(0, (n.approval || 0) - 10);
+    if (n.shield && n.shield <= (c.until || 0) + 1000) delete n.shield; c.revoked = Date.now();
+    const msg = `Comeback support has been retired, so the help sent ${new Date(c.t).toUTCString().slice(17, 22)} UTC was taken back: ${WP.moneyS(c.cash || 0)}${owed ? ` (${WP.moneyS(owed)} of it was already spent and was added to your debt)` : ''}, ${tr.toLocaleString('en-US')} troops, 15 stability, 10 approval and the protection shield.`;
+    (n.log = n.log || []).unshift({ t: Date.now(), x: msg }); n.log = n.log.slice(0, 60); const id = k.slice(8); if (S.users[id]) addNote(id, 'war', '🛡 ' + msg); done.push(`${n.name} (${WP.moneyS(c.cash || 0)})`); }
+  S.cbkRevert1 = { t: Date.now(), n: done.length, who: done }; if (done.length) logErr('Comeback support taken back from: ' + done.join(', ')); for (const [k] of Object.entries(S.docs)) if (k.startsWith('nations/') && S.docs[k] && S.docs[k].cbk && S.docs[k].cbk.revoked) sendNation(k.slice(8)); persist(); } }, 2000);
 function councilDaily(W) {
   if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
