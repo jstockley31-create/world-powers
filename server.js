@@ -133,7 +133,12 @@ if (cmd === 'admin-link') { console.log('Admin page:', S.adminPath); process.exi
 
 // ---------- static files ----------
 const STATIC = {};
-function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), br: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
+// files are compressed quickly at start-up so the server answers within a second of a deploy; the smallest versions are made in the background a few seconds later.
+// images and fonts are already compressed, so they are sent as they are.
+const PACKED = /^(image\/(png|jpeg|webp)|font\/)/, SLOWZ = [];
+function slowZip() { const f = SLOWZ.shift(); if (!f) return; zlib.brotliCompress(f.buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: f.buf.length } }, (e, br) => { if (!e && br.length < f.br.length) f.br = br; zlib.gzip(f.buf, { level: 9 }, (e2, gz) => { if (!e2 && gz.length < f.gz.length) f.gz = gz; setImmediate(slowZip); }); }); }
+setTimeout(slowZip, 3000).unref();
+function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); const packed = PACKED.test(type); const o = { type, buf, gz: packed ? null : zlib.gzipSync(buf, { level: 6 }), br: packed ? null : zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; if (!packed) SLOWZ.push(o); return o; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
 STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/donate'] = loadFile('donate.html', HTML, 'no-cache'); STATIC['/updates'] = loadFile('updates.html', HTML, 'no-cache'); STATIC['/dev'] = loadFile('dev.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
@@ -164,8 +169,8 @@ function serveStatic(req, res, f) {
   if (f === STATIC['/sw.js']) h['Service-Worker-Allowed'] = '/';
   if (req.headers['if-none-match'] === f.etag) { res.writeHead(304, h); return res.end(); }
   const ae = req.headers['accept-encoding'] || '';
-  if (/\bbr\b/.test(ae)) { res.writeHead(200, { ...h, 'Content-Encoding': 'br' }); return res.end(f.br); }
-  if (/\bgzip\b/.test(ae)) { res.writeHead(200, { ...h, 'Content-Encoding': 'gzip' }); return res.end(f.gz); }
+  if (f.br && /\bbr\b/.test(ae)) { res.writeHead(200, { ...h, 'Content-Encoding': 'br' }); return res.end(f.br); }
+  if (f.gz && /\bgzip\b/.test(ae)) { res.writeHead(200, { ...h, 'Content-Encoding': 'gzip' }); return res.end(f.gz); }
   res.writeHead(200, h); res.end(f.buf);
 }
 // public nation pages: worldpowersgame.com/n/zeiro-kingdom
