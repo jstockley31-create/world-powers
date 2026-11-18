@@ -332,6 +332,10 @@ const HEAVY = {
   artillery: { n: 'Artillery barrage', ic: '💥', tech: 5, mun: 20, rank: 1, cash: 3e6, steel: 150, oil: 60, cdH: 2, aggr: 5, troops: .035, fort: 1 },
   cruise: { n: 'Cruise missile', ic: '🔥', tech: 35, mun: 50, rank: 2, cash: 1.5e7, steel: 400, oil: 400, goods: 100, cdH: 4, aggr: 8, domeX: 1, infra: 1, troops: .03 },
   carpet: { n: 'Carpet bombing', ic: '✈', tech: 30, mun: 60, rank: 3, air: 40, oilPer: 4, cdH: 6, aggr: 16, pop: .025, troops: .07, infra: 1, st: 5 },
+  // strikes unlocked by owning a prestige unit (Prestige page): more units make the strike stronger
+  subsalvo: { n: 'Submarine missile salvo', ic: '🌊', pu: 'sub', tech: 50, mun: 150, rank: 4, cash: 3e8, oil: 1000, cdH: 8, aggr: 12, troops: .05, pop: .01, infra: 1, gdp: .03, st: 4, domeX: .5 },
+  stealth: { n: 'Stealth bomber run', ic: '🛩', pu: 'bomber', tech: 40, mun: 120, rank: 4, cash: 4e8, oil: 2000, cdH: 8, aggr: 15, pop: .02, troops: .06, infra: 1, st: 6 },
+  carrier: { n: 'Carrier strike group', ic: '🚢', pu: 'carrier', tech: 60, mun: 150, rank: 4, cash: 5e8, oil: 3000, cdH: 10, aggr: 14, troops: .08, ships: .1, air: .05 },
   sub: { n: 'Submarine strike', ic: '🌊', tech: 60, mun: 60, rank: 3, ships: 5, cash: 1e7, steel: 300, oil: 300, cdH: 6, aggr: 9, sink: .2 },
   orbital: { n: 'Orbital strike', ic: '🛰', tech: 175, mun: 400, rank: 7, cash: 7.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
 };
@@ -1132,6 +1136,9 @@ function Core(PD, CARDS) {
     if (left(W, me, 'hv_' + k)) return `Your next ${hvN(H)} is ready in ${fmtT(left(W, me, 'hv_' + k))}.`;
     if ((H.mun || 0) > (me.res.mun || 0)) return `${H.n} needs ${num(H.mun)} munitions (you have ${num(Math.floor(me.res.mun || 0))}). Make more on the Military page or buy them on the market.`;
     if (k === 'blockade') { if (!coastOf(W, u).length) return 'You need a coastal province to send a fleet from.'; if (!coastOf(W, v).length) return `${d.name} has no coast to blockade.`; if ((me.ships || 0) < H.ships) return `A blockade needs at least ${num(H.ships)} warships (you have ${me.ships || 0}).`; if ((me.res.oil || 0) < H.oilPer * me.ships) return `Needs ${num(H.oilPer * me.ships)} oil (${H.oilPer} per warship).`; return null; }
+    if (H.pu && !(((me.pu || {})[H.pu] || 0) > 0)) return `${H.n} needs a ${PUNITS[H.pu].n}. Build one on the Prestige page.`;
+    if ((k === 'subsalvo' || k === 'carrier') && !coastOf(W, v).length) return `${d.name} has no coast to reach from the sea.`;
+    if (k === 'carrier' && !coastOf(W, u).length) return 'Your carriers need a coastal province to sail from.';
     if (k === 'carpet') { if ((me.air || 0) < H.air) return `Carpet bombing needs at least ${num(H.air)} aircraft (you have ${me.air || 0}).`; if ((me.res.oil || 0) < H.oilPer * Math.min(me.air, 200)) return `Needs ${num(H.oilPer * Math.min(me.air, 200))} oil to fuel the bombers.`; }
     if (k === 'sub') { if (!coastOf(W, u).length) return 'You need a coastal province to send submarines from.'; if (!coastOf(W, v).length) return `${d.name} has no coast.`; if ((me.ships || 0) < H.ships) return `A submarine strike needs at least ${num(H.ships)} warships (you have ${me.ships || 0}).`; if (!(d.ships > 0)) return `${d.name} has no warships to sink.`; }
     if (k === 'bombard') { if (!coastOf(W, u).length) return 'You need a coastal province to bombard from.'; if (!coastOf(W, v).length) return `${d.name} has no coast to bombard.`; if ((me.ships || 0) < H.ships) return `A bombardment needs at least ${num(H.ships)} warships (you have ${me.ships || 0}).`; if ((me.res.oil || 0) < H.oilPer * me.ships) return `Needs ${num(H.oilPer * me.ships)} oil (${H.oilPer} per warship).`; return null; }
@@ -1153,7 +1160,7 @@ function Core(PD, CARDS) {
     const lv = x => { const y = x * Math.min(1, G); return Math.floor(y) + (R() < y - Math.floor(y) ? 1 : 0); };
     if (k !== 'bombard' && k !== 'blockade' && k !== 'carpet') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
     me.cd['hv_' + k] = W.now + H.cdH * HOUR;
-    const hs = k === 'bombard' || k === 'blockade' ? coastOf(W, v) : hexesOf(W, v), h0 = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, h = k === 'orbital' ? d.cap : k === 'raid' || k === 'cruise' ? (hexesOf(W, v).filter(x => devLvl(d, x) > 0).sort((a, b) => devLvl(d, b) - devLvl(d, a))[0] ?? h0) : h0, place = pname(h), dmg = {};
+    const hs = k === 'bombard' || k === 'blockade' || k === 'subsalvo' || k === 'carrier' ? coastOf(W, v) : hexesOf(W, v), h0 = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, h = k === 'orbital' ? d.cap : k === 'raid' || k === 'cruise' ? (hexesOf(W, v).filter(x => devLvl(d, x) > 0).sort((a, b) => devLvl(d, b) - devLvl(d, a))[0] ?? h0) : h0, place = pname(h), dmg = {};
     let sum = '', icept = 0, traced = true, fxKind = 'missile', from = me.cap, lost = 0, fxH = h, fxN = 0;
     const nearOwn = list => list.length ? list.slice().sort((a, b) => kmBetween(+a, +fxH) - kmBetween(+b, +fxH))[0] : me.cap;
     if (k === 'ballistic') {
@@ -1200,6 +1207,18 @@ function Core(PD, CARDS) {
     } else if (k === 'sub') {
       fxKind = 'sea'; { const tc = coastOf(W, v); fxH = tc.length ? tc[Math.floor(R() * tc.length)] : h; } from = nearOwn(coastOf(W, u)); fxN = 3; const E = d.ships || 0, sunk = Math.max(G < .6 ? 0 : 1, Math.round(E * H.sink)); dmg.ships = Math.min(E, sunk); d.ships -= dmg.ships; lost = R() < .3 ? 1 : 0; me.ships -= lost;
       sum = dmg.ships ? `${dmg.ships} of their warship${dmg.ships > 1 ? 's' : ''} torpedoed and sunk${lost ? ' (you lost a submarine)' : ''}` : `their far more advanced fleet evaded every torpedo${lost ? ' (you lost a submarine)' : ''}`;
+    } else if (k === 'subsalvo') { // a submarine surfaces off their coast and fires a salvo of missiles at it
+      const cnt = (me.pu || {}).sub || 1, M = 3 + cnt, dm = domeOn(W, d); let hits = 0; for (let i = 0; i < M; i++) { if (dm && R() < domeMis(d) * H.domeX) icept++; else hits++; } const f = hits / M * (1 + .2 * (cnt - 1));
+      from = h; fxN = M; dmg.pop = Math.floor((d.pop || 0) * H.pop * f); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops * f); d.troops -= dmg.troops; dmg.infra = f > .5 ? Math.min(d.infra || 0, lv(H.infra)) : 0; d.infra -= dmg.infra; d.gdp = (d.gdp || 0) * (1 - H.gdp * f); d.stability = clamp(d.stability - H.st, 0, 100);
+      sum = hits ? `${hits} of ${M} missiles hit: ${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? ', infrastructure −1' : ''}, GDP −${(H.gdp * f * 100).toFixed(1)}%${icept ? ` (their Golden Dome shot down ${icept})` : ''}` : `their Golden Dome shot down all ${M} missiles`;
+    } else if (k === 'stealth') { // invisible to radar: no air defence or dome can stop it
+      fxKind = 'air'; fxN = 1; const cnt = (me.pu || {}).bomber || 1, f = 1 + .25 * (cnt - 1);
+      dmg.pop = Math.floor((d.pop || 0) * H.pop * f); d.pop -= dmg.pop; dmg.troops = Math.floor((d.troops || 0) * H.troops * f); d.troops -= dmg.troops; dmg.infra = Math.min(d.infra || 0, lv(H.infra)); d.infra -= dmg.infra; d.stability = clamp(d.stability - H.st, 0, 100); d.approval = clamp(d.approval - 4, 0, 100);
+      sum = `the bomber slipped past every radar: ${num(dmg.pop)} people and ${num(dmg.troops)} troops killed${dmg.infra ? ', infrastructure −1' : ''}`;
+    } else if (k === 'carrier') { // a carrier fleet sails to their coast, its air wing strikes, then the fleet sails home
+      fxKind = 'sea'; fxN = 4; from = nearOwn(coastOf(W, u)); const cnt = (me.pu || {}).carrier || 1, f = (1 + .25 * (cnt - 1)) * Math.min(1, G);
+      dmg.troops = Math.floor((d.troops || 0) * H.troops * f); d.troops -= dmg.troops; dmg.ships = Math.floor((d.ships || 0) * H.ships * f); d.ships -= dmg.ships; dmg.air = Math.floor((d.air || 0) * H.air * f); d.air -= dmg.air; d.stability = clamp(d.stability - 3, 0, 100);
+      sum = `${num(dmg.troops)} troops killed, ${num(dmg.ships)} warships sunk and ${num(dmg.air)} aircraft destroyed by the carrier air wing`;
     } else if (k === 'emp') {
       // a stronger Golden Dome is hardened against the pulse: it may survive, and if it does go down it comes back sooner
       const hasDome = d.dome && d.dome.ready <= W.now, dl = hasDome ? domeLvl(d) : 0, knock = hasDome && R() < (H.domeP[dl - 1] ?? 1), offH = hasDome ? (H.domeH[dl - 1] ?? H.h) : 0;
