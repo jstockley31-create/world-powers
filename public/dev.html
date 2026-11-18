@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dev corner — World Powers</title><link rel="icon" href="/icon.svg">
+<meta name="description" content="The World Powers Dev corner: share ideas, talk about game changes and chat with other players.">
+<link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/fonts/fonts.css">
+<style>
+:root{--bg:#06090d;--card:#0e151d;--card2:#121b25;--bd:#1d2731;--tx:#e6edf3;--mu:#8b98a5;--ac:#d4a64a;--rd:#ff7b72;--gn:#3fb950}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.55 Inter,system-ui,sans-serif}
+a{color:var(--ac)}
+.w{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.top{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.22em;font-size:14px;color:var(--tx);text-decoration:none}.top img{width:28px;height:28px}
+.lnk{display:flex;gap:14px;align-items:center;font-size:14px}.lnk a{color:#c5ced8;text-decoration:none}.lnk a:hover{color:#fff}
+.play{background:var(--ac);color:#111!important;padding:8px 16px;border-radius:8px;font-weight:600}
+h1{font-family:Cinzel,Georgia,serif;font-size:36px;letter-spacing:.03em;margin:26px 0 4px;line-height:1.15}
+.lede{color:#aab6c2;margin:0 0 20px;max-width:720px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+.panel{background:var(--card);border:1px solid var(--bd);border-radius:12px}
+.ph{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--bd)}
+.ph h2{margin:0;font-size:15px;letter-spacing:.06em;text-transform:none}
+.sp{flex:1}
+.btn{font:inherit;font-size:13.5px;border:1px solid #2b3a48;background:#16212c;color:var(--tx);border-radius:8px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:#3c5064}.btn.pri{background:var(--ac);border-color:var(--ac);color:#111;font-weight:600}.btn.sm{font-size:12px;padding:3px 9px}.btn.dng{color:var(--rd)}
+.btn:focus-visible,.chip:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--bd)}
+.chip{font:inherit;font-size:12.5px;border:1px solid var(--bd);background:transparent;color:#c5ced8;border-radius:20px;padding:3px 11px;cursor:pointer}.chip.on{background:#2a2213;border-color:#6b5521;color:#f5d999}
+.th{display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--bd);cursor:pointer}.th:hover{background:var(--card2)}.th:last-child{border-bottom:0}
+.th .t{font-weight:600;font-size:15px;line-height:1.35}.th .m{font-size:12.5px;color:var(--mu);margin-top:2px}
+.th .n{min-width:52px;text-align:center;font-size:12px;color:var(--mu)}.th .n b{display:block;font-size:16px;color:var(--tx)}
+.cat{display:inline-block;font-size:11px;font-weight:600;border-radius:20px;padding:0 8px;margin-right:6px;vertical-align:1px;border:1px solid var(--bd);color:#c5ced8}
+.cat.Ideas{color:#f5d999;border-color:#6b5521}.cat.Balance{color:#9ecbff;border-color:#2b4a6b}.cat.Bugs{color:#ffb4ad;border-color:#6b2b2b}
+.role{font-size:10.5px;font-weight:700;border-radius:4px;padding:0 5px;margin-left:5px;vertical-align:1px}.role.admin{background:var(--ac);color:#111}.role.mod{background:#2b4a6b;color:#cfe6ff}
+.pin{color:var(--ac);font-size:12px;margin-right:4px}
+.body{white-space:pre-wrap;word-wrap:break-word;color:#d6dee6}
+.post{padding:14px;border-bottom:1px solid var(--bd)}.post:last-child{border-bottom:0}.post .m{font-size:12.5px;color:var(--mu);margin-bottom:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.like{font:inherit;font-size:12.5px;border:1px solid var(--bd);background:transparent;color:#c5ced8;border-radius:20px;padding:1px 10px;cursor:pointer}.like.on{color:#f5d999;border-color:#6b5521;background:#2a2213}
+.form{padding:14px;display:grid;gap:10px}
+input,textarea,select{font:inherit;font-size:14px;background:#0a1016;color:var(--tx);border:1px solid #2b3a48;border-radius:8px;padding:8px 10px;width:100%}
+textarea{resize:vertical;min-height:90px}
+.mu{color:var(--mu)}.err{color:var(--rd);font-size:13px;min-height:18px}
+.empty{padding:28px 14px;text-align:center;color:var(--mu)}
+.chat{position:sticky;top:14px;display:flex;flex-direction:column;height:min(78vh,720px)}
+.msgs{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.msg{font-size:14px;line-height:1.45;word-wrap:break-word}.msg .who{font-weight:600;color:#f0d9a8;margin-right:6px}.msg time{font-size:11px;color:var(--mu);margin-left:6px}
+.msg .x{border:0;background:none;color:var(--mu);cursor:pointer;font-size:12px;margin-left:4px}
+.cin{display:flex;gap:6px;padding:10px;border-top:1px solid var(--bd)}
+.tabs{display:none;gap:6px;margin-bottom:12px}
+.signin{padding:40px 20px;text-align:center}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.chat{position:static;height:70vh}.tabs{display:flex}.grid.m-forum .chatp{display:none}.grid.m-chat .forump{display:none}h1{font-size:29px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body><div class="w">
+<div class="bar"><a class="top" href="/"><img src="/icon.svg" alt="">WORLD POWERS</a><nav class="lnk"><a href="/updates">Updates</a><a href="/faq">FAQ</a><a class="play" href="/play">Play</a></nav></div>
+<h1>Dev corner</h1>
+<p class="lede">Share ideas, talk about changes to the game and tell us what you think. Start a topic in the forum, or drop into the chat. Be kind: everyone here wants the game to get better.</p>
+<div id="app"><p class="mu">Loading…</p></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ago=t=>{const s=Math.max(0,(Date.now()-t)/1000);if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'};
+async function api(method,url,body){const r=await fetch(url,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});let j={};try{j=await r.json()}catch(e){}if(!r.ok)throw Object.assign(new Error(j.error||('Error '+r.status)),{status:r.status});return j}
+let ME=null,CATS=[],THREADS=[],cat='All',view=null,mobile='forum',lastChat=0,chatBusy=false;
+const who=(o)=>`<b>${esc(o.name)}</b>${o.role?`<span class="role ${o.role}">${o.role==='admin'?'ADMIN':'MOD'}</span>`:''}`;
+function shell(){$('app').innerHTML=`<div class="tabs"><button class="chip ${mobile==='forum'?'on':''}" data-m="forum">Forum</button><button class="chip ${mobile==='chat'?'on':''}" data-m="chat">Chat</button></div>
+ <div class="grid m-${mobile}" id="grid"><section class="panel forump" id="forum"></section><aside class="panel chat chatp"><div class="ph"><h2>💬 Dev chat</h2><span class="sp"></span><span class="mu" style="font-size:12px">only on this page</span></div><div class="msgs" id="msgs" aria-live="polite"></div>
+ <form class="cin" id="cform"><input id="cin" maxlength="500" placeholder="${ME.muted?'You are muted right now':'Say something…'}" ${ME.muted?'disabled':''} aria-label="Chat message"><button class="btn pri" ${ME.muted?'disabled':''}>Send</button></form></aside></div>`;
+ document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{mobile=b.dataset.m;document.querySelectorAll('[data-m]').forEach(x=>x.classList.toggle('on',x===b));$('grid').className='grid m-'+mobile;if(mobile==='chat')scrollChat()});
+ $('cform').onsubmit=async e=>{e.preventDefault();const t=$('cin').value.trim();if(!t)return;try{await api('POST','/api/dev/chat',{text:t});$('cin').value='';pollChat()}catch(er){alert(er.message)}};
+ route()}
+function route(){const m=location.hash.match(/^#t=([\w-]+)/);if(m)openThread(m[1]);else if(location.hash==='#new')newForm();else listView()}
+window.addEventListener('hashchange',()=>{if(ME)route()});
+async function loadList(){const r=await api('GET','/api/dev');THREADS=r.threads;CATS=r.cats}
+async function listView(){view='list';const f=$('forum');try{await loadList()}catch(e){f.innerHTML=`<div class="empty">${esc(e.message)}</div>`;return}
+ const rows=THREADS.filter(t=>cat==='All'||t.cat===cat);
+ f.innerHTML=`<div class="ph"><h2>📋 Forum</h2><span class="sp"></span>${ME.muted?'':'<button class="btn pri" id="newb">New topic</button>'}</div>
+ <div class="chips">${['All',...CATS].map(c=>`<button class="chip ${c===cat?'on':''}" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+ ${rows.length?rows.map(t=>`<div class="th" data-t="${esc(t.id)}" tabindex="0" role="link"><div style="flex:1;min-width:0"><div class="t">${t.pinned?'<span class="pin">📌</span>':''}<span class="cat ${esc(t.cat)}">${esc(t.cat)}</span>${esc(t.title)}${t.locked?' <span class="mu" style="font-size:12px">🔒 locked</span>':''}</div><div class="m">by ${who(t)} · ${ago(t.t)}${t.n?` · last reply ${ago(t.last)}`:''}</div></div><div class="n"><b>${t.n}</b>${t.n===1?'reply':'replies'}</div><div class="n"><b>${t.likes}</b>👍</div></div>`).join(''):`<div class="empty">${cat==='All'?'No topics yet. Start the first one!':'No topics in '+esc(cat)+' yet.'}</div>`}`;
+ if($('newb'))$('newb').onclick=()=>location.hash='#new';
+ f.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{cat=b.dataset.c;listView()});
+ f.querySelectorAll('[data-t]').forEach(r=>{const go=()=>location.hash='#t='+r.dataset.t;r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter')go()}})}
+function newForm(){view='new';const f=$('forum');f.innerHTML=`<div class="ph"><a href="#" class="btn sm">← Back</a><h2>New topic</h2></div><form class="form" id="nf">
+ <label>Title<input id="nt" maxlength="100" required placeholder="What's it about?"></label>
+ <label>Category<select id="nc">${CATS.map(c=>`<option>${esc(c)}</option>`).join('')}</select></label>
+ <label>Your post<textarea id="nb" maxlength="4000" rows="7" required placeholder="Share your idea or opinion. The more detail, the better."></textarea></label>
+ <div class="err" id="ne"></div><div><button class="btn pri">Post topic</button></div></form>`;
+ $('nf').onsubmit=async e=>{e.preventDefault();try{const r=await api('POST','/api/dev/post',{title:$('nt').value,cat:$('nc').value,body:$('nb').value});location.hash='#t='+r.id}catch(er){$('ne').textContent=er.message}}}
+async function openThread(id){view='t:'+id;const f=$('forum');let t;try{t=(await api('GET','/api/dev/t?id='+encodeURIComponent(id))).thread}catch(e){f.innerHTML=`<div class="ph"><a href="#" class="btn sm">← Back</a></div><div class="empty">${esc(e.message)}</div>`;return}
+ const mod=ME.mod,modBtns=mod?`<button class="btn sm" data-mod="pin">${t.pinned?'Unpin':'Pin'}</button><button class="btn sm" data-mod="lock">${t.locked?'Unlock':'Lock'}</button><button class="btn sm dng" data-mod="del">Delete topic</button>`:'';
+ f.innerHTML=`<div class="ph"><a href="#" class="btn sm">← Back</a><span class="sp"></span>${modBtns}</div>
+ <div class="post"><div style="font-size:19px;font-weight:600;line-height:1.3;margin-bottom:6px">${t.pinned?'<span class="pin">📌</span>':''}<span class="cat ${esc(t.cat)}">${esc(t.cat)}</span>${esc(t.title)}</div><div class="m">by ${who(t)} · ${ago(t.t)}</div><div class="body">${esc(t.body)}</div><div style="margin-top:10px"><button class="like ${t.liked?'on':''}" data-like="">👍 ${t.likes}</button></div></div>
+ ${t.replies.map(r=>`<div class="post"><div class="m">${who(r)} · ${ago(r.t)}<span class="sp"></span>${mod?`<button class="btn sm dng" data-delr="${esc(r.id)}">Delete</button>`:''}</div><div class="body">${esc(r.body)}</div><div style="margin-top:8px"><button class="like ${r.liked?'on':''}" data-like="${esc(r.id)}">👍 ${r.likes}</button></div></div>`).join('')}
+ ${t.locked&&!mod?'<div class="empty">🔒 This topic is locked.</div>':ME.muted?'<div class="empty">You are muted right now.</div>':`<form class="form" id="rf"><textarea id="rb" maxlength="3000" rows="4" placeholder="Write a reply…" aria-label="Your reply"></textarea><div class="err" id="re"></div><div><button class="btn pri">Reply</button></div></form>`}`;
+ f.querySelectorAll('[data-like]').forEach(b=>b.onclick=async()=>{try{const r=await api('POST','/api/dev/like',{id:t.id,rid:b.dataset.like||undefined});b.classList.toggle('on',r.liked);b.textContent='👍 '+r.likes}catch(e){alert(e.message)}});
+ f.querySelectorAll('[data-mod]').forEach(b=>b.onclick=async()=>{const op=b.dataset.mod;if(op==='del'&&!confirm('Delete this topic and all its replies?'))return;try{await api('POST','/api/dev/mod',{op,id:t.id});if(op==='del')location.hash='';else openThread(t.id)}catch(e){alert(e.message)}});
+ f.querySelectorAll('[data-delr]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this reply?'))return;try{await api('POST','/api/dev/mod',{op:'del',id:t.id,rid:b.dataset.delr});openThread(t.id)}catch(e){alert(e.message)}});
+ if($('rf'))$('rf').onsubmit=async e=>{e.preventDefault();try{await api('POST','/api/dev/reply',{id:t.id,body:$('rb').value});openThread(t.id)}catch(er){$('re').textContent=er.message}}}
+function scrollChat(){const m=$('msgs');if(m)m.scrollTop=m.scrollHeight}
+async function pollChat(){if(chatBusy)return;chatBusy=true;try{const r=await api('GET','/api/dev/chat?since='+lastChat);const m=$('msgs');if(!m)return;const near=m.scrollHeight-m.scrollTop-m.clientHeight<80;
+ if(!lastChat&&!r.msgs.length)m.innerHTML='<p class="mu" style="margin:auto;text-align:center;font-size:13px">No messages yet. Say hi!</p>';
+ else if(r.msgs.length){if(!lastChat)m.innerHTML='';for(const x of r.msgs){const d=document.createElement('div');d.className='msg';d.dataset.id=x.id;d.innerHTML=`<span class="who">${esc(x.name)}${x.role?`<span class="role ${x.role}">${x.role==='admin'?'ADMIN':'MOD'}</span>`:''}</span>${esc(x.text)}<time>${new Date(x.t).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</time>${ME.mod?`<button class="x" title="Delete message" data-cid="${esc(x.id)}">×</button>`:''}`;m.appendChild(d);lastChat=Math.max(lastChat,x.t)}
+  m.querySelectorAll('[data-cid]').forEach(b=>b.onclick=async()=>{try{await api('POST','/api/dev/mod',{op:'delchat',cid:b.dataset.cid});b.parentNode.remove()}catch(e){alert(e.message)}});if(near)scrollChat()}}
+ catch(e){}finally{chatBusy=false}}
+(async()=>{try{const r=await api('GET','/api/dev');ME=r.me;CATS=r.cats;THREADS=r.threads}catch(e){$('app').innerHTML=`<div class="panel signin"><p style="font-size:16px;margin-top:0">${e.status===401?'Sign in to World Powers to join the Dev corner.':esc(e.message)}</p><a class="btn pri" href="/play" style="text-decoration:none">Sign in</a></div>`;return}
+ shell();pollChat();setInterval(pollChat,4000);setInterval(()=>{if(view==='list'&&!document.hidden)listView()},30000)})();
+</script>
+</body></html>

@@ -136,7 +136,7 @@ const STATIC = {};
 function loadFile(file, type, cache) { const buf = fs.readFileSync(path.join(__dirname, 'public', file)); return { type, buf, gz: zlib.gzipSync(buf, { level: 9 }), br: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } }), etag: '"' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"', cache }; }
 const HTML = 'text/html; charset=utf-8', JS = 'text/javascript; charset=utf-8';
 const GAME = loadFile('index.html', HTML, 'no-cache'), LANDING = loadFile('landing.html', HTML, 'no-cache');
-STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/donate'] = loadFile('donate.html', HTML, 'no-cache'); STATIC['/updates'] = loadFile('updates.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
+STATIC['/hof'] = loadFile('hof.html', HTML, 'no-cache'); STATIC['/donate'] = loadFile('donate.html', HTML, 'no-cache'); STATIC['/updates'] = loadFile('updates.html', HTML, 'no-cache'); STATIC['/dev'] = loadFile('dev.html', HTML, 'no-cache'); STATIC['/play'] = GAME; STATIC['/terms'] = loadFile('terms.html', HTML, 'no-cache'); STATIC['/privacy'] = loadFile('privacy.html', HTML, 'no-cache'); STATIC['/fair'] = loadFile('fair.html', HTML, 'no-cache'); STATIC['/faq'] = loadFile('faq.html', HTML, 'no-cache');
 STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=604800');
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
@@ -250,6 +250,39 @@ const buckets = new Map();
 function limited(key, max, windowMs) { const now = Date.now(); let b = buckets.get(key); if (!b || now > b.reset) { b = { n: 0, reset: now + windowMs }; buckets.set(key, b); } return ++b.n > max; }
 setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now > b.reset) buckets.delete(k); const cut = Math.floor(now / 60000) - 60; for (const k of health.reqs.keys()) if (k < cut) health.reqs.delete(k); }, 60000).unref();
 function flag(uid, r) { if (S.flags.some(f => f.uid === uid && f.r === r && Date.now() - f.t < 10 * 60e3)) return; S.flags.unshift({ t: Date.now(), uid, r }); S.flags = S.flags.slice(0, 2000); persist(); }
+// ---------- Dev corner: a forum and a chat room for ideas and talk about the game (signed-in players only) ----------
+S.dev = S.dev || { threads: [], chat: [] };
+const DEV_CATS = ['Ideas', 'Balance', 'Bugs', 'General'];
+const devTxt = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b-\u001f]/g, '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+const devWho = id => { const u = S.users[id] || {}; return { by: id, name: u.name || 'Leader', role: u.admin ? 'admin' : u.coadmin ? 'mod' : '' }; };
+const devSum = t => ({ id: t.id, title: t.title, cat: t.cat, ...devWho(t.by), t: t.t, last: t.last, n: t.replies.length, likes: (t.likes || []).length, pinned: !!t.pinned, locked: !!t.locked });
+const devFull = (t, uid) => ({ ...devSum(t), body: t.body, liked: (t.likes || []).includes(uid), replies: t.replies.map(r => ({ id: r.id, ...devWho(r.by), body: r.body, t: r.t, likes: (r.likes || []).length, liked: (r.likes || []).includes(uid) })) });
+function devHandle(me, p, method, b, q) {
+  const D = S.dev, mod = isStaff(me), find = id => D.threads.find(t => t.id === String(id || ''));
+  if (method === 'GET') {
+    if (p === '/api/dev') return { me: { id: me.id, name: me.name, mod, muted: isMuted(me.id) }, cats: DEV_CATS, threads: D.threads.slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.last - a.last).slice(0, 200).map(devSum) };
+    if (p === '/api/dev/t') { const t = find(q.get('id')); if (!t) throw Object.assign(new Error('That topic was removed.'), { status: 404 }); return { thread: devFull(t, me.id) }; }
+    if (p === '/api/dev/chat') { const since = +q.get('since') || 0; return { msgs: D.chat.filter(m => m.t > since).slice(-100).map(m => ({ id: m.id, ...devWho(m.by), text: m.text, t: m.t })) }; }
+    throw Object.assign(new Error('Not found.'), { status: 404 });
+  }
+  if (p === '/api/dev/mod') { if (!mod) throw Object.assign(new Error('Moderators only.'), { status: 403 }); const op = String(b.op || '');
+    if (op === 'delchat') { D.chat = D.chat.filter(m => m.id !== String(b.cid)); persist(); return { ok: true }; }
+    const t = find(b.id); if (!t) throw Object.assign(new Error('That topic was removed.'), { status: 404 });
+    if (op === 'del') { if (b.rid) t.replies = t.replies.filter(r => r.id !== String(b.rid)); else D.threads = D.threads.filter(x => x !== t); }
+    else if (op === 'pin') t.pinned = !t.pinned; else if (op === 'lock') t.locked = !t.locked; else throw Object.assign(new Error('Unknown action.'), { status: 400 });
+    persist(); return { ok: true }; }
+  if (p === '/api/dev/like') { const t = find(b.id); if (!t) throw Object.assign(new Error('That topic was removed.'), { status: 404 }); const o = b.rid ? t.replies.find(r => r.id === String(b.rid)) : t; if (!o) throw Object.assign(new Error('That reply was removed.'), { status: 404 }); o.likes = o.likes || []; const i = o.likes.indexOf(me.id); if (i >= 0) o.likes.splice(i, 1); else o.likes.push(me.id); persist(); return { ok: true, likes: o.likes.length, liked: i < 0 }; }
+  if (isMuted(me.id)) throw Object.assign(new Error('You are muted by the administrators and cannot post right now.'), { status: 403 });
+  if (p === '/api/dev/post') { if (limited('devpost:' + me.id, 3, 10 * 60e3)) throw Object.assign(new Error('You can start up to 3 topics every 10 minutes.'), { status: 429 });
+    const title = devTxt(b.title, 100).replace(/\n/g, ' '), body = devTxt(b.body, 4000), cat = DEV_CATS.includes(b.cat) ? b.cat : 'General';
+    if (title.length < 4) throw Object.assign(new Error('Give your topic a title (at least 4 characters).'), { status: 400 }); if (body.length < 2) throw Object.assign(new Error('Write something in your post.'), { status: 400 });
+    const now = Date.now(), t = { id: rid(), by: me.id, title, body, cat, t: now, last: now, replies: [], likes: [] }; D.threads.unshift(t); if (D.threads.length > 300) { const keep = D.threads.filter(x => x.pinned), rest = D.threads.filter(x => !x.pinned).sort((a, b) => b.last - a.last).slice(0, 300 - keep.length); D.threads = [...keep, ...rest]; } persist(); return { ok: true, id: t.id }; }
+  if (p === '/api/dev/reply') { if (limited('devrep:' + me.id, 10, 60e3)) throw Object.assign(new Error('Slow down a little.'), { status: 429 }); const t = find(b.id); if (!t) throw Object.assign(new Error('That topic was removed.'), { status: 404 }); if (t.locked && !mod) throw Object.assign(new Error('This topic is locked.'), { status: 400 });
+    const body = devTxt(b.body, 3000); if (body.length < 1) throw Object.assign(new Error('Write a reply first.'), { status: 400 }); t.replies.push({ id: rid(), by: me.id, body, t: Date.now(), likes: [] }); t.replies = t.replies.slice(-300); t.last = Date.now(); persist(); return { ok: true }; }
+  if (p === '/api/dev/chat') { if (limited('devchat:' + me.id, 10, 30e3)) throw Object.assign(new Error('Slow down a little.'), { status: 429 }); const text = devTxt(b.text, 500).replace(/\n/g, ' '); if (!text) throw Object.assign(new Error('Type a message first.'), { status: 400 });
+    D.chat.push({ id: rid(), by: me.id, text, t: Date.now() }); D.chat = D.chat.slice(-300); persist(); return { ok: true }; }
+  throw Object.assign(new Error('Not found.'), { status: 404 });
+}
 // ---------- human check: now and then an operation asks the player to tap one shape in a small picture ----------
 // It comes at random, about once every 25-60 operations (never twice in 15 minutes), and about twice as often for accounts with
 // cheat flags. The picture is drawn here and sent as an image, so a page script can't read the answer. Every answer is logged for Cheat watch.
@@ -583,7 +616,12 @@ function nukeAccidentNow(W, u) {
 }
 // one world law a day goes to the Council, so world politics never sleeps
 const DAILY_LAWS = ['climate', 'arms', 'freetrade', 'science', 'food', 'health', 'peacekeeping', 'nonukes', 'tariffs', 'freemarket', 'truce'];
-if (S.council && S.council.lastTruce == null) { const t = (S.council.props || []).filter(p => p.type === 'truce' && p.status !== 'cancelled').reduce((m, p) => Math.max(m, p.t || 0), 0); S.council.lastTruce = t; }
+// some world laws can only be voted on now and then, so a group can't re-pass them every time they run out (hours between votes)
+const LAW_CD = { truce: 7 * 24, nonukes: 72, npt: 96 };
+const LAW_WHAT = { truce: 'a world truce', nonukes: 'a nuclear weapons ban', npt: 'a non-proliferation treaty' };
+if (S.council) { S.council.lastLaw = S.council.lastLaw || {}; if (S.council.lastTruce && !S.council.lastLaw.truce) S.council.lastLaw.truce = S.council.lastTruce;
+  for (const k of Object.keys(LAW_CD)) if (S.council.lastLaw[k] == null) S.council.lastLaw[k] = (S.council.props || []).filter(p => p.type === k && p.status !== 'cancelled').reduce((m, p) => Math.max(m, p.t || 0), 0); }
+const lawWait = k => LAW_CD[k] ? LAW_CD[k] * HOUR - (Date.now() - ((S.council.lastLaw || {})[k] || 0)) : 0;
 // comeback support was retired on Nov 17: take back everything it handed out since 11:27 AM Mountain (18:27 UTC) that day, once.
 // Cash comes back from the treasury first and any shortfall becomes debt; troops, stability, approval and the protection shield are taken back too.
 setTimeout(() => { if (!S.cbkRevert1) { const cut = Date.UTC(2026, 10, 17, 18, 27), done = [];
@@ -597,7 +635,7 @@ setTimeout(() => { if (!S.cbkRevert1) { const cut = Date.UTC(2026, 10, 17, 18, 2
 function councilDaily(W) {
   if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
-  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(k === 'truce' && now - (S.council.lastTruce || 0) < 7 * 24 * HOUR)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (type === 'truce') S.council.lastTruce = now;
+  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(lawWait(k) > 0)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = now;
   S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
   systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); councilCast();
 }
@@ -735,9 +773,9 @@ function councilPropose(uid, b) {
     // the Council only punishes nations that did something: a group of players can't vote penalties onto a peaceful nation
     if (PUNISH.includes(type)) { const ev = punishEvidence(W, target); if (!ev) throw Object.assign(new Error(`${W.A[target].name} hasn't attacked another player, used nuclear weapons or been caught spying recently. The Council only punishes aggression.`), { status: 400 }); }
     // a nation can face a player-proposed penalty vote at most once a day, so a group can't keep piling on the same target
-    if (PUNISH_DAILY.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH_DAILY.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; if (last && Date.now() - last.t < 24 * HOUR) { const h = Math.ceil((24 * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} already faced a penalty vote today. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
+    if (PUNISH_DAILY.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH_DAILY.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; const gap = last && last.status === 'failed' ? 48 : 24; if (last && Date.now() - last.t < gap * HOUR) { const h = Math.ceil((gap * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} ${gap === 48 ? 'just survived a penalty vote, so it is protected from new ones for 2 days' : 'already faced a penalty vote today'}. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
   }
-  if (type === 'truce') { const last = S.council.lastTruce || 0, wait = 7 * 24 * HOUR - (Date.now() - last); if (wait > 0) { const tH = Math.ceil(wait / HOUR), d = Math.floor(tH / 24), h = tH % 24, when = [d ? `${d} day${d > 1 ? 's' : ''}` : '', h ? `${h} hour${h > 1 ? 's' : ''}` : ''].filter(Boolean).join(' '); throw Object.assign(new Error(`The World Council votes on a world truce only once a week. The next one can be proposed in ${when}.`), { status: 400 }); } }
+  if (LAW_CD[type]) { const wait = lawWait(type); if (wait > 0) { const tH = Math.ceil(wait / HOUR), d = Math.floor(tH / 24), h = tH % 24, when = [d ? `${d} day${d > 1 ? 's' : ''}` : '', h ? `${h} hour${h > 1 ? 's' : ''}` : ''].filter(Boolean).join(' '), every = LAW_CD[type] % 24 === 0 ? (LAW_CD[type] === 168 ? 'once a week' : `once every ${LAW_CD[type] / 24} days`) : `once every ${LAW_CD[type]} hours`; throw Object.assign(new Error(`The World Council votes on ${LAW_WHAT[type]} only ${every}. The next one can be proposed in ${when}.`), { status: 400 }); } }
   const open = S.council.props.filter(p => p.status === 'open');
   if (open.some(p => p.by === uid)) throw Object.assign(new Error('You already have a resolution under vote.'), { status: 400 });
   if (open.filter(p => !p.auto).length >= 4) throw Object.assign(new Error('The Council agenda is full. Try again after a vote closes.'), { status: 400 });
@@ -757,7 +795,7 @@ function councilPropose(uid, b) {
   if (!plea) { const cost = b.anon ? 1e7 : 1e6; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' };
-  if (type === 'truce') S.council.lastTruce = p.t; // starts the one-a-week clock
+  if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = p.t; // starts that law's cooldown
   if (b.anon && !plea) p.anon = true; // proposer stays secret: never sent to players (kept only in the saved game data)
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
   if (type === 'debt') p.debts = Object.fromEntries(Object.entries(W.A).filter(([, x]) => (x.debt || 0) > 0).map(([u, x]) => [u, Math.round(x.debt)]));
@@ -2222,6 +2260,7 @@ async function handle(req, res) {
 
     const me = auth(req);
     if (!me) return send(res, 401, { error: 'Not signed in.' });
+    if (p === '/api/dev' || p.startsWith('/api/dev/')) { try { const b = req.method === 'POST' ? await readBody(req, 6 * 1024) : null; if (b) touch(me.id, req); return send(res, 200, devHandle(me, p, req.method, b || {}, new URL(req.url, 'http://x').searchParams)); } catch (e) { return send(res, e.status || 400, { error: e.message || 'Something went wrong.' }); } }
     if (p === '/api/supporter' || p.startsWith('/api/supporter/')) { if (p !== '/api/supporter' && limited('sup:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); touch(me.id, req); if (await SUPP.handle(req, res, p, me)) return; }
     if (p === '/api/casino/fair') { const f = fairOf(me.id);
       if (req.method === 'GET') return send(res, 200, fairView(f));
