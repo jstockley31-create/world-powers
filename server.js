@@ -401,7 +401,7 @@ function councilCast() { if (!clients.size) return; const own = new Set(S.counci
 function blocRepair() { let fixed = 0; const blocs = S.blocs || {};
   for (const [id, b] of Object.entries(blocs)) b.members = (b.members || []).filter(m => { const n = S.docs['nations/' + m]; if (n && n.bloc && n.bloc !== id && blocs[n.bloc] && (blocs[n.bloc].members || []).includes(m)) { fixed++; return false; } return true; });
   if (fixed) { console.log('Removed', fixed, 'duplicate alliance memberships'); persist(); } }
-function blocsView(uid) { const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : [], log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
+function blocsView(uid) { const me = S.docs['nations/' + uid], tap = me && me.tap && me.tap.until > Date.now() ? me.tap.b : null; const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem || tap === id ? (b.wall || []) : [], /* a wiretap lets a spy read the chat, nothing else */ log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
 const disView = () => S.dis.filter(d => Date.now() < d.until + 6 * HOUR);
 function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.uid)); }

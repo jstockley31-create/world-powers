@@ -351,6 +351,9 @@ const COVERT = {
   crash: { n: 'Crash their stock market', spies: 3, cost: 300000, d: 'Spread panic on their exchanges: GDP −4% at once and tax revenue −20% for 8 hours.' },
   defect: { n: 'Turn a double agent', spies: 2, cost: 200000, d: 'Flip one of their agents to your side: they lose 2 agents and you gain 1.' },
   poison: { n: 'Contaminate food supplies', spies: 2, cost: 150000, d: 'Spoil a third of their food stockpile. Health −6.' },
+  wiretap: { n: 'Wiretap their alliance', spies: 3, cost: 400000, d: 'Bug their alliance chat: read every message for 6 hours on your Intelligence page. They may notice the bug and be warned that someone is listening.' },
+  bankers: { n: 'Leak to their bankers', spies: 3, cost: 500000, d: 'Leak damaging figures to their lenders: their credit rating drops one step for 24 hours, so borrowing costs them more.' },
+  falseflag: { n: 'False flag', spies: 4, cost: 3000000, d: 'Frame this nation. If your next operation in the next 6 hours is caught, the evidence points to them instead of you. One time in three the frame-up is exposed: it is pinned on you and the whole world hears about it.' },
   assassinate: { n: 'Assassinate a general', spies: 5, cost: 2000000, d: 'Kill their best general (the one with the most stars). Harder than other operations, and if your agents are caught the world finds out and they get a 48-hour just cause against you.' }
 };
 // World Council resolutions. kind: 'punish' and 'protect' name a target nation; 'global' applies to everyone. h = how long it lasts.
@@ -572,7 +575,7 @@ function Core(PD, CARDS) {
     ap: { AAA: 0, AA: 0, A: 0, BBB: 0, BB: -2, B: -5, CCC: -9, D: -12 },              // approval target
     st: { AAA: 0, AA: 0, A: 0, BBB: 0, BB: -1, B: -3, CCC: -6, D: -10 } };            // stability target
   const defaultedRecently = (W, n) => (n.defaulted || 0) > W.now - CREDIT.defaultH * HOUR;
-  function rating(W, n) { if (defaultedRecently(W, n)) return 'D'; const r = debtRatio(n); return r < .3 ? 'AAA' : r < .6 ? 'AA' : r < .9 ? 'A' : r < 1.2 ? 'BBB' : r < 1.5 ? 'BB' : r < 2 ? 'B' : 'CCC'; }
+  function rating(W, n) { if (defaultedRecently(W, n)) return 'D'; const r = debtRatio(n), L = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC'], i = r < .3 ? 0 : r < .6 ? 1 : r < .9 ? 2 : r < 1.2 ? 3 : r < 1.5 ? 4 : r < 2 ? 5 : 6; return L[Math.min(6, i + ((n.credHit || 0) > (W ? W.now : Date.now()) ? 1 : 0))]; } // a leak to their bankers knocks the rating down a step for a while
   function interestRate(W, n) { return 3 + CREDIT.prem[rating(W, n)] + W.m.rate; }
   // combined effect of a nation's laws and wonders: multipliers (gdp, tax, research, xp, def, spend, oil) and additions (ap, st, unemp, health, edu, spread, tcap)
   const fxOf = n => { const o = []; for (const l of n.laws || []) if (LAWS[l]) o.push(LAWS[l]); for (const k of Object.keys(n.wonders || {})) if (WONDERS[k]) o.push(WONDERS[k].fx); const now = Date.now(); for (const b of n.boosts || []) if (b.until > now) o.push(b); const bl = n.bloc && BL[n.bloc]; if (bl) for (const k of Object.keys(bl.done || {})) if (BPROJ[k]) o.push(BPROJ[k].fx); for (const k of Object.keys(n.uwon || {})) if (UWONDERS[k]) o.push(UWONDERS[k].fx); for (const k of Object.keys(n.gpdone || {})) if (GRAND[k]) o.push(GRAND[k].fx); return o; };
@@ -1570,7 +1573,7 @@ function Core(PD, CARDS) {
   }
   function setGov(W, u, g) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(GOV, g)) fail('Unknown government.'); if (g === n.gov) fail('That is already your government.'); if (left(W, n, 'gov')) fail(`Your government can change again in ${fmtT(left(W, n, 'gov'))}.`); n.gov = g; n.stability = clamp(n.stability - 25, 0, 100); n.approval = clamp(n.approval - 10, 0, 100); n.cd.gov = W.now + 6 * HOUR; n.nextElection = g === 'dem' ? W.now + W.cfg.electionH * HOUR : 0; n.campaign = 0; n.rig = 0; news(W, u, `${n.name} is now a ${GOV[g].n}.`); touch(W, u); return { msg: `You now govern a ${GOV[g].n}.` }; }
 
-  const COVERT_ID = { any: .35, assassinate: .6 }; // chance a failed operation's agents are identified
+  const COVERT_ID = { any: .2, assassinate: .45 }; // chance a failed operation's agents are identified
   function covert(W, u, op, v, rng) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
@@ -1579,10 +1582,14 @@ function Core(PD, CARDS) {
     if (op === 'rebellion' && hexesOf(W, v).length < 3) fail('Separatists need a nation with at least 3 provinces.');
     if (op === 'assassinate' && !(them.gens || []).length) fail(`${them.name} has no generals to target.`);
     if (op === 'defect' && !(them.spies > 0)) fail(`${them.name} has no agents to turn.`);
+    const tBloc = op === 'wiretap' ? Object.entries(W.B || {}).find(([, b]) => (b.members || []).includes(v)) : null;
+    if (op === 'wiretap' && !tBloc) fail(`${them.name} is not in an alliance, so there is no alliance chat to bug.`);
+    if (op === 'wiretap' && (tBloc[1].members || []).includes(u)) fail('That is your own alliance.');
     if (left(W, me, 'covert')) fail(`Your agents are still on assignment: ${fmtT(left(W, me, 'covert'))}.`);
     if (me.spies < o.spies) fail(`This operation needs ${num(o.spies)} agents. You have ${me.spies}.`);
     if (me.cash < o.cost) fail(`This operation costs ${money(o.cost)}.`);
     me.cash -= o.cost; me.cd.covert = W.now + 20 * MIN;
+    const frame = op !== 'falseflag' && me.frame && me.frame.until > W.now && me.frame.as !== v && W.A[me.frame.as] ? me.frame.as : null; if (op !== 'falseflag' && me.frame) delete me.frame; // a false flag covers only your next operation
     const self = v === u;
     const p = self ? .7 : clamp(.5 + (me.spies - (them.spies || 0) * .6) * .03 + (me.tech - them.tech) * .02 - them.fort * .01 + ((them.laws || []).includes('censorship') ? .1 : 0), .1, .9);
     const ok = rng() < (op === 'assassinate' ? p * .7 : p); let msg; // assassinations are harder to pull off
@@ -1603,14 +1610,23 @@ function Core(PD, CARDS) {
       else if (op === 'crash') { them.gdp = (them.gdp || 0) * .96; penalty(W, them, { tax: .8 }, 8); them.approval = clamp(them.approval - 3, 0, 100); msg = `Panic selling hit ${them.name}'s markets: GDP −4% and tax revenue −20% for 8 hours.`; log(them, '📉 Your stock market crashed after a wave of panic selling: GDP −4%, tax revenue −20% for 8 hours. Foreign agents may be behind it.', W); note(W, v, 'covert', '📉 Your stock market crashed: GDP −4% and tax revenue −20% for 8 hours.'); news(W, v, `📉 ${them.name}'s stock market has crashed.`); }
       else if (op === 'defect') { const l = Math.min(2, them.spies || 0); them.spies -= l; me.spies = (me.spies || 0) + 1; msg = `One of ${them.name}'s agents now works for you, and exposed another: they lost ${l} agent${l === 1 ? '' : 's'}, you gained 1.`; log(them, `Counter-intelligence reports ${l} of your agents have gone missing.`, W); }
       else if (op === 'poison') { const f = Math.floor((them.res.food || 0) / 3); them.res.food -= f; them.health = clamp((them.health || 50) - 6, 0, 100); them.approval = clamp(them.approval - 2, 0, 100); msg = `Your agents spoiled ${num(f)} food in ${them.name}'s warehouses.`; log(them, `☣ ${num(f)} food was found contaminated and destroyed. Health −6.`, W); note(W, v, 'covert', `☣ ${num(f)} of your food stockpile was contaminated and destroyed.`); }
+      else if (op === 'wiretap') { me.tap = { b: tBloc[0], name: tBloc[1].name, until: W.now + 6 * HOUR }; msg = `Your agents bugged ${tBloc[1].name}'s alliance chat. Read it on your Intelligence page for the next 6 hours.`; if (rng() < .3) note(W, v, 'covert', `🔴 Your alliance chat may be bugged. Someone could be listening for the next few hours.`); }
+      else if (op === 'bankers') { them.credHit = W.now + 24 * HOUR; msg = `The leak worked: ${them.name}'s lenders are nervous and its credit rating drops one step for 24 hours.`; note(W, v, 'economy', `🏦 Damaging figures about your finances leaked to the markets. Your credit rating is one step lower for 24 hours.`); }
+      else if (op === 'falseflag') { me.frame = { as: v, until: W.now + 6 * HOUR }; msg = `Your cover story is ready. If your next operation in the next 6 hours is caught, the evidence will point to ${them.name}.`; }
       else if (op === 'rig') { them.rig = (them.rig || 0) + (self ? 8 : -10); msg = self ? 'Your agents quietly secured votes for the next election (+8%).' : `Your agents are swinging ${them.name}'s next election against its government.`; }
     } else {
       // spies stay anonymous most of the time: a failed operation always costs agents, but they are only identified now and then
       const caught = rng() < (self ? .7 : COVERT_ID[op] || COVERT_ID.any); const lost = Math.ceil(o.spies / 2); me.spies -= lost;
       if (!caught && !self) { log(them, `Your counter-intelligence foiled a foreign plot to ${o.n.toLowerCase()}. The agents would not say who sent them.`, W); note(W, v, 'covert', `🕵 Your counter-intelligence foiled a plot to ${o.n.toLowerCase()}. Nobody knows who sent the agents.`); }
-      if (caught && !self) {
+      const exposed = caught && !self && frame && rng() < 1 / 3, framed = caught && !self && frame && !exposed;
+      if (exposed) news(W, u, `🎭 A false flag was exposed: ${me.name} tried to pin a covert operation on ${W.A[frame].name}.`);
+      if (framed) {
+        log(them, `Your counter-intelligence caught agents from ${W.A[frame].name} attempting to ${o.n.toLowerCase()}.`, W); note(W, v, 'covert', `Agents from ${W.A[frame].name} were caught attempting to ${o.n.toLowerCase()} in your nation!`);
+        if (op === 'assassinate' || op === 'rebellion') news(W, frame, `Agents working for ${W.A[frame].name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`);
+        msg = `The operation failed and ${num(lost)} agents were lost, but the false flag held: ${them.name} believes ${W.A[frame].name} was behind it.`;
+      } else if (caught && !self) {
         me.aggr = clamp((me.aggr || 0) + 10, 0, 100); setRel(me, v, 'unally', W.now);
-        if (op === 'assassinate' || op === 'rebellion') news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); /* small operations stay out of the public news: only the target is told */ them.cb = them.cb || {}; const cbH = op === 'assassinate' ? 48 : 24; them.cb[u] = Math.max(them.cb[u] || 0, W.now + cbH * HOUR); if (op === 'assassinate') me.aggr = clamp((me.aggr || 0) + 10, 0, 100); note(W, v, 'covert', `You have a just cause against ${me.name} for ${cbH} hours: attacking it adds no aggression.`);
+        if (op === 'assassinate' || op === 'rebellion') news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); /* small operations stay out of the public news: only the target is told */ if (op === 'assassinate' || op === 'rebellion') { /* only the serious operations hand the target a just cause; small ones are just embarrassing */ them.cb = them.cb || {}; const cbH = op === 'assassinate' ? 48 : 24; them.cb[u] = Math.max(them.cb[u] || 0, W.now + cbH * HOUR); note(W, v, 'covert', `You have a just cause against ${me.name} for ${cbH} hours: attacking it adds no aggression.`); } if (op === 'assassinate') me.aggr = clamp((me.aggr || 0) + 10, 0, 100);
         log(them, `Your counter-intelligence caught agents from ${me.name} attempting to ${o.n.toLowerCase()}.`, W); note(W, v, 'covert', `Agents from ${me.name} were caught attempting to ${o.n.toLowerCase()} in your nation!`);
         msg = `The operation failed and your agents were identified. ${num(lost)} agents lost; ${them.name} knows it was you${op === 'assassinate' || op === 'rebellion' ? ', and so does the world' : ''}.`;
       } else if (caught && self) { me.approval = clamp(me.approval - 10, 0, 100); news(W, u, `Election fraud scandal: ${me.name}'s government was caught rigging its own election.`); msg = 'Your vote-rigging was exposed! Approval −10.'; }
