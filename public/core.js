@@ -293,7 +293,7 @@ function flagSVG(f, w, h, ns) {
   return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g>${f.fr ? '<rect x=".9" y=".9" width="28.2" height="18.2" fill="none" stroke="#ffd25e" stroke-width="1.8"/><rect x=".2" y=".2" width="29.6" height="19.6" fill="none" stroke="#7a5612" stroke-width=".45"/><rect x="2" y="2" width="26" height="16" fill="none" stroke="rgba(255,240,190,.55)" stroke-width=".35"/>' : '<rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/>'}</svg>`;
 }
 const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
-const NUKE = { tech: 100, rank: 6, cash: 150e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
+const NUKE = { tech: 100, rank: 6, cash: 500e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
 // mandatory international inspections for every nuclear nation: charged automatically once a day
 const INSPECT = { base: 10e6, pct: .01, cap: 80e6, warhead: 1.5, everyH: 24 };
 // a dirty bomb: a conventional missile carrying radioactive material. Far cheaper than a nuclear program; leaves a radioactive cloud over one province for 24 hours
@@ -318,7 +318,7 @@ const OUTPOST = { max: 4, rank: 2, stageKm: 2500, def: 1.1, cdH: 2, conv: { cash
 const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
-const WARHEAD = { tech: 120, rank: 7, cash: 500e6, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
+const WARHEAD = { tech: 120, rank: 7, cash: 2e9, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
 // conventional and non-nuclear heavy weapons: real options short of a nuke
 const HEAVY = {
   ballistic: { n: 'Ballistic missile', ic: '🚀', tech: 75, mun: 120, rank: 3, cash: 3e7, steel: 900, oil: 700, goods: 200, cdH: 6, aggr: 14, domeX: .5, pop: .04, troops: .1, gdp: .05, infra: 1, st: 6 },
@@ -326,14 +326,14 @@ const HEAVY = {
   cyber: { n: 'Cyber attack', ic: '💻', tech: 40, mun: 0, rank: 2, cash: 2e7, goods: 300, cdH: 8, aggr: 5, h: 12, tax: .75, research: 1.5, trace: .35 },
   emp: { n: 'EMP strike', ic: '⚡', tech: 110, mun: 500, rank: 7, cash: 1e9, steel: 5000, oil: 5000, goods: 4000, cdH: 72, aggr: 40, h: 12, air: .3, gdp: .08, tax: .6, domeP: [1, .9, .8, .7, .6], domeH: [12, 10, 8, 6, 4] }, // a dome's level decides how likely the pulse knocks it out and how soon it comes back
   drones: { n: 'Drone swarm', ic: '🛸', tech: 20, mun: 30, rank: 2, cash: 5e6, oil: 200, goods: 300, cdH: 2, aggr: 6, troops: .06, air: .04 },
-  hypersonic: { n: 'Hypersonic missile', ic: '☄', tech: 125, mun: 200, rank: 5, cash: 6e7, steel: 1200, oil: 900, goods: 400, cdH: 12, aggr: 18, pop: .06, troops: .15, gdp: .07, infra: 2, st: 8 },
+  hypersonic: { n: 'Hypersonic missile', ic: '☄', tech: 125, mun: 200, rank: 5, cash: 2.5e8, steel: 1200, oil: 900, goods: 400, cdH: 12, aggr: 18, pop: .06, troops: .15, gdp: .07, infra: 2, st: 8 },
   blockade: { n: 'Naval blockade', ic: '⛴', tech: 25, mun: 40, rank: 2, ships: 20, oilPer: 3, cdH: 12, aggr: 8, h: 12, tax: .7, gdp: .95 },
   raid: { n: 'Special forces raid', ic: '🎯', tech: 50, mun: 25, rank: 3, cash: 1.5e7, cdH: 8, aggr: 10, steal: .04, stealMax: 1e8, res: .1 },
   artillery: { n: 'Artillery barrage', ic: '💥', tech: 5, mun: 20, rank: 1, cash: 3e6, steel: 150, oil: 60, cdH: 2, aggr: 5, troops: .035, fort: 1 },
   cruise: { n: 'Cruise missile', ic: '🔥', tech: 35, mun: 50, rank: 2, cash: 1.5e7, steel: 400, oil: 400, goods: 100, cdH: 4, aggr: 8, domeX: 1, infra: 1, troops: .03 },
   carpet: { n: 'Carpet bombing', ic: '✈', tech: 30, mun: 60, rank: 3, air: 40, oilPer: 4, cdH: 6, aggr: 16, pop: .025, troops: .07, infra: 1, st: 5 },
   sub: { n: 'Submarine strike', ic: '🌊', tech: 60, mun: 60, rank: 3, ships: 5, cash: 1e7, steel: 300, oil: 300, cdH: 6, aggr: 9, sink: .2 },
-  orbital: { n: 'Orbital strike', ic: '🛰', tech: 175, mun: 400, rank: 7, cash: 2.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
+  orbital: { n: 'Orbital strike', ic: '🛰', tech: 175, mun: 400, rank: 7, cash: 7.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
 };
 const DEBT_PROPOSE_MAX = .15; // only nations with debt under this share of GDP may propose debt relief in the Council
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
@@ -1221,7 +1221,7 @@ function Core(PD, CARDS) {
     return { msg: `${H.ic} ${H.n}: ${sum}.${k === 'cyber' ? traced ? ' They traced it back to you.' : ' They don\'t know it was you.' : ''}`, heavy: { k, h, icept, traced, dmg } };
   }
   // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.
-  const DOME = { tech: 80, rank: 5, cash: 750e6, steel: 12000, goods: 9000, oil: 6000, buildH: 48, upkeep: 1.35e6, mis: .75, nuke: .4,
+  const DOME = { tech: 80, rank: 5, cash: 2e9, steel: 12000, goods: 9000, oil: 6000, buildH: 48, upkeep: 1.35e6, mis: .75, nuke: .4,
     // upgrade levels: each one shoots down more missiles and has a better chance against a nuclear missile
     lv: { max: 5, mis: [.75, .8, .85, .89, .92], nuke: [.4, .5, .58, .65, .72], cash: [0, 3e8, 5e8, 8e8, 1.2e9], steel: [0, 4000, 6000, 9000, 12000], goods: [0, 3000, 5000, 7000, 10000], oil: [0, 2000, 3000, 5000, 7000], tech: [80, 85, 90, 95, 100], h: [0, 6, 8, 10, 12] } };
   // running cost, billed straight from the treasury every tick once the dome is built (the boss nation's free dome is exempt)
@@ -1322,7 +1322,7 @@ function Core(PD, CARDS) {
     if ((n.tech || 0) < NUKE.tech) fail(`A nuclear program requires tech level ${NUKE.tech}.`);
     if (!W.cfg.nukeTest && rankOf(n.xp) < NUKE.rank) fail(`A nuclear program requires the rank of ${RANKS[NUKE.rank][1]}.`);
     if (n.cash < NUKE.cash || n.res.steel < NUKE.steel || n.res.oil < NUKE.oil || n.res.goods < NUKE.goods) fail(`Requires ${money(NUKE.cash)}, ${num(NUKE.steel)} steel, ${num(NUKE.oil)} oil and ${num(NUKE.goods)} goods.`);
-    n.cash -= NUKE.cash; n.res.steel -= NUKE.steel; n.res.oil -= NUKE.oil; n.res.goods -= NUKE.goods; n.nuke = W.now;
+    n.cash -= NUKE.cash; n.res.steel -= NUKE.steel; n.res.oil -= NUKE.oil; n.res.goods -= NUKE.goods; n.nuke = W.now; n.nukePaid = NUKE.cash; // refunds on disarming use what was actually paid
     n.aggr = Math.min(100, (n.aggr || 0) + 40); n.stability = clamp(n.stability + 5, 0, 100); rogueCheck(W, u);
     news(W, u, `☢ ${n.name} has tested a nuclear weapon. The world is on alert.`); log(n, 'Your nuclear deterrent is operational. Your capital now defends twice as hard and makes a last stand twice as long, and if it ever falls your last missile fires at the conqueror. The world will not forget.', W);
     for (const v of Object.keys(W.A)) if (v !== u) note(W, v, 'war', `☢ ${n.name} has tested a nuclear weapon.`);
@@ -2184,7 +2184,7 @@ function Core(PD, CARDS) {
   // ---------- decommissioning nuclear weapons ----------
   function decommission(W, u) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!n.nuke) fail('You have no nuclear weapons to decommission.');
-    const hadWar = !!n.warhead, back = Math.round(NUKE.cash * DISARM.refund);
+    const hadWar = !!n.warhead, back = Math.round((n.nukePaid || 150e6) * DISARM.refund);
     n.nuke = 0; n.warhead = null; n.iaeaAt = 0; n.nukeBan = W.now + DISARM.banD * 864e5; n.cash += back;
     n.approval = clamp(n.approval + DISARM.ap + (hadWar ? DISARM.warheadAp : 0), 0, 100); n.stability = clamp(n.stability + DISARM.st, 0, 100); n.aggr = Math.max(0, (n.aggr || 0) - DISARM.aggr);
     W._src = 'disarm'; applyEff(W, u, { boost: { ...DISARM.boost } }); W._src = ''; gainXP(W, u, DISARM.xp); achGrant(W, u, 'peacemaker');
