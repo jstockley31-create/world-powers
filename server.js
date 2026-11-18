@@ -624,6 +624,7 @@ if (S.council) { S.council.lastLaw = S.council.lastLaw || {}; if (S.council.last
 const lawWait = k => LAW_CD[k] ? LAW_CD[k] * HOUR - (Date.now() - ((S.council.lastLaw || {})[k] || 0)) : 0;
 // comeback support was retired on Nov 17: take back everything it handed out since 11:27 AM Mountain (18:27 UTC) that day, once.
 // Cash comes back from the treasury first and any shortfall becomes debt; troops, stability, approval and the protection shield are taken back too.
+setTimeout(() => { if (!S.nukeRogue1) { const W = mkWorld(), now = Date.now(), hit = []; for (const [id, n] of Object.entries(W.A)) if (n && !n.nukeRogue && core.rogue(W, n)) { const x = (S.nukes || []).filter(k => k.by === id && !k.retaliation && now - k.t < 7 * 864e5).sort((a, b) => b.t - a.t)[0]; if (x) { n.nukeRogue = x.t; W.changed.add(id); hit.push(n.name); } } S.nukeRogue1 = { t: now, who: hit }; if (hit.length) { commit(W); logErr('Nuclear rogue lock applied to: ' + hit.join(', ')); } persist(); } }, 2500);
 setTimeout(() => { if (!S.cbkRevert1) { const cut = Date.UTC(2026, 10, 17, 18, 27), done = [];
   for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n || !n.cbk || n.cbk.revoked || !(n.cbk.t >= cut)) continue; const c = n.cbk;
     const fromCash = Math.max(0, Math.min(n.cash || 0, c.cash || 0)), owed = Math.max(0, (c.cash || 0) - fromCash); n.cash = (n.cash || 0) - fromCash; if (owed) n.debt = (n.debt || 0) + owed;
@@ -662,7 +663,7 @@ function resBlocked(W, type, v) {
   if (type === 'inspect' && !n.nuke) return `${n.name} has no nuclear program to inspect.`;
   if (type === 'ceasefire' && !core.wars(W, v).length) return `${n.name} is not at war with anyone.`;
   if ((type === 'aid' || type === 'guarantee') && core.rogue(W, n)) return `${n.name} is a rogue state. The Council will not support it until sanctions are lifted.`;
-  if (type === 'lift') { if (!(M('embargo') || M('armsEmb') || M('frozen') || M('condemned') || core.rogue(W, n) || core.sanctioned(n))) return `${n.name} is not under any sanctions.`; if (nukedRecently(v, now)) return `${n.name} launched a nuclear strike less than 72 hours ago. Its sanctions cannot be lifted yet.`; }
+  if (type === 'lift') { if (!(M('embargo') || M('armsEmb') || M('frozen') || M('condemned') || core.rogue(W, n) || core.sanctioned(n))) return `${n.name} is not under any sanctions.`; if (core.nukeRogue(W, n)) return `${n.name} is a rogue state because it launched a nuclear strike. That status cannot be voted away; it ends on its own.`; if (nukedRecently(v, now)) return `${n.name} launched a nuclear strike less than 72 hours ago. Its sanctions cannot be lifted yet.`; }
   return null;
 }
 // paying off the Council: lifts sanctions, rogue status and Council measures at once, announced to the whole world. The money is simply gone.
@@ -737,6 +738,7 @@ setInterval(() => { // expired listings: unsold goods go back to the seller
 function councilBribe(uid) {
   const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   if (!core.bribeNeeded(W, n)) throw Object.assign(new Error('Your nation is not under sanctions, rogue status or Council measures.'), { status: 400 });
+  if (core.nukeRogue(W, n)) throw Object.assign(new Error('Rogue status from a nuclear strike cannot be bought off. It ends on its own once your aggression falls below 50.'), { status: 400 });
   if (nukedRecently(uid, now)) throw Object.assign(new Error('No amount of money will buy the Council within 72 hours of a nuclear strike.'), { status: 400 });
   const price = core.bribePrice(W, n); if ((n.cash || 0) < price) throw Object.assign(new Error(`The Council's price is ${WP.money(price)}. Your treasury doesn't cover it.`), { status: 400 });
   const wasRogue = core.rogue(W, n);
