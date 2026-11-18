@@ -1552,9 +1552,33 @@ function scriptCheck() {
     // 5. the existing speed flag
     const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
     const n = S.docs['nations/' + uid];
-    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hcSummary(uid), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hcSummary(uid), jail: ((S.hc || {})[uid] || {}).jail || null, hourly: (() => { const H = new Array(48).fill(0); for (const x of L) { const i = Math.floor((x[0] - from) / HOUR); if (i >= 0 && i < 48) H[i]++; } return H; })(), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
+  for (const r of out) r.case = caseFile(r);
   return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
+}
+// turns one player's numbers into a decision: how worried to be, how sure, what to do, and evidence worded so it can be shown to them
+function caseFile(r) {
+  const strong = [], ev = [];
+  const hc = r.hc || {};
+  if (r.jail) strong.push('locked in cheat jail after five wrong answers in a row on the human check');
+  if (hc.fail) strong.push(`failed the human check ${hc.fail} time${hc.fail > 1 ? 's' : ''}`);
+  if (hc.odd >= 2) strong.push(`passed ${hc.odd} human checks in ways a person can't (instantly, with no mouse movement, or with a click made by code)`);
+  if (r.samePct != null && r.samePct >= 60 && r.stillPct != null && r.stillPct >= 70) strong.push(`an auto-clicker pattern: ${r.samePct}% of clicks on the exact same pixel with the mouse not moving ${r.stillPct}% of the time`);
+  else if (r.pressMs != null && r.pressMs <= 15) strong.push(`clicks held for only ${r.pressMs} ms (people hold a click 60–150 ms)`);
+  if (r.real != null && r.real < 70) strong.push(`only ${r.real}% of actions came from a real click; the rest were sent by code`);
+  if (r.streakH >= 6) strong.push(`ran the same operation every time it was ready for ${r.streakH} hours straight`);
+  for (const w of r.why) ev.push(w);
+  const n = strong.length, net = (r.net || []).length;
+  let level, conf, action, tone;
+  if (r.jail) { level = 'act'; conf = n >= 2 ? 'Strong' : 'Moderate'; action = n >= 2 ? 'Keep them locked. The jail plus other script signs make a strong case. Message them with the evidence, then suspend them for 72 hours or ban them for the rest of the season if they have been warned before.' : 'Open their human-check log first. If their taps were slow (a few seconds each) and the mouse moved normally, they were probably just clumsy: release them. If the answers were instant or made by code, keep them locked and message them with the evidence.'; tone = 'red'; }
+  else if (r.verdict === 'red' && n >= 2) { level = 'act'; conf = 'Strong'; action = 'Suspend them for 24–72 hours and take back what they gained while scripting (resources, money). Send them the evidence below. If it happens again, ban them for the season.'; tone = 'red'; }
+  else if (r.verdict === 'red') { level = 'act'; conf = 'Moderate'; action = 'Send a private warning with the evidence below and give them a chance to explain. They already get the human check twice as often. If the pattern continues over the next day, suspend them for 24 hours.'; tone = 'red'; }
+  else if (r.verdict === 'amber') { level = 'watch'; conf = 'Weak'; action = 'Do not punish yet. One sign alone can be innocent (a fast player, a mouse resting on a button). Check again in 24 hours; if more signs appear, send a warning.'; tone = 'amber'; }
+  else { level = 'clear'; conf = n ? 'Weak' : 'None'; action = 'No action needed: they play like a person.'; tone = 'green'; }
+  if (net && level !== 'clear') action += ' They also share a network with another account: ask whether someone else in their home plays, and check whether the accounts send each other aid.';
+  else if (net) { level = 'watch'; tone = 'amber'; conf = 'Weak'; action = 'No sign of a script, but they share a network with another account. Ask whether a family member or roommate plays; if the accounts trade aid, that is not allowed during a season.'; }
+  return { level, tone, conf, action, strong, evidence: ev, net: r.net || [] };
 }
 // a light summary of one nation in each snapshot, for the admin timeline chart (cached; snapshots never change)
 const snapCache = new Map(), provCount = n => new Set([...Object.keys(n.hexes || {}), String(n.cap)]).size;
