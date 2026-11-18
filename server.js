@@ -389,10 +389,19 @@ const pollFor = uid => S.polls.filter(q => pollOpen(q) && !(q.answers || {})[uid
 function sendTo(uid, event, data) { for (const c of clients) if (c.uid === uid) write(c, event, data); }
 const isOnline = uid => [...clients].some(c => c.uid === uid);
 // serialize once per nation (one copy for its owner, one public copy for everyone else) instead of once per connected player
-function sendNation(id) {
+// a nation's owner gets its own update at once; everyone else gets other nations' updates bundled, at most one per nation every 0.7 s
+// (a busy nation can change several times a second, and every copy goes to every player: on phones that was a lot of data and redrawing)
+const PUBQ = new Set(); let pubT = null;
+// the bulky parts of a nation (GDP history, recent news and battles, trade deals) rarely change: pages that understand it get them only when they did, and keep their previous copy otherwise
+const SLIMK = ['gdpHist', 'out', 'trades'], lastBig = new Map();
+function flushPub() { pubT = null; if (!clients.size) { PUBQ.clear(); return; } const ids = [...PUBQ]; PUBQ.clear();
+  for (const id of ids) { const n = S.docs['nations/' + id]; const pv = n == null ? null : publicView(n); const pub = `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: pv })}\n\n`;
+    let slim = pub; if (pv) { const prev = lastBig.get(id) || {}, now = {}, keep = []; const sv = { ...pv }; for (const k of SLIMK) { now[k] = JSON.stringify(pv[k] === undefined ? null : pv[k]); if (prev[k] === now[k]) { delete sv[k]; keep.push(k); } } lastBig.set(id, now); if (keep.length) { sv._k = keep; slim = `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: sv })}\n\n`; } } else lastBig.delete(id);
+    for (const c of clients) if (!(c.uid === id && n != null)) writeRaw(c, c.slim ? slim : pub); } }
+function sendNation(id, now) {
   if (!clients.size) return; const n = S.docs['nations/' + id];
-  const pub = `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n == null ? null : publicView(n) })}\n\n`;
-  let own = null; for (const c of clients) { if (c.uid === id && n != null) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } else writeRaw(c, pub); }
+  if (n != null) { let own = null; for (const c of clients) if (c.uid === id) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } }
+  PUBQ.add(id); if (now || n == null) { clearTimeout(pubT); flushPub(); } else if (!pubT) pubT = setTimeout(flushPub, 700);
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
 const playerVotes = v => Object.fromEntries(Object.entries(v || {}).filter(([u]) => !BOTS.isBot(u)));
@@ -1534,7 +1543,8 @@ function scriptCheck() {
     if (D.length >= 40 && p95 <= 15000) { score += 1; why.push(`95% of reactions were under ${Math.max(1, Math.round(p95 / 1000))} seconds over ${D.length} operations: never slow, never distracted`); }
     // 8. never missing a cycle: the same operation run every time it came ready, for hours on end
     let streak = { h: 0, k: '' };
-    for (const [k, ts] of Object.entries(byK)) { const rows = L.filter(x => x[1] === k); for (let i = 0, st = 0; i < rows.length; i++) { const cd = rows[i][7] || 0; if (!cd) { st = i + 1; continue; } const nx = rows[i + 1]; if (nx && nx[0] - rows[i][0] <= cd * 1.25 + 30e3) continue; const dur = rows[i][0] - rows[st][0]; if (dur > streak.h) streak = { h: dur, k, n: i - st + 1 }; st = i + 1; } }
+    for (const [k, ts] of Object.entries(byK)) { const rows = L.filter(x => x[1] === k); for (let i = 0, st = 0; i < rows.length; i++) { const cd = rows[i][7] || 0; if (!cd) { st = i + 1; continue; } const nx = rows[i + 1]; if (nx && nx[0] - rows[i][0] <= cd * 1.25 + 30e3) continue; const dur = rows[i][0] - rows[st][0]; if (dur > streak.h && i - st + 1 >= 12) streak = { h: dur, k, n: i - st + 1 }; st = i + 1; } }
+    if (streak.n < 12) streak = { h: 0, k: '', n: streak.n }; // a long-cooldown operation run on time two or three times in a row proves nothing
     if (streak.h >= 6 * HOUR) { score += 3; why.push(`Ran "${streak.k}" every time it was ready for ${(streak.h / HOUR).toFixed(1)} hours straight (${streak.n} times in a row)`); }
     else if (streak.h >= 3 * HOUR) { score += 2; why.push(`Ran "${streak.k}" every time it was ready for ${(streak.h / HOUR).toFixed(1)} hours straight (${streak.n} times in a row)`); }
     // 9. one long session with no real breaks
@@ -1553,13 +1563,14 @@ function scriptCheck() {
     const hs = hcSummary(uid); if (hs) {
       if (hs.fail) { score += Math.min(6, hs.fail * 3); why.push(`Failed the human check ${hs.fail} time${hs.fail > 1 ? 's' : ''} (three wrong shapes in a row)`); }
       else if (hs.miss >= 3) { score += 1; why.push(`Tapped the wrong shape ${hs.miss} times on human checks`); }
-      if (hs.odd >= 2) { score += 2; why.push(`Passed ${hs.odd} human checks in a way a person rarely does (instantly, without moving the mouse, or with a click made by code)`); }
+      const oddShare = hs.odd / Math.max(1, (hs.pass || 0) + hs.odd); hs.oddReal = hs.odd >= 2 && oddShare >= .4; // the right shape is sometimes already under the cursor (about 1 in 6), so a few odd passes among many normal ones are luck
+      if (hs.oddReal) { score += 2; why.push(`Passed ${hs.odd} human checks in a way a person rarely does (instantly, without moving the mouse, or with a click made by code)`); }
       if (hs.expired >= 2) { score += 1; why.push(`Left ${hs.expired} human checks unanswered for over 10 minutes`); }
     }
     // 5. the existing speed flag
     const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
     const n = S.docs['nations/' + uid];
-    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hcSummary(uid), jail: ((S.hc || {})[uid] || {}).jail || null, hourly: (() => { const H = new Array(48).fill(0); for (const x of L) { const i = Math.floor((x[0] - from) / HOUR); if (i >= 0 && i < 48) H[i]++; } return H; })(), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, streakN: streak.n || 0, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hs, jail: ((S.hc || {})[uid] || {}).jail || null, hourly: (() => { const H = new Array(48).fill(0); for (const x of L) { const i = Math.floor((x[0] - from) / HOUR); if (i >= 0 && i < 48) H[i]++; } return H; })(), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
   for (const r of out) r.case = caseFile(r);
   return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
@@ -1570,11 +1581,11 @@ function caseFile(r) {
   const hc = r.hc || {};
   if (r.jail) strong.push('locked in cheat jail after five wrong answers in a row on the human check');
   if (hc.fail) strong.push(`failed the human check ${hc.fail} time${hc.fail > 1 ? 's' : ''}`);
-  if (hc.odd >= 2) strong.push(`passed ${hc.odd} human checks in ways a person can't (instantly, with no mouse movement, or with a click made by code)`);
+  if (hc.oddReal) strong.push(`passed ${hc.odd} of ${(hc.pass || 0) + hc.odd} human checks in a way a person rarely does (instantly, with no mouse movement, or with a click made by code)`);
   if (r.samePct != null && r.samePct >= 60 && r.stillPct != null && r.stillPct >= 70) strong.push(`an auto-clicker pattern: ${r.samePct}% of clicks on the exact same pixel with the mouse not moving ${r.stillPct}% of the time`);
   else if (r.pressMs != null && r.pressMs <= 15) strong.push(`clicks held for only ${r.pressMs} ms (people hold a click 60–150 ms)`);
   if (r.real != null && r.real < 70) strong.push(`only ${r.real}% of actions came from a real click; the rest were sent by code`);
-  if (r.streakH >= 6) strong.push(`ran the same operation every time it was ready for ${r.streakH} hours straight`);
+  if (r.streakH >= 6 && (r.streakN || 0) >= 20) strong.push(`ran the same operation every time it was ready for ${r.streakH} hours straight`);
   for (const w of r.why) ev.push(w);
   const n = strong.length, net = (r.net || []).length;
   let level, conf, action, tone;
@@ -2370,7 +2381,7 @@ async function handle(req, res) {
       const zip = new URL(req.url, 'http://x').searchParams.get('z') === '1' && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no', ...(zip ? { 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' } : {}) });
       let out = null; if (zip) { out = zlib.createGzip({ level: 6, memLevel: 6, windowBits: 14, flush: zlib.constants.Z_SYNC_FLUSH }); out.on('error', () => {}); out.pipe(res); }
-      const c = { res, out, uid: me.id, ip: ipOf(req) };
+      const c = { res, out, uid: me.id, ip: ipOf(req), slim: new URL(req.url, 'http://x').searchParams.get('k') === '1' };
       (out || res).write('retry: 3000\n\n'); write(c, 'init', snapshot(me.id));
       const mine = [...clients].filter(x => x.uid === me.id); if (mine.length >= 6) { endStream(mine[0]); clients.delete(mine[0]); }
       clients.add(c); const bye = () => { clients.delete(c); if (out) try { out.destroy(); } catch (e) {} }; res.on('error', bye); req.on('close', bye);

@@ -1336,7 +1336,7 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 window.addEventListener('online',()=>{if(curES)reconnect('network back')});
 // the stream asks for compression unless a compressed stream ever failed to deliver on this device
 let noZip=false;try{noZip=localStorage.getItem('wp_noz')==='1'}catch(e){}
-function connect(){const zip=!noZip,es=new EventSource('/api/stream'+(zip?'?z=1':''));curES=es;lastMsg=Date.now();connT=Date.now();
+function connect(){const zip=!noZip,es=new EventSource('/api/stream?k=1'+(zip?'&z=1':''));curES=es;lastMsg=Date.now();connT=Date.now();
  if(zip)setTimeout(()=>{if(curES===es&&!es._init){noZip=true;try{localStorage.setItem('wp_noz','1')}catch(e){}reconnect('compressed stream sent nothing')}},9000);
  const on=(n,f)=>es.addEventListener(n,e=>{if(curES!==es)return;lastMsg=Date.now();if(NET.down||NET.downT)netUp();f(e)});
  on('hb',()=>{});
@@ -1358,7 +1358,7 @@ on('poll',e=>{const q=JSON.parse(e.data);WP.extra.polls=[...(WP.extra.polls||[])
 on('pollend',e=>{const q=JSON.parse(e.data);WP.extra.polls=(WP.extra.polls||[]).filter(x=>x.id!==q.id);emit('wp-pollend',q)});
 on('blocs',e=>{WP.extra.blocs=JSON.parse(e.data)||{};emit('wp-blocs',WP.extra.blocs)});
 on('event',e=>{WP.extra.event=JSON.parse(e.data);emit('wp-event',WP.extra.event)});
-on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(st.me&&d.id===st.me.id)lastOwn=lastDoc;if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else st.cols[d.col][d.id]=d.data;fire(d.col)});
+on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(st.me&&d.id===st.me.id)lastOwn=lastDoc;if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else{if(d.data._k){const prev=st.cols[d.col][d.id]||{};for(const k of d.data._k)d.data[k]=prev[k];delete d.data._k}st.cols[d.col][d.id]=d.data}fire(d.col)});
 on('user',e=>{const d=JSON.parse(e.data);if(d.name==null)delete st.users[d.id];else st.users[d.id]=d.name});
 on('config',e=>setCfg(JSON.parse(e.data)));
 on('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
@@ -1800,7 +1800,7 @@ const GL=(()=>{
    const gz=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],rr);gz.addColorStop(0,`rgba(255,${age<1?230:140},60,${.85*pul})`);gz.addColorStop(.25,`rgba(255,90,20,${.45*pul})`);gz.addColorStop(1,'rgba(150,255,60,0)');ctx.fillStyle=gz;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.fill();
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
   // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
-  if(SK.length||st.fx||BURN.size||TX.length){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+  if(SK.length||st.fx||BURN.size||TX.length||smT){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  // flags beside nation names: each flag drawn once into an image, redrawn when it changes
@@ -2115,10 +2115,14 @@ const GL=(()=>{
    if(heat>0){blit('ember',G_EMBER,g[0],g[1],7*z*big*(.5+.5*heat),.55*heat);
     const fs=z*Math.sqrt(big)*(.55+.45*heat);for(let j=0;j<(lite?1:3);j++){const f=.88+.12*Math.sin(wall/(380+j*170)+x.seed*20+j*2.3)+.05*Math.sin(wall/(230+j*90)+j);blit('fire',G_FIRE,g[0]+(j===1?-.9:j===2?.9:0)*z,g[1]-(1.6+j*1.5)*z,(2.6-j*.55)*fs*f,heat*(.85-j*.12)*f)} /* anchored flames: they only swell and dim gently, never jump */}}}
  // keep the smoke moving at a gentle frame rate while any of it is on screen
- let smT=0;function smokeLoop(){if(smT)return;const go=()=>{smT=0;if(!st.el||!st.el.isConnected||document.hidden)return;const wall=Date.now();
-  const radV=radSites();let any=TX.some(x=>Date.now()-x.wall<10*60e3)||radV.length>0;for(const[h,b]of BURN){if(wall-b.t<SMOKE_MS)any=true;else{BURN.delete(h);siteKey=''}}if(!any)return;
-  const cv=unit([-st.rot[0],-st.rot[1]]),V=Math.cos(1.55);if(!skLoop&&!st.anim&&!st.raf&&!st.fx&&(smokeSites().some(x=>wall-x.t>=0&&wall-x.t<SMOKE_MS&&dot(x.v,cv)>V)||radV.some(c=>dot(unit(c),cv)>V)))fastFrame();
-  smT=setTimeout(go,coarse?130:66)};smT=setTimeout(go,66)}
+ let smT=0,smDue=0;function smokeLoop(){if(smT)return;const go=()=>{smT=-1; /* stay marked as running while drawing: drawing a radiation cloud calls smokeLoop(), which used to start a second copy of this loop every round, until the copies flooded the page's timers */if(!st.el||!st.el.isConnected||document.hidden){smT=0;return}const wall=Date.now();
+  const radV=radSites();let any=TX.some(x=>Date.now()-x.wall<10*60e3)||radV.length>0;for(const[h,b]of BURN){if(wall-b.t<SMOKE_MS)any=true;else{BURN.delete(h);siteKey=''}}if(!any){smT=0;return}
+  const cv=unit([-st.rot[0],-st.rot[1]]),V=Math.cos(1.55),SS=smokeSites().filter(x=>wall-x.t>=0&&wall-x.t<SMOKE_MS&&dot(x.v,cv)>V),smokeVis=SS.length>0,freshVis=SS.some(x=>wall-x.t<3*60e3),radVis=radV.some(c=>dot(unit(c),cv)>V);let cost=0;if(!skLoop&&!st.anim&&!st.raf&&!st.fx&&(smokeVis||radVis)){const t0=performance.now();fastFrame();cost=performance.now()-t0}
+  /* fresh smoke billows quickly; a radiation cloud only drifts, and it can stay on screen for a whole day, so it is redrawn a few times a second instead of 8 to 15
+     (redrawing the globe that often for hours kept phones busy and held up the page's timers, so updates and countdowns lagged by seconds) */
+  /* smoke lasts a day: it billows smoothly for the first 3 minutes after a strike, then drifts with a few redraws a second.
+     the delay also stretches when a frame is slow or the loop itself is running late, so it can never keep a phone busy */
+  const late=smDue?Math.max(0,performance.now()-smDue):0,base=freshVis?(coarse?130:66):(coarse?450:300),wait=Math.min(2000,Math.max(base,cost*4,late*2));smDue=performance.now()+wait;smT=setTimeout(go,wait)};smDue=performance.now()+66;smT=setTimeout(go,66)}
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)smokeLoop()});
  const SAMP=48;function samples(k){if(k.sm||!k.ip)return k.sm;k.sm=[];for(let q=0;q<=SAMP;q++){const p=k.ip(q/SAMP);k.sm.push({p,v:unit(p)})}k.fv=unit(k.from);k.tv=unit(k.to);return k.sm}
  function drawStrikes(ctr,w,h,r){if(!SK.length&&!BURN.size&&!TX.length)return;const now=performance.now(),wall=Date.now(),c0=[w/2,h/2],cv=unit(ctr),V16=Math.cos(1.6),V155=Math.cos(1.55);
