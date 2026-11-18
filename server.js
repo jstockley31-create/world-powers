@@ -251,10 +251,11 @@ function limited(key, max, windowMs) { const now = Date.now(); let b = buckets.g
 setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now > b.reset) buckets.delete(k); const cut = Math.floor(now / 60000) - 60; for (const k of health.reqs.keys()) if (k < cut) health.reqs.delete(k); }, 60000).unref();
 function flag(uid, r) { if (S.flags.some(f => f.uid === uid && f.r === r && Date.now() - f.t < 10 * 60e3)) return; S.flags.unshift({ t: Date.now(), uid, r }); S.flags = S.flags.slice(0, 2000); persist(); }
 // ---------- human check: now and then an operation asks the player to tap one shape in a small picture ----------
-// It comes at random, about once every 60-140 operations (never twice in 30 minutes), and about twice as often for accounts with
+// It comes at random, about once every 25-60 operations (never twice in 15 minutes), and about twice as often for accounts with
 // cheat flags. The picture is drawn here and sent as an image, so a page script can't read the answer. Every answer is logged for Cheat watch.
-const HC = { min: 60, max: 140, gapMs: 30 * 60e3, expireMs: 10 * 60e3, tries: 3, lockMs: 2 * 60e3, fastMs: 600, refreshes: 3, W: 300, H: 180 };
+const HC = { jailAfter: 5, min: 25, max: 60, gapMs: 15 * 60e3, expireMs: 10 * 60e3, tries: 3, lockMs: 2 * 60e3, fastMs: 600, refreshes: 3, W: 300, H: 180 };
 S.hc = S.hc || {};
+for (const h of Object.values(S.hc)) if (h && h.n > HC.max) h.n = HC.min + crypto.randomInt(HC.max - HC.min); // countdowns set under the old, rarer schedule switch to the new one
 const HC_NAMES = ['star', 'heart', 'triangle', 'circle', 'square', 'diamond', 'cross', 'moon'];
 const HC_COLS = ['#e5484d', '#f5a524', '#3dd68c', '#3e9bff', '#b072ff', '#ff6fb1', '#f2e55c', '#5fd4e6'];
 function hcPath(k, r) { // a shape centred on 0,0 with radius r
@@ -284,6 +285,9 @@ const hcState = uid => (S.hc[uid] = S.hc[uid] || { log: [] });
 const hcPub = p => p ? { id: p.id, img: p.img, prompt: `Tap the ${p.want}`, want: p.want } : null;
 function hcLog(uid, r, info) { const h = hcState(uid); h.log.unshift({ t: Date.now(), r, ...(info || {}) }); h.log = h.log.slice(0, 60); }
 const hcSus = uid => (S.flags || []).some(f => f.uid === uid && Date.now() - f.t < 72 * HOUR) || ['cheat', 'watch'].includes(((S.cheatReview || {})[uid] || {}).d);
+// cheat jail: 5 wrong answers in a row (no correct one in between) locks the account until an admin releases it
+const JAIL_MSG = 'Your account is under investigation for cheating. Our anti-cheat system stopped it after repeated failed checks. An admin will review it soon. Your nation is safe and nothing has been taken, but you can’t play until the review is done.';
+const hcJail = uid => { const h = (S.hc || {})[uid]; return h && h.jail ? { error: JAIL_MSG, jail: { t: h.jail.t } } : null; };
 // called before every operation: returns a refusal with a picture when a check is due or still open
 function hcGate(uid) {
   if (S.config && S.config.humanCheck === false) return null;
@@ -307,9 +311,10 @@ function hcAnswer(uid, b) {
     const odd = []; if (info.ms < HC.fastMs) odd.push(`solved in ${info.ms} ms`); if (info.pt === 'm' && info.mv === 0) odd.push('mouse never moved'); if (!info.trusted) odd.push('click made by code');
     hcLog(uid, odd.length ? 'pass (odd)' : 'pass', { ...info, odd: odd.join(', ') });
     if (odd.length) flag(uid, `Human check passed oddly: ${odd.join(', ')}`);
-    h.pend = null; h.last = now; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
+    h.pend = null; h.last = now; h.streak = 0; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
   }
-  p.tries++; hcLog(uid, 'miss', info);
+  p.tries++; h.streak = (h.streak || 0) + 1; hcLog(uid, 'miss', info);
+  if (h.streak >= HC.jailAfter) { h.jail = { t: now, why: `Tapped the wrong shape ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: p.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why} on the human check`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
   if (p.tries >= HC.tries) { hcLog(uid, 'fail', { want: p.want }); flag(uid, `Failed the human check ${HC.tries} times in a row`); h.lock = now + HC.lockMs; h.pend = hcMake(); persist(); return { ok: false, lock: h.lock, msg: `Three wrong answers. Operations are paused for ${HC.lockMs / 60e3} minutes.`, hc: hcPub(h.pend) }; }
   persist(); return { ok: false, msg: `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
 }
@@ -2066,8 +2071,9 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/hcrelease': { const h = (S.hc || {})[String(b.id || '')]; if (!h || !h.jail) return send(res, 400, { error: 'That player is not in jail.' }); const was = h.jail; delete h.jail; h.streak = 0; h.pend = null; h.lock = 0; hcLog(b.id, 'released', { by: me.name }); addNote(b.id, 'war', '✅ The review is done and your account has been released. Thanks for your patience.'); persist(); return send(res, 200, { ok: true, was }); }
     case '/api/admin/hcset': { S.config.humanCheck = !!b.on; if (!b.on) for (const h of Object.values(S.hc || {})) { h.pend = null; h.lock = 0; } persist(); return send(res, 200, { ok: true, on: !!b.on }); } // turn the human check on or off (turning it off clears any open checks)
-    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), t: Date.now() });
+    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), jailed: Object.entries(S.hc || {}).filter(([, h]) => h && h.jail).map(([uid, h]) => ({ uid, name: (S.users[uid] || {}).name || '?', nation: ((S.docs['nations/' + uid]) || {}).name || '', t: h.jail.t, why: h.jail.why })), t: Date.now() });
     case '/api/admin/cheatreview': { // your decision on a player after reviewing the evidence (only admins see it)
       if (!u) return send(res, 404, { error: 'Unknown player.' }); const d = ['cheat', 'clean', 'watch'].includes(b.d) ? b.d : null;
       if (!d) delete S.cheatReview[b.id]; else S.cheatReview[b.id] = { d, t: Date.now(), by: me.name, note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 300) };
@@ -2306,6 +2312,7 @@ async function handle(req, res) {
       if (limited('cmd:' + me.id, 30, 10e3)) { flag(me.id, 'Sending game actions faster than a person can click (possible bot/script)'); return send(res, 429, { error: 'Slow down.' }); }
       const b = await readBody(req, 8 * 1024);
       touch(me.id, req); health.cmds++; stat('cmds');
+      { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
       if (b && b.c === 'act') { const g = hcGate(me.id); if (g) return send(res, 428, g); } // now and then, a quick human check before an operation
       const W = mkWorld();
       if (S.fresh && ['aid', 'offer'].includes(b.c) && typeof b.v === 'string' && b.v !== me.id && sharesNetwork(me.id, b.v)) return send(res, 400, { error: 'During the season you can\'t send aid or trade offers to an account on the same network as yours.' });
@@ -2402,6 +2409,8 @@ async function handle(req, res) {
       S.reports = S.reports.slice(0, 500); persist(); return send(res, 200, { ok: true });
     }
     // ---- World Council ----
+    if ((p.startsWith('/api/bm/') || p.startsWith('/api/council/') || p === '/api/mail/send') && req.method === 'POST' && hcJail(me.id)) return send(res, 423, hcJail(me.id));
+    if (p === '/api/jail' && req.method === 'GET') return send(res, 200, { jail: hcJail(me.id) });
     if (p === '/api/hc' && req.method === 'POST') { if (limited('hc:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); const b = await readBody(req, 512); touch(me.id, req); return send(res, 200, hcAnswer(me.id, b || {})); }
     if (p === '/api/council/propose' && req.method === 'POST') { const b = await readBody(req, 2048); touch(me.id, req); councilPropose(me.id, b); return send(res, 200, { ok: true }); }
     // daily thank-you for voting for the game: once every 24 hours per account, 1% of GDP ($1M to $25M). The vote itself can't be checked, so the daily limit keeps it fair.
