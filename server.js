@@ -423,7 +423,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -1093,7 +1093,7 @@ function seasonTable(W, se, m, max) { m = m || se.metric; return Object.keys(W.A
 function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, leader: (S.users[x.u] || {}).name || '', color: W.A[x.u].color, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
   const mi = t.findIndex(x => x.u === uid);
   return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
-function seasonBegin(W) { const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
+function seasonBegin(W) { S.finaleLast = null; /* the replay of the last finale is only shown until the next season starts */ const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
   se.status = 'live'; se.start = Date.now(); se.base = {};
   if (S.countdown) { audit('System', 'Removed the countdown banner', 'the season has started'); S.countdown = null; } // the "starts in" banner must not keep counting once the season is on
   for (const u of Object.keys(W.A)) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 };
@@ -1103,7 +1103,7 @@ function seasonBegin(W) { const se = S.seasons.cur; if (se.fresh && !S.fresh) { 
 function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !== 'live') return null; if (se.fresh) return seasonFinishFresh(W, by); const M = SEASON_METRICS[se.metric], table = seasonTable(W, se), now = Date.now();
   const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
   const ranked = table.filter(x => x.v > 0 || se.metric === 'gdp'), top = ranked.slice(0, 10);
-  try { broadcast('finaleEnd', { name: se.name, top: top.slice(0, 3).map(x => W.A[x.u] && W.A[x.u].name).filter(Boolean) }); } catch (e) {}
+  try { const t3_ = top.slice(0, 3).map(x => W.A[x.u] && W.A[x.u].name).filter(Boolean); broadcast('finaleEnd', { name: se.name, top: t3_ }); if (S.finaleLast) S.finaleLast.top = t3_; } catch (e) {}
   const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
   // prizes for the top 10, permanent titles and badges, and a badge for everyone who took part
   const ord = i => ['1st', '2nd', '3rd'][i] || `${i + 1}th`, place = ['Champion', '2nd place', '3rd place'];
@@ -1130,6 +1130,83 @@ function seasonTick(W) { const se = S.seasons.cur; if (!se) return; const now = 
   else if (se.status === 'live') { for (const u of Object.keys(W.A)) if (!se.base[u]) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 }; // nations founded mid-season start from zero
     if (se.end && now >= se.end) seasonFinish(W); } }
 
+// ---------- SPY MINI-GAMES ----------
+// "Crack the treasury vault" and "Intercept and decode" are played, not rolled. Starting one pays the cost and starts the cooldown at once
+// (so a bad game cannot be retried for free). The server keeps the answer, scores what the player sends back (0 to 1) and rolls the
+// result with odds set mostly by that score. A game left unfinished counts as a score of 0 after 3 minutes.
+const SPYG = new Map(); const SPY_TTL = 3 * 60e3;
+const CIPHER_HINTS = 4;
+// the general's path through the scope: the same formula is used on the page, so the server can check where he was at every shot
+const snipePos = (q, t) => ({ x: 150 + 105 * Math.sin(t * q.w1 + q.p1), y: 118 + 34 * Math.sin(t * q.w2 + q.p2) });
+function spyPuzzle(op, W, v) {
+  if (op === 'assassinate') { const r = () => crypto.randomInt(0, 1e6) / 1e6, q = { w1: .45 + r() * .35, w2: .9 + r() * .6, p1: r() * 6.28, p2: r() * 6.28 }; const g = (W.A[v].gens || []).reduce((b, x) => !b || x.stars > b.stars ? x : b, null);
+    return { secret: q, pub: { kind: 'sniper', ...q, time: 30, bullets: 3, r: 10, gen: g ? { name: g.name, stars: g.stars } : null } }; }
+  if (op === 'heist') { const combo = [], dirs = ['right', 'left', 'right']; while (combo.length < 3) { const x = crypto.randomInt(4, 96); if (combo.every(c => Math.abs(c - x) > 8)) combo.push(x); } return { secret: combo, pub: { kind: 'safe', combo, dirs, time: 50 } }; }
+  // a substitution cipher: every letter is swapped for another; a few letters are given away to get started
+  const plain = core.cipherIntel(W, v), A_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), sh = A_.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [sh[i], sh[j]] = [sh[j], sh[i]]; } if (sh.some((c, i) => c === A_[i])) { for (let i = 0; i < 26; i++) if (sh[i] === A_[i]) { const j = (i + 1) % 26; [sh[i], sh[j]] = [sh[j], sh[i]]; } }
+  const enc = {}; A_.forEach((c, i) => enc[c] = sh[i]); const cipher = plain.split('').map(c => enc[c] || c).join('');
+  const used = [...new Set(plain.replace(/[^A-Z]/g, '').split(''))]; const freq = {}; for (const c of plain) if (enc[c]) freq[c] = (freq[c] || 0) + 1;
+  const hints = used.sort((a, b) => freq[b] - freq[a]).slice(0, 2).concat(used.filter(c => 'AEIOU'.indexOf(c) < 0).sort(() => .5 - Math.random()).slice(0, CIPHER_HINTS - 2)); const give = {}; for (const c of [...new Set(hints)].slice(0, CIPHER_HINTS)) give[enc[c]] = c;
+  return { secret: plain, pub: { kind: 'cipher', cipher, give, time: 150 } };
+}
+function spyScore(g, b, t0) {
+  const secs = (Date.now() - (t0 || g.t0)) / 1000;
+  if (g.op === 'assassinate') { const shots = Array.isArray(b.shots) ? b.shots.slice(0, 3) : []; let last = 0, miss = 0;
+    for (const sh of shots) { const t = +sh.t, x = +sh.x, y = +sh.y; if (!(t >= 1.2) || t > secs + 1.5 || t < last || !isFinite(x) || !isFinite(y)) return { skill: 0, why: 'the shot did not add up' }; last = t;
+      const q = snipePos(g.secret, t), d = Math.hypot(q.x - x, q.y - y); if (d <= 10) { const qual = Math.max(.5, 1 - d / 20); return { skill: Math.max(.2, Math.min(1, qual - .15 * miss)), why: `${d <= 3 ? 'a clean hit' : 'a hit'} with bullet ${miss + 1}${miss ? ` after ${miss} miss${miss > 1 ? 'es' : ''}` : ''}` }; } miss++; }
+    return { skill: 0, why: shots.length ? `all ${shots.length} shot${shots.length > 1 ? 's' : ''} missed` : 'no shot was taken' }; }
+  if (g.op === 'heist') { const ans = Array.isArray(b.combo) ? b.combo.slice(0, 3).map(x => Math.round(+x)) : [], wrong = Math.max(0, Math.min(10, Math.round(+b.wrong || 0)));
+    const right = g.secret.filter((c, i) => ans[i] === c).length; if (right < 3) return { skill: right * .1, why: right ? `${right} of 3 numbers` : 'the vault stayed shut' };
+    if (secs < 4) return { skill: 0, why: 'too fast to be real' }; // a person cannot turn the dial to three numbers this quickly
+    const t = Math.max(0, Math.min(1, 1 - (secs - 10) / 40)); return { skill: Math.max(.25, Math.min(1, .45 + .55 * t - .12 * wrong)), why: `cracked in ${Math.round(secs)} s${wrong ? ` with ${wrong} wrong guess${wrong > 1 ? 'es' : ''}` : ''}` }; }
+  const guess = String(b.text || '').toUpperCase().slice(0, 400), P_ = g.secret; let ok_ = 0, tot = 0; for (let i = 0; i < P_.length; i++) if (/[A-Z]/.test(P_[i])) { tot++; if (guess[i] === P_[i]) ok_++; }
+  const acc = tot ? ok_ / tot : 0; if (acc >= .98 && secs < 6) return { skill: 0, why: 'too fast to be real' };
+  const t = Math.max(0, Math.min(1, 1 - (secs - 25) / 125)); return { skill: Math.max(0, Math.min(1, acc * acc * (.55 + .45 * t))), why: `${Math.round(acc * 100)}% decoded in ${Math.round(secs)} s` };
+}
+function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r; try { r = core.covert(W, uid, g.op, g.v, rng, { paid: true, skill: sc.skill, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : null, force, caught }); } catch (e) { r = { msg: e.message, ok: false }; } commit(W); return r; }
+// SPY DUELS: if the target is online when a mini-game operation starts, they are warned and may defend by playing the same puzzle at the
+// same time. The better score wins: if the defender wins, the operation fails and the agents are identified. A defender who does not
+// answer within 20 seconds is simply not there, and the operation is rolled as usual.
+const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map();
+const duelNames = { heist: 'crack your central bank vault', cipher: 'read your government\'s secret messages', assassinate: 'assassinate one of your generals' };
+function duelOpen(uid, g, pub) { const online = [...clients].some(c => c.uid === g.v) && S.users[g.v] && !BOTS.isBot(g.v); if (!online) return; g.duel = { state: 'invited', at: Date.now() }; DUELBY.set(g.id, uid);
+  sendTo(g.v, 'spyduel', { id: g.id, op: g.op, what: duelNames[g.op], game: pub, answer: DUEL_ANSWER }); }
+function duelSettle(uid, g) { // both scores are in (or the defender never showed up): decide and tell both sides
+  const att = g.attScore, def = g.duel && g.duel.score; let r;
+  if (def && g.duel.state === 'done') { const won = att.skill > def.skill; r = spyResolve(uid, g, att, won, won ? undefined : true);
+    sendTo(g.v, 'spyduelres', { win: !won, msg: won ? `🕵 The enemy agents beat your counter-intelligence (their score ${Math.round(att.skill * 100)}, yours ${Math.round(def.skill * 100)}) and got away.` : `🛡 You stopped them! Your score ${Math.round(def.skill * 100)} beat theirs (${Math.round(att.skill * 100)}). The agents were from ${(S.docs['nations/' + uid] || {}).name || 'a foreign nation'}.` });
+    r.duel = { you: Math.round(att.skill * 100), them: Math.round(def.skill * 100), won }; }
+  else r = spyResolve(uid, g, att);
+  DUELBY.delete(g.id); SPYG.delete(uid); SPYR.set(uid, { id: g.id, at: Date.now(), out: { ok: true, success: !!r.ok, msg: r.msg, score: Math.round(att.skill * 100), why: att.why, plain: g.op === 'cipher' && att.skill > .3 ? g.secret : undefined, duel: r.duel || null, own: S.docs['nations/' + uid] } }); }
+setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) { if (!g.attScore) continue; const d = g.duel; if (!d) continue;
+    if (d.state === 'invited' && now - d.at > DUEL_ANSWER) { d.state = 'gone'; duelSettle(uid, g); } else if (d.state === 'playing' && now - d.t0 > (g.pubTime + 8) * 1000) { d.state = 'gone'; duelSettle(uid, g); } }
+  for (const [u, x] of SPYR) if (now - x.at > 10 * 60e3) SPYR.delete(u); }, 1000).unref();
+setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) if (now - g.t0 > SPY_TTL) { SPYG.delete(uid); try { spyResolve(uid, g, { skill: 0 }); addNote(uid, 'covert', 'Your agents waited too long for orders and the operation fell apart.'); } catch (e) {} } }, 15000).unref();
+async function spyRoute(p, req, res, me) {
+  if (req.method !== 'POST') return send(res, 405, { error: 'Use POST.' });
+  if (finaleLock()) return send(res, 423, FINALE_LOCK_MSG); { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
+  const b = await readBody(req, 4096); touch(me.id, req);
+  if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
+    const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate'].includes(op)) return send(res, 400, { error: 'Unknown operation.' });
+    const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
+    const W = mkWorld(); try { core.covertBegin(W, me.id, op, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+    const pz = spyPuzzle(op, W, v); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
+    try { duelOpen(me.id, g, pz.pub); } catch (e) {}
+    return send(res, 200, { ok: true, id, game: pz.pub, duel: !!g.duel, own: S.docs['nations/' + me.id] }); }
+  if (p === '/api/spy/finish') { const g = SPYG.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That operation is over.' });
+    if (g.attScore) return send(res, 200, { ok: true, pending: true });
+    const sc0 = spyScore(g, b); if (g.duel && ['invited', 'playing', 'done'].includes(g.duel.state)) { g.attScore = sc0; if (g.duel.state === 'done') duelSettle(me.id, g); const done = SPYR.get(me.id); return send(res, 200, done && done.id === g.id ? done.out : { ok: true, pending: true, score: Math.round(sc0.skill * 100), why: sc0.why }); }
+    SPYG.delete(me.id); const sc = sc0; const r = spyResolve(me.id, g, sc); actLog(me.id, mkWorld(), { c: 'covert', op: g.op, v: g.v, skill: Math.round(sc.skill * 100) }, true, r.msg);
+    return send(res, 200, { ok: true, success: !!r.ok, msg: r.msg, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : undefined, own: S.docs['nations/' + me.id] }); }
+  if (p === '/api/spy/result') { const x = SPYR.get(me.id); if (x && x.id === String(b.id || '')) return send(res, 200, x.out); return send(res, 200, { ok: true, pending: true }); }
+  // the defender's side of a duel
+  if (p === '/api/spy/defstart' || p === '/api/spy/defend') { const uid = DUELBY.get(String(b.id || '')), g = uid && SPYG.get(uid); if (!g || g.v !== me.id || !g.duel) return send(res, 400, { error: 'Too late: that operation is already over.' });
+    if (p === '/api/spy/defstart') { if (g.duel.state !== 'invited') return send(res, 400, { error: 'Too late: that operation is already over.' }); g.duel.state = 'playing'; g.duel.t0 = Date.now(); return send(res, 200, { ok: true }); }
+    if (g.duel.state !== 'playing') return send(res, 400, { error: 'Too late: that operation is already over.' }); g.duel.score = spyScore(g, b, g.duel.t0); g.duel.state = 'done'; if (g.attScore) duelSettle(uid, g);
+    return send(res, 200, { ok: true, score: Math.round(g.duel.score.skill * 100), why: g.duel.score.why }); }
+  return send(res, 404, { error: 'Not found.' });
+}
+
 // ---------- SEASON FINALE ----------
 // A purely visual show in the last minute of a season: a countdown, then every nation with a nuclear program fires missiles at random
 // targets in four waves, so the world is exploding as the season ends. Nothing in the game changes (no damage, no stats, no rogue status).
@@ -1146,10 +1223,16 @@ function finaleBuild(se, preview) {
   let lead = null; if (preview) { try { lead = S.seasons.cur ? seasonTable(W, S.seasons.cur).slice(0, 3).map(x => W.A[x.u] && W.A[x.u].name).filter(Boolean) : null; } catch (e) {} }
   return { id: (preview ? 'preview-' : '') + se.id, name: se.name || 'Season', end, launches: L, preview: !!preview, lead };
 }
+// during the finale's last minute the game is frozen: no more actions, everyone just watches the season end
+const finaleLock = () => { const se = S.seasons && S.seasons.cur, now = Date.now(); return !!(se && se.status === 'live' && se.end && now >= se.end - 60000); };
+const FINALE_LOCK_MSG = { error: 'The season is ending. Everything is locked while the finale plays.' };
+// a player who was not online for the finale sees it once, as a replay, the next time they open the game (until the next season starts)
+function finaleReplayFor(uid) { const F = S.finaleLast, now = Date.now(); if (!F || !uid || F.seen[uid] || now < F.end + 20000) return null; const u = S.users[uid]; if (!u || (u.created && u.created > F.end)) return null;
+  const end = now + 62000; return { id: 'replay-' + F.id, rid: F.id, name: F.name, end, now, replay: true, top: F.top || null, launches: F.launches.map(L => ({ ...L, at: end + L.rel })) }; }
 function P_OK(h) { return Number.isInteger(+h) && +h >= 0 && +h < core.P.length; }
 setInterval(() => { const se = S.seasons && S.seasons.cur, now = Date.now(); if (!se || se.status !== 'live' || !se.end) return;
-  if ((!FIN || FIN.id !== se.id) && now >= se.end - 60000 && now < se.end) { try { FIN = finaleBuild(se, false); broadcast('finale', { ...FIN, now }); } catch (e) { logErr('Season finale could not start: ' + (e.stack || e)); } }
-  if (now >= se.end && finDone !== se.id) { finDone = se.id; try { const W = mkWorld(); seasonTick(W); W.welcome = null; commit(W); } catch (e) { logErr('Season finish at the end of the finale failed: ' + (e.stack || e)); } }
+  if ((!FIN || FIN.id !== se.id) && now >= se.end - 60000 && now < se.end) { try { FIN = finaleBuild(se, false); broadcast('finale', { ...FIN, now }); S.finaleLast = { id: FIN.id, name: FIN.name, end: FIN.end, top: null, launches: FIN.launches.map(L => ({ ...L, rel: L.at - FIN.end })), seen: Object.fromEntries([...clients].map(c => [c.uid, 1])) }; } catch (e) { logErr('Season finale could not start: ' + (e.stack || e)); } }
+  if (now >= se.end && finDone !== se.id) { finDone = se.id; if (S.finaleLast && S.finaleLast.id === se.id) for (const c of clients) S.finaleLast.seen[c.uid] = 1; try { const W = mkWorld(); seasonTick(W); W.welcome = null; commit(W); } catch (e) { logErr('Season finish at the end of the finale failed: ' + (e.stack || e)); } }
 }, 1000).unref();
 
 // ---------- FRESH-START SEASONS ----------
@@ -1236,7 +1319,7 @@ function seasonFinishFresh(W, by) {
   const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, fresh: true, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10), recorded: now };
   if (!HOF.some(h => h.season === se.n && h.fresh && h.start === se.start)) { try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); } HOF.push(Object.freeze(entry)); }
   const champ = top[0] ? W.A[top[0].u].name : null, t2 = top[1] ? W.A[top[1].u].name : null, t3 = top[2] ? W.A[top[2].u].name : null;
-  try { broadcast('finaleEnd', { name: se.name, top: [champ, t2, t3].filter(Boolean) }); } catch (e) {}
+  try { broadcast('finaleEnd', { name: se.name, top: [champ, t2, t3].filter(Boolean) }); if (S.finaleLast) S.finaleLast.top = [champ, t2, t3].filter(Boolean); } catch (e) {}
   freshDropW(W);
   for (const [u, g] of Object.entries(grants)) { const lines = g.lines.length ? g.lines.join('; ') : 'took part'; g.log = `🏆 ${se.name} is over: you ${lines}.${g.cash || g.xp ? ' Your prizes have been added to this nation.' : ''}`; }
   se.grants = grants; // saved with the restored world, so a restart in the middle of the finish still pays exactly these prizes
@@ -2338,6 +2421,9 @@ async function handle(req, res) {
       if (b.op === 'rotate') { const n = S.docs['nations/' + me.id]; if (n && n.bj) return send(res, 400, { error: 'Finish your blackjack hand first.' });
         f.prev = [{ seed: f.seed, hash: sha256(f.seed), client: f.client, from: f.from || 0, to: f.nonce - 1, t: Date.now() }, ...(f.prev || [])].slice(0, 50); f.seed = crypto.randomBytes(32).toString('hex'); f.from = f.nonce; persist(); return send(res, 200, fairView(f)); }
       return send(res, 400, { error: 'Unknown operation.' }); }
+    if (p.startsWith('/api/spy/')) return spyRoute(p, req, res, me);
+    if (p === '/api/finale/seen' && req.method === 'POST') { const b = await readBody(req, 512); if (S.finaleLast && 'replay-' + S.finaleLast.id === String(b.id || '')) { S.finaleLast.seen[me.id] = 1; persist(); } return send(res, 200, { ok: true }); }
+    if (p === '/api/poker' && req.method === 'POST' && finaleLock()) return send(res, 423, FINALE_LOCK_MSG);
     if (p === '/api/poker') return pokerRoute(p, req, res, me);
     if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
     if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: HOF });
@@ -2414,6 +2500,7 @@ async function handle(req, res) {
     }
 
     // Every game action goes through here. The server validates it and applies it.
+    if (p === '/api/cmd' && req.method === 'POST' && finaleLock()) return send(res, 423, FINALE_LOCK_MSG);
     if (p === '/api/cmd' && req.method === 'POST') {
       if (limited('cmd:' + me.id, 30, 10e3)) { flag(me.id, 'Sending game actions faster than a person can click (possible bot/script)'); return send(res, 429, { error: 'Slow down.' }); }
       const b = await readBody(req, 8 * 1024);
@@ -2516,6 +2603,7 @@ async function handle(req, res) {
     }
     // ---- World Council ----
     if ((p.startsWith('/api/bm/') || p.startsWith('/api/council/') || p === '/api/mail/send') && req.method === 'POST' && hcJail(me.id)) return send(res, 423, hcJail(me.id));
+    if ((p.startsWith('/api/bm/') || p.startsWith('/api/council/')) && req.method === 'POST' && finaleLock()) return send(res, 423, FINALE_LOCK_MSG);
     if (p === '/api/jail' && req.method === 'GET') return send(res, 200, { jail: hcJail(me.id) });
     if (p === '/api/hc' && req.method === 'POST') { if (limited('hc:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); const b = await readBody(req, 512); touch(me.id, req); return send(res, 200, hcAnswer(me.id, b || {})); }
     if (p === '/api/council/propose' && req.method === 'POST') { const b = await readBody(req, 2048); touch(me.id, req); councilPropose(me.id, b); return send(res, 200, { ok: true }); }

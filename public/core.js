@@ -358,7 +358,9 @@ const COVERT = {
   wiretap: { n: 'Wiretap their alliance', spies: 3, cost: 400000, d: 'Bug their alliance chat: read everything they say for the next 6 hours on your Intelligence page. They may notice the bug and be warned that someone is listening.' },
   bankers: { n: 'Leak to their bankers', spies: 3, cost: 500000, d: 'Leak damaging figures to their lenders: their credit rating drops one step for 24 hours, so borrowing costs them more.' },
   falseflag: { n: 'False flag', spies: 4, cost: 3000000, d: 'Frame this nation. If your next operation in the next 6 hours is caught, the evidence points to them instead of you. One time in three the frame-up is exposed: it is pinned on you and the whole world hears about it.' },
-  assassinate: { n: 'Assassinate a general', spies: 5, cost: 2000000, d: 'Kill their best general (the one with the most stars). Harder than other operations, and if your agents are caught the world finds out and they get a 48-hour just cause against you.' }
+  heist: { n: 'Crack the treasury vault', spies: 3, cost: 400000, skill: 'safe', d: 'Break into their central bank and crack the vault yourself: turn the dial, listen for the clicks and lock in the combination before the guards arrive. The better you do, the more likely you get away with up to 3% of their treasury (at most $80M).' },
+  cipher: { n: 'Intercept and decode', spies: 2, cost: 250000, skill: 'cipher', d: 'Intercept an encrypted message from their government and break the code yourself. The message is real: their army, treasury, wars and next target. Decode it well and fast and your agents get away clean.' },
+  assassinate: { n: 'Assassinate a general', spies: 5, cost: 2000000, skill: 'sniper', d: 'Take the shot yourself: steady the swaying scope, hold your breath and fire on their best general (the one with the most stars). Three bullets. If your agents are caught the world finds out and they get a 48-hour just cause against you.' }
 };
 // World Council resolutions. kind: 'punish' and 'protect' name a target nation; 'global' applies to everyone. h = how long it lasts.
 const RESOLUTIONS = {
@@ -1594,7 +1596,31 @@ function Core(PD, CARDS) {
   function setGov(W, u, g) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(GOV, g)) fail('Unknown government.'); if (g === n.gov) fail('That is already your government.'); if (left(W, n, 'gov')) fail(`Your government can change again in ${fmtT(left(W, n, 'gov'))}.`); n.gov = g; n.stability = clamp(n.stability - 25, 0, 100); n.approval = clamp(n.approval - 10, 0, 100); n.cd.gov = W.now + 6 * HOUR; n.nextElection = g === 'dem' ? W.now + W.cfg.electionH * HOUR : 0; n.campaign = 0; n.rig = 0; news(W, u, `${n.name} is now a ${GOV[g].n}.`); touch(W, u); return { msg: `You now govern a ${GOV[g].n}.` }; }
 
   const COVERT_ID = { any: .2, assassinate: .45 }; // chance a failed operation's agents are identified
-  function covert(W, u, op, v, rng) {
+  // skill operations are played as a mini-game: the start pays and starts the cooldown, the server scores the game (0 to 1),
+  // and the result is then rolled with odds set mostly by that score (always between about 15% and 90%)
+  function covertBegin(W, u, op, v) { const o = COVERT[op]; if (!o || !o.skill) fail('Unknown operation.'); covertCheck(W, u, op, v, false); const me = W.A[u]; me.cash -= o.cost; me.cd.covert = W.now + 20 * MIN; touch(W, u); return { ok: true }; }
+  function covertCheck(W, u, op, v, paid) {
+    const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
+    if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
+    if (v === u && op !== 'rig') fail('You cannot target yourself with that operation.');
+    if (op === 'heist' && !((them.cash || 0) > 0)) fail(`${them.name}'s treasury is empty.`);
+    if (op === 'assassinate' && !(them.gens || []).length) fail(`${them.name} has no generals to target.`);
+    if (paid) return;
+    if (left(W, me, 'covert')) fail(`Your agents are still on assignment: ${fmtT(left(W, me, 'covert'))}.`);
+    if (me.spies < o.spies) fail(`This operation needs ${num(o.spies)} agents. You have ${me.spies}.`);
+    if (me.cash < o.cost) fail(`This operation costs ${money(o.cost)}.`);
+  }
+  // the decoded message for "Intercept and decode": real intelligence about the target, written out in words
+  function cipherIntel(W, v) { const n = W.A[v]; if (!n) return 'NOTHING TO REPORT';
+    const big = x => { x = Math.round(x || 0); const W_ = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE']; const sp = s => String(s).split('').map(c => c === '.' ? 'POINT' : W_[+c]).join(' ');
+      if (x >= 1e9) return sp((x / 1e9).toFixed(1).replace(/\.0$/, '')) + ' BILLION'; if (x >= 1e6) return sp((x / 1e6).toFixed(1).replace(/\.0$/, '')) + ' MILLION'; if (x >= 1e3) return sp(Math.round(x / 1e3)) + ' THOUSAND'; return sp(x); };
+    const wars = Object.keys(n.rel || {}).filter(k => (n.rel[k] || {}).war && W.A[k]).map(k => W.A[k].name.toUpperCase()), last = (n.out || []).find(e => e.type === 'battle' && W.A[e.to]);
+    const parts = [`TOP SECRET FROM ${String(n.name).toUpperCase()}`, `ARMY ${big(n.troops)}`, `TREASURY ${big(n.cash)} DOLLARS`, wars.length ? `AT WAR WITH ${wars.slice(0, 2).join(' AND ')}` : 'NO WARS', last ? `NEXT TARGET ${W.A[last.to].name.toUpperCase()}` : 'NO TARGET CHOSEN', n.warhead ? 'WARHEAD READY' : n.nuke ? 'NUCLEAR PROGRAM ACTIVE' : ''];
+    return parts.filter(Boolean).join('. ').replace(/[^A-Z .]/g, '').replace(/ +/g, ' ').slice(0, 200) + '.'; }
+  function covert(W, u, op, v, rng, opt) {
+    opt = opt || {}; const sk = typeof opt.skill === 'number' ? Math.max(0, Math.min(1, opt.skill)) : null;
+    if (COVERT[op] && COVERT[op].skill && !opt.paid) fail('This operation is played as a mini-game: launch it from the Intelligence page.');
+    if (opt.paid) covertCheck(W, u, op, v, true);
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
     if (v === u && op !== 'rig') fail('You cannot target yourself with that operation.');
@@ -1605,14 +1631,15 @@ function Core(PD, CARDS) {
     const tBloc = op === 'wiretap' ? Object.entries(W.B || {}).find(([, b]) => (b.members || []).includes(v)) : null;
     if (op === 'wiretap' && !tBloc) fail(`${them.name} is not in an alliance, so there is no alliance chat to bug.`);
     if (op === 'wiretap' && (tBloc[1].members || []).includes(u)) fail('That is your own alliance.');
-    if (left(W, me, 'covert')) fail(`Your agents are still on assignment: ${fmtT(left(W, me, 'covert'))}.`);
-    if (me.spies < o.spies) fail(`This operation needs ${num(o.spies)} agents. You have ${me.spies}.`);
-    if (me.cash < o.cost) fail(`This operation costs ${money(o.cost)}.`);
-    me.cash -= o.cost; me.cd.covert = W.now + 20 * MIN;
+    if (!opt.paid) { if (left(W, me, 'covert')) fail(`Your agents are still on assignment: ${fmtT(left(W, me, 'covert'))}.`);
+      if (me.spies < o.spies) fail(`This operation needs ${num(o.spies)} agents. You have ${me.spies}.`);
+      if (me.cash < o.cost) fail(`This operation costs ${money(o.cost)}.`);
+      me.cash -= o.cost; me.cd.covert = W.now + 20 * MIN; }
     const frame = op !== 'falseflag' && me.frame && me.frame.until > W.now && me.frame.as !== v && W.A[me.frame.as] ? me.frame.as : null; if (op !== 'falseflag' && me.frame) delete me.frame; // a false flag covers only your next operation
     const self = v === u;
     const p = self ? .7 : clamp(.5 + (me.spies - (them.spies || 0) * .6) * .03 + (me.tech - them.tech) * .02 - them.fort * .01 + ((them.laws || []).includes('censorship') ? .1 : 0), .1, .9);
-    const ok = rng() < (op === 'assassinate' ? p * .7 : p); let msg; // assassinations are harder to pull off
+    const pS = sk == null ? null : clamp(.15 + .7 * sk + (p - .5) * .3, .1, .92) * (op === 'assassinate' ? .9 : 1); // a mini-game: the player's score sets most of the odds
+    const ok = opt.force != null ? !!opt.force : rng() < (pS != null ? pS : op === 'assassinate' ? p * .7 : p); let msg; // assassinations are harder to pull off
     if (ok) {
       if (op === 'steal') { if (them.tech > me.tech) { me.tech++; msg = `Your agents stole research from ${them.name}. Tech level ${me.tech}.`; } else { me.cash += o.cost * .5; msg = `Your agents infiltrated ${them.name} but found nothing more advanced than your own research.`; } log(them, 'Security services suspect a data breach at a research institute.', W); }
       else if (op === 'sabotage') { for (const r in RES) them.res[r] = Math.round(them.res[r] * .8); if (them.infra > 0 && rng() < .5) them.infra--; msg = `Sabotage in ${them.name} succeeded: stockpiles destroyed${them.infra >= 0 ? ' and infrastructure damaged' : ''}.`; log(them, 'Explosions at industrial sites destroyed supplies. The culprits are unknown.', W); note(W, v, 'covert', 'Sabotage hit your industry. The culprits are unknown.'); }
@@ -1633,10 +1660,12 @@ function Core(PD, CARDS) {
       else if (op === 'wiretap') { me.tap = { b: tBloc[0], name: tBloc[1].name, since: W.now, until: W.now + 6 * HOUR }; msg = `Your agents bugged ${tBloc[1].name}'s alliance chat. Read it on your Intelligence page for the next 6 hours.`; if (rng() < .3) { them.bugWarn = W.now + 6 * HOUR; note(W, v, 'covert', `🔴 Your alliance chat may be bugged. Someone could be listening for the next few hours.`); } }
       else if (op === 'bankers') { them.credHit = W.now + 24 * HOUR; msg = `The leak worked: ${them.name}'s lenders are nervous and its credit rating drops one step for 24 hours.`; note(W, v, 'economy', `🏦 Damaging figures about your finances leaked to the markets. Your credit rating is one step lower for 24 hours.`); }
       else if (op === 'falseflag') { me.frame = { as: v, until: W.now + 6 * HOUR }; msg = `Your cover story is ready. If your next operation in the next 6 hours is caught, the evidence will point to ${them.name}.`; }
+      else if (op === 'heist') { const a = Math.round(Math.min(8e7, Math.max(0, them.cash) * .03 * (.5 + .5 * (sk || 0)))); them.cash -= a; me.cash += a; msg = `💰 The vault is open! Your agents walked out of ${them.name}'s central bank with ${money(a)}.`; log(them, `💰 Thieves cracked the central bank vault and escaped with ${money(a)}.`, W); note(W, v, 'covert', `💰 Your central bank vault was cracked: ${money(a)} is gone. Foreign agents are suspected.`); }
+      else if (op === 'cipher') { me.intel = me.intel || {}; me.intel[v] = { t: W.now, cash: Math.round(them.cash || 0), troops: them.troops || 0, ships: them.ships || 0, air: them.air || 0, spies: them.spies || 0, tech: them.tech || 0 }; msg = `📡 Decoded message from ${them.name}: "${opt.plain || cipherIntel(W, v)}" Your agents got away clean.`; }
       else if (op === 'rig') { them.rig = (them.rig || 0) + (self ? 8 : -10); msg = self ? 'Your agents quietly secured votes for the next election (+8%).' : `Your agents are swinging ${them.name}'s next election against its government.`; }
     } else {
       // spies stay anonymous most of the time: a failed operation always costs agents, but they are only identified now and then
-      const caught = rng() < (self ? .7 : COVERT_ID[op] || COVERT_ID.any); const lost = Math.ceil(o.spies / 2); me.spies -= lost;
+      const caught = opt.caught != null ? !!opt.caught : rng() < (self ? .7 : (COVERT_ID[op] || COVERT_ID.any) * (sk == null ? 1 : 1.3 - sk)); /* in a spy duel the defender who wins always identifies the agents */ const lost = Math.ceil(o.spies / 2); me.spies -= lost; // a good mini-game score also makes it less likely your agents are identified
       if (!caught && !self) { log(them, `Your counter-intelligence foiled a foreign plot to ${o.n.toLowerCase()}. The agents would not say who sent them.`, W); note(W, v, 'covert', `🕵 Your counter-intelligence foiled a plot to ${o.n.toLowerCase()}. Nobody knows who sent the agents.`); }
       const exposed = caught && !self && frame && rng() < 1 / 3, framed = caught && !self && frame && !exposed;
       if (exposed) news(W, u, `🎭 A false flag was exposed: ${me.name} tried to pin a covert operation on ${W.A[frame].name}.`);
@@ -2631,7 +2660,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
