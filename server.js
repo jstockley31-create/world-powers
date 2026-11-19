@@ -291,7 +291,7 @@ function devHandle(me, p, method, b, q) {
 // ---------- human check: now and then an operation asks the player to tap one shape in a small picture ----------
 // It comes at random, about once every 25-60 operations (never twice in 15 minutes), and about twice as often for accounts with
 // cheat flags. The picture is drawn here and sent as an image, so a page script can't read the answer. Every answer is logged for Cheat watch.
-const HC = { jailAfter: 5, min: 25, max: 60, gapMs: 15 * 60e3, expireMs: 10 * 60e3, tries: 3, lockMs: 2 * 60e3, fastMs: 600, refreshes: 3, W: 300, H: 180 };
+const HC = { jailAfter: 5, min: 25, max: 60, gapMs: 15 * 60e3, susGapMs: 4 * 60e3, fastCodeMs: 1200, expireMs: 10 * 60e3, tries: 3, lockMs: 2 * 60e3, fastMs: 600, refreshes: 3, W: 300, H: 180 };
 S.hc = S.hc || {};
 for (const h of Object.values(S.hc)) if (h && h.n > HC.max) h.n = HC.min + crypto.randomInt(HC.max - HC.min); // countdowns set under the old, rarer schedule switch to the new one
 const HC_NAMES = ['star', 'heart', 'triangle', 'circle', 'square', 'diamond', 'cross', 'moon'];
@@ -308,53 +308,138 @@ function hcPath(k, r) { // a shape centred on 0,0 with radius r
   if (k === 'moon') return `M${r * .2},${-r}A${r},${r} 0 1,0 ${r * .2},${r}A${r * .75},${r * .75} 0 1,1 ${r * .2},${-r}Z`;
   return '';
 }
-function hcMake() {
-  const R = () => crypto.randomInt(1e6) / 1e6, pick = HC_NAMES.slice().sort(() => R() - .5).slice(0, 6), want = pick[crypto.randomInt(6)], cols = HC_COLS.slice().sort(() => R() - .5);
-  const cells = [0, 1, 2, 3, 4, 5].sort(() => R() - .5), items = [];
-  let g = `<svg xmlns="http://www.w3.org/2000/svg" width="${HC.W}" height="${HC.H}" viewBox="0 0 ${HC.W} ${HC.H}"><rect width="${HC.W}" height="${HC.H}" rx="10" fill="#141c26"/>`;
-  for (let i = 0; i < 40; i++) g += `<line x1="${(R() * HC.W).toFixed(0)}" y1="${(R() * HC.H).toFixed(0)}" x2="${(R() * HC.W).toFixed(0)}" y2="${(R() * HC.H).toFixed(0)}" stroke="hsl(${(R() * 360) | 0},40%,45%)" stroke-opacity=".35" stroke-width="${(.5 + R() * 1.5).toFixed(1)}"/>`;
-  pick.forEach((k, i) => { const c = cells[i], cx = 50 + (c % 3) * 100 + (R() - .5) * 26, cy = 45 + Math.floor(c / 3) * 90 + (R() - .5) * 20, r = 20 + R() * 9, rot = ((R() - .5) * 50) | 0;
-    g += `<path d="${hcPath(k, r)}" transform="translate(${cx.toFixed(1)},${cy.toFixed(1)}) rotate(${rot})" fill="${cols[i]}" stroke="#0b1016" stroke-width="2"/>`; items.push({ k, b: [cx - r - 8, cy - r - 8, cx + r + 8, cy + r + 8] }); });
-  for (let i = 0; i < 60; i++) g += `<circle cx="${(R() * HC.W).toFixed(0)}" cy="${(R() * HC.H).toFixed(0)}" r="${(R() * 1.6 + .4).toFixed(1)}" fill="#fff" fill-opacity="${(R() * .25).toFixed(2)}"/>`;
-  g += '</svg>';
-  return { id: crypto.randomBytes(8).toString('hex'), want, items, img: 'data:image/svg+xml;base64,' + Buffer.from(g).toString('base64'), t: Date.now(), tries: 0, refresh: 0 };
+// ---- check pictures are drawn as real images (PNG), so a script has to actually see them: there is no drawing code to read ----
+const CRC_T = (() => { const t = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c; } return t; })();
+const crc32 = b => { let c = -1; for (let i = 0; i < b.length; i++) c = CRC_T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0; };
+function rNew(w, h, bg) { const d = Buffer.alloc(w * h * 3); for (let i = 0; i < w * h; i++) { d[i * 3] = bg[0]; d[i * 3 + 1] = bg[1]; d[i * 3 + 2] = bg[2]; } return { w, h, d }; }
+function rPx(m, x, y, c, a) { x |= 0; y |= 0; if (x < 0 || y < 0 || x >= m.w || y >= m.h) return; const i = (y * m.w + x) * 3; for (let k = 0; k < 3; k++) m.d[i + k] = Math.round(m.d[i + k] * (1 - a) + c[k] * a); }
+function rPoly(m, pts, c, a = 1) { let y0 = Infinity, y1 = -Infinity; for (const p of pts) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+  for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(m.h - 1, Math.ceil(y1)); y++) { const yc = y + .5, xs = [];
+    for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; if ((p[1] <= yc) !== (q[1] <= yc)) xs.push(p[0] + (yc - p[1]) / (q[1] - p[1]) * (q[0] - p[0])); }
+    xs.sort((u, v) => u - v); for (let i = 0; i + 1 < xs.length; i += 2) for (let x = Math.max(0, Math.round(xs[i])); x < Math.min(m.w, Math.round(xs[i + 1])); x++) rPx(m, x, y, c, a); } }
+function rLine(m, x0, y0, x1, y1, wd, c, a = 1, hard) { const r = wd / 2, dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy || 1;
+  for (let y = Math.max(0, Math.floor(Math.min(y0, y1) - r - 1)); y <= Math.min(m.h - 1, Math.ceil(Math.max(y0, y1) + r + 1)); y++) for (let x = Math.max(0, Math.floor(Math.min(x0, x1) - r - 1)); x <= Math.min(m.w - 1, Math.ceil(Math.max(x0, x1) + r + 1)); x++) {
+    const t = Math.max(0, Math.min(1, ((x + .5 - x0) * dx + (y + .5 - y0) * dy) / L2)), ex = x0 + t * dx - x - .5, ey = y0 + t * dy - y - .5, d = Math.sqrt(ex * ex + ey * ey), cov = hard ? (d <= r ? 1 : 0) : Math.max(0, Math.min(1, r + .5 - d)); if (cov > 0) rPx(m, x, y, c, a * cov); } }
+function rNoise(m, R, amt) { for (let i = 0; i < m.d.length; i++) { const v = m.d[i] + Math.round((R() - .5) * amt); m.d[i] = v < 0 ? 0 : v > 255 ? 255 : v; } }
+function rPNG(m) { const rl = m.w * 3, raw = Buffer.alloc((rl + 1) * m.h); /* each row stored as the difference from the pixel to its left and the one above (PNG "Paeth" filter): many times smaller */
+  for (let y = 0; y < m.h; y++) { const o = y * (rl + 1), r0 = y * rl; raw[o] = 4; for (let i = 0; i < rl; i++) { const a = i >= 3 ? m.d[r0 + i - 3] : 0, b = y ? m.d[r0 - rl + i] : 0, c = i >= 3 && y ? m.d[r0 - rl + i - 3] : 0, pp = a + b - c, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c); raw[o + 1 + i] = (m.d[r0 + i] - (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255; } }
+  const chunk = (t, b) => { const l = Buffer.alloc(4); l.writeUInt32BE(b.length); const tb = Buffer.from(t), c = Buffer.alloc(4); c.writeUInt32BE(crc32(Buffer.concat([tb, b]))); return Buffer.concat([l, tb, b, c]); };
+  const ih = Buffer.alloc(13); ih.writeUInt32BE(m.w, 0); ih.writeUInt32BE(m.h, 4); ih[8] = 8; ih[9] = 2; ih[10] = 0; ih[11] = 0; ih[12] = 0;
+  return 'data:image/png;base64,' + Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ih), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]).toString('base64'); }
+const hexRGB = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+function hcPoly(k, r) { const poly = (n, rr, off) => Array.from({ length: n }, (_, i) => { const a = off + i * 2 * Math.PI / n; return [Math.cos(a) * rr, Math.sin(a) * rr]; });
+  if (k === 'star') return Array.from({ length: 10 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .45 : r; return [Math.cos(a) * rr, Math.sin(a) * rr]; });
+  if (k === 'triangle') return poly(3, r, -Math.PI / 2); if (k === 'square') return poly(4, r * 1.1, Math.PI / 4); if (k === 'diamond') return [[0, -r], [r * .7, 0], [0, r], [-r * .7, 0]];
+  if (k === 'circle' || k === 'moon') return poly(40, r, 0);
+  if (k === 'cross') { const t = r * .35; return [[-t, -r], [t, -r], [t, -t], [r, -t], [r, t], [t, t], [t, r], [-t, r], [-t, t], [-r, t], [-r, -t], [-t, -t]]; }
+  if (k === 'heart') return Array.from({ length: 60 }, (_, i) => { const t = i / 60 * 2 * Math.PI; return [16 * Math.sin(t) ** 3 * r / 16, -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * r / 16]; });
+  return poly(6, r, 0); }
+const xform = (pts, cx, cy, rot, s) => { const c = Math.cos(rot), n = Math.sin(rot); return pts.map(([x, y]) => [(cx + x * c - y * n) * s, (cy + x * n + y * c) * s]); };
+// letters for the "type the code" check: none that look alike (no O/0, I/1, S/5, B/8, Z/2, G/6)
+const HC_GLYPH = { A: [[[0, 1], [.5, 0], [1, 1]], [[.22, .62], [.78, .62]]], C: [[[.95, .18], [.7, 0], [.3, 0], [.05, .25], [.05, .75], [.3, 1], [.7, 1], [.95, .82]]], D: [[[0, 0], [0, 1], [.6, 1], [.95, .7], [.95, .3], [.6, 0], [0, 0]]],
+  E: [[[1, 0], [0, 0], [0, 1], [1, 1]], [[0, .5], [.75, .5]]], F: [[[1, 0], [0, 0], [0, 1]], [[0, .5], [.75, .5]]], H: [[[0, 0], [0, 1]], [[1, 0], [1, 1]], [[0, .5], [1, .5]]], J: [[[1, 0], [1, .75], [.75, 1], [.25, 1], [0, .75]]],
+  K: [[[0, 0], [0, 1]], [[1, 0], [0, .58]], [[.32, .42], [1, 1]]], M: [[[0, 1], [0, 0], [.5, .6], [1, 0], [1, 1]]], N: [[[0, 1], [0, 0], [1, 1], [1, 0]]], P: [[[0, 1], [0, 0], [.75, 0], [1, .2], [1, .36], [.75, .56], [0, .56]]],
+  R: [[[0, 1], [0, 0], [.75, 0], [1, .2], [1, .36], [.75, .56], [0, .56]], [[.45, .56], [1, 1]]], T: [[[0, 0], [1, 0]], [[.5, 0], [.5, 1]]], U: [[[0, 0], [0, .75], [.25, 1], [.75, 1], [1, .75], [1, 0]]],
+  V: [[[0, 0], [.5, 1], [1, 0]]], W: [[[0, 0], [.25, 1], [.5, .42], [.75, 1], [1, 0]]], X: [[[0, 0], [1, 1]], [[1, 0], [0, 1]]], Y: [[[0, 0], [.5, .5], [1, 0]], [[.5, .5], [.5, 1]]],
+  3: [[[0, .12], [.25, 0], [.75, 0], [1, .2], [.75, .47], [.35, .47]], [[.75, .47], [1, .7], [.85, .95], [.5, 1], [.12, .95], [0, .85]]], 4: [[[.72, 1], [.72, 0], [0, .7], [1, .7]]], 7: [[[0, 0], [1, 0], [.4, 1]]],
+  9: [[[1, .45], [.7, .6], [.3, .6], [0, .4], [0, .2], [.3, 0], [.7, 0], [1, .2], [1, .45], [.85, 1]]] };
+const HC_CHARS = Object.keys(HC_GLYPH).filter(k => k !== '9'); // 9 is drawn but not used: in this style it looks too much like a q
+const HC_SC = 1.5; // pictures are drawn at 1.5× size, so they stay sharp on phones
+function hcMake(code) {
+  const R = () => crypto.randomInt(1e6) / 1e6, id = crypto.randomBytes(8).toString('hex');
+  if (code) { // "type the code": five letters, each tilted, sized and coloured differently, with lines through them
+    const W = 300, H = 120, S = HC_SC, m = rNew(W * S, H * S, [20, 28, 38]); let txt = '';
+    for (let i = 0; i < 14; i++) rLine(m, R() * W * S, R() * H * S, R() * W * S, R() * H * S, (1 + R() * 2) * S, hexRGB(HC_COLS[crypto.randomInt(8)]), .3, true);
+    for (let i = 0; i < 5; i++) { const ch = HC_CHARS[crypto.randomInt(HC_CHARS.length)]; txt += ch; const cw = 30 + R() * 10, chh = 50 + R() * 16, cx = 30 + i * 54 + (R() - .5) * 10, cy = 60 + (R() - .5) * 18, rot = (R() - .5) * .8, col = hexRGB(HC_COLS[crypto.randomInt(8)]), wd = (4.5 + R() * 2.5) * S;
+      for (const st of HC_GLYPH[ch]) { const pts = xform(st.map(([x, y]) => [(x - .5) * cw + (R() - .5) * 3, (y - .5) * chh + (R() - .5) * 3]), cx, cy, rot, S); for (let j = 0; j + 1 < pts.length; j++) rLine(m, pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1], wd, col); } }
+    for (let i = 0; i < 3; i++) { let x = 0, y = R() * H; const k = (R() - .5) * 1.2, col = hexRGB(HC_COLS[crypto.randomInt(8)]); for (let s = 0; s < 12; s++) { const nx = x + W / 12, ny = y + k * 10 + (R() - .5) * 14; rLine(m, x * S, y * S, nx * S, ny * S, 1.6 * S, col, .55); x = nx; y = ny; } }
+    for (let i = 0; i < 260; i++) rPx(m, R() * W * S, R() * H * S, [255, 255, 255], R() * .4);
+    return { id, type: 'code', want: txt, img: rPNG(m), t: Date.now(), tries: 0, refresh: 0 };
+  }
+  const pick = HC_NAMES.slice().sort(() => R() - .5).slice(0, 6), want = pick[crypto.randomInt(6)], cols = HC_COLS.slice().sort(() => R() - .5), cells = [0, 1, 2, 3, 4, 5].sort(() => R() - .5), items = [], S = HC_SC, bg = [20, 28, 38];
+  const m = rNew(HC.W * S, HC.H * S, bg);
+  for (let i = 0; i < 40; i++) rLine(m, R() * HC.W * S, R() * HC.H * S, R() * HC.W * S, R() * HC.H * S, (.5 + R() * 1.5) * S, hexRGB(HC_COLS[crypto.randomInt(8)]), .3, true);
+  pick.forEach((k, i) => { const c = cells[i], cx = 50 + (c % 3) * 100 + (R() - .5) * 26, cy = 45 + Math.floor(c / 3) * 90 + (R() - .5) * 20, r = 20 + R() * 9, rot = (R() - .5) * .87, col = hexRGB(cols[i]);
+    const pts = xform(hcPoly(k, r), cx, cy, rot, S); rPoly(m, pts, col); for (let j = 0; j < pts.length; j++) { const q = pts[(j + 1) % pts.length]; rLine(m, pts[j][0], pts[j][1], q[0], q[1], 2 * S, [11, 16, 22]); }
+    if (k === 'moon') rPoly(m, xform(hcPoly('circle', r * .78), cx + r * .42 * Math.cos(rot) , cy + r * .42 * Math.sin(rot) - r * .12, rot, S), bg);
+    items.push({ k, b: [cx - r - 8, cy - r - 8, cx + r + 8, cy + r + 8] }); });
+  for (let i = 0; i < 6; i++) rLine(m, R() * HC.W * S, R() * HC.H * S, R() * HC.W * S, R() * HC.H * S, .8 * S, [230, 236, 242], .18);
+  for (let i = 0; i < 160; i++) rPx(m, R() * HC.W * S, R() * HC.H * S, [255, 255, 255], R() * .35);
+  return { id, type: 'tap', want, items, img: rPNG(m), t: Date.now(), tries: 0, refresh: 0 };
 }
 const hcState = uid => (S.hc[uid] = S.hc[uid] || { log: [] });
-const hcPub = p => p ? { id: p.id, img: p.img, prompt: `Tap the ${p.want}`, want: p.want } : null;
+const hcPub = p => p ? (p.type === 'code' ? { id: p.id, type: 'code', img: p.img, prompt: 'Type the code' } : { id: p.id, type: 'tap', img: p.img, prompt: `Tap the ${p.want}`, want: p.want }) : null;
 function hcLog(uid, r, info) { const h = hcState(uid); h.log.unshift({ t: Date.now(), r, ...(info || {}) }); h.log = h.log.slice(0, 60); }
-const hcSus = uid => (S.flags || []).some(f => f.uid === uid && Date.now() - f.t < 72 * HOUR) || ['cheat', 'watch'].includes(((S.cheatReview || {})[uid] || {}).d);
-// cheat jail: 5 wrong answers in a row (no correct one in between) locks the account until an admin releases it
+const hcExempt = uid => !!(S.users[uid] && S.users[uid].admin); // the game's admins are never checked or jailed automatically
+// clear proof of a script, from the last actions this player sent (see botRecord). Null when they play like a person.
+function scriptProof(rows) {
+  const Rw = rows.slice(-40); if (Rw.length < 12) return null;
+  const nCode = Rw.filter(r => r[5] === 'u').length, nNoPage = Rw.filter(r => r[5] === 'x').length, nHid = Rw.filter(r => r[3] === 'h').length;
+  if (nCode >= 3) return `${nCode} of its last ${Rw.length} actions were clicked by code, not by a person`;
+  if (nNoPage >= 5) return `${nNoPage} of its last ${Rw.length} actions were sent straight to the server, not from the game page`;
+  if (nHid >= 8) return `${nHid} of its last ${Rw.length} actions were sent while the game page was hidden`;
+  const D = Rw.map(r => r[2]).filter(d => d >= 0); if (D.length >= 20) { const f = D.filter(d => d < 500).length; if (f / D.length >= .7) return `reacted within half a second of an action becoming ready ${f} times out of ${D.length}`; }
+  const P = rows.slice(-60).map(r => r[8]).filter(p => p && p[2] >= 0).map(p => p[2]); if (P.length >= 30) { const mn = P.reduce((a, b) => a + b, 0) / P.length, sd = Math.sqrt(P.reduce((a, b) => a + (b - mn) ** 2, 0) / P.length); if (sd <= 3) return `held the button down for exactly the same time (${Math.round(mn)} ms, ±${sd.toFixed(1)}) on ${P.length} clicks in a row`; }
+  const byK = {}; for (const r of rows) (byK[r[1]] = byK[r[1]] || []).push(r[0]);
+  for (const [k, ts] of Object.entries(byK)) { let run = 1; for (let i = 2; i < ts.length; i++) { const g1 = ts[i] - ts[i - 1], g0 = ts[i - 1] - ts[i - 2]; if (g1 > 20e3 && Math.abs(g1 - g0) <= 800) { run++; if (run >= 15) return `ran "${k}" ${run + 1} times in a row at exactly the same interval (every ${Math.round(g1 / 1000)} s, within 0.8 s)`; } else run = 1; } }
+  return null;
+}
+// softer signs: not proof, but such a player gets checked every few minutes until it's clear
+function scriptLean(uid) { const rows = ((S.botsig || {})[uid] || {}).a || [], Rw = rows.slice(-40); if (Rw.length < 10) return false;
+  if (Rw.some(r => r[5] === 'u' || r[5] === 'x') || Rw.filter(r => r[3] === 'h').length >= 2) return true;
+  const D = Rw.map(r => r[2]).filter(d => d >= 0); if (D.length >= 15 && D.filter(d => d < 1000).length / D.length >= .25) return true;
+  const P = Rw.map(r => r[8]).filter(p => p && p[2] >= 0).map(p => p[2]); if (P.length >= 20) { const mn = P.reduce((a, b) => a + b, 0) / P.length; if (Math.sqrt(P.reduce((a, b) => a + (b - mn) ** 2, 0) / P.length) <= 8) return true; }
+  const byK = {}; for (const r of rows) (byK[r[1]] = byK[r[1]] || []).push(r[0]); for (const ts of Object.values(byK)) { let run = 1; for (let i = 2; i < ts.length; i++) { const g1 = ts[i] - ts[i - 1], g0 = ts[i - 1] - ts[i - 2]; if (g1 > 20e3 && Math.abs(g1 - g0) <= 1500) { if (++run >= 7) return true; } else run = 1; } }
+  return false; }
+const hcSus = uid => (S.flags || []).some(f => f.uid === uid && Date.now() - f.t < 72 * HOUR) || ['cheat', 'watch'].includes(((S.cheatReview || {})[uid] || {}).d) || scriptLean(uid);
+// cheat jail: locks the account until an admin releases it
 const JAIL_MSG = 'Your account is under investigation for cheating. Our anti-cheat system stopped it after repeated failed checks. An admin will review it soon. Your nation is safe and nothing has been taken, but you can’t play until the review is done.';
-const hcJail = uid => { const h = (S.hc || {})[uid]; return h && h.jail ? { error: JAIL_MSG, jail: { t: h.jail.t } } : null; };
+const JAIL_MSG_SCRIPT = 'Your account is under investigation for cheating. Our anti-cheat system detected automated play (a script or auto-clicker). An admin will review it soon. Your nation is safe and nothing has been taken, but you can’t play until the review is done.';
+const hcJail = uid => { const h = (S.hc || {})[uid]; return h && h.jail ? { error: h.jail.script ? JAIL_MSG_SCRIPT : JAIL_MSG, jail: { t: h.jail.t } } : null; };
+function autoJail(uid, why, script) { if (hcExempt(uid)) return false; const h = hcState(uid); if (h.jail) return true; const now = Date.now();
+  h.jail = { t: now, why, script: script ? 1 : 0 }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { why }); flag(uid, `Put in cheat jail automatically: ${why}`);
+  (S.cheatReview = S.cheatReview || {})[uid] = { d: 'watch', t: now, by: 'Anti-cheat', note: `Jailed automatically: ${why}.` };
+  try { sendTo(uid, 'jail', { msg: script ? JAIL_MSG_SCRIPT : JAIL_MSG }); } catch (e) {}
+  persist(); return true; }
 // called before every operation: returns a refusal with a picture when a check is due or still open
-function hcGate(uid) {
-  if (S.config && S.config.humanCheck === false) return null;
+function hcGate(uid, isAct) {
+  if (S.config && S.config.humanCheck === false) return null; if (hcExempt(uid)) return null;
   const h = hcState(uid), now = Date.now();
   if (h.lock > now) return { error: `Too many wrong answers. Operations unlock in ${Math.ceil((h.lock - now) / 1000)} seconds.`, hc: hcPub(h.pend), lock: h.lock };
-  if (h.pend) { if (now - h.pend.t > HC.expireMs) { hcLog(uid, 'expired', { want: h.pend.want }); h.pend = hcMake(); persist(); } return { error: 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) }; }
+  if (h.pend) { h.pendHits = (h.pendHits || 0) + 1; if (h.pendHits >= 40 && autoJail(uid, `kept sending ${h.pendHits} actions while ignoring an open human check`, true)) return hcJail(uid);
+    if (now - h.pend.t > HC.expireMs) { hcLog(uid, 'expired', { want: h.pend.type === 'code' ? 'code' : h.pend.want }); h.pend = hcMake(h.pend.type === 'code'); persist(); }
+    return { error: h.pend.type === 'code' ? 'Quick check: type the code to carry on.' : 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) }; }
+  const sus = hcSus(uid);
   if (h.n == null) h.n = HC.min + crypto.randomInt(HC.max - HC.min);
-  h.n -= hcSus(uid) ? 2 : 1;
-  if (h.n > 0 || now - (h.last || 0) < HC.gapMs) return null;
-  h.pend = hcMake(); persist(); return { error: 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) };
+  if (isAct || sus) h.n -= sus ? 5 : 1; // every kind of action can be stopped by a check, but for an ordinary player only economy actions count down, so checks come no more often than before
+  if (h.n > 0 || now - (h.last || 0) < (sus ? HC.susGapMs : HC.gapMs)) return null;
+  h.pend = hcMake(crypto.randomInt(100) < (S.config && S.config.hcCodePct != null ? +S.config.hcCodePct : sus ? 70 : 35)); // how often it's "type the code" rather than "tap the shape" h.pendHits = 0; persist();
+  return { error: h.pend.type === 'code' ? 'Quick check: type the code to carry on.' : 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) };
 }
 function hcAnswer(uid, b) {
-  const h = hcState(uid), p = h.pend, now = Date.now(); if (!p) return { ok: true, done: true };
-  if (b.refresh) { if (p.refresh >= HC.refreshes) return { ok: false, msg: 'No more new pictures. Pick a shape in this one.', hc: hcPub(p) }; hcLog(uid, 'new picture', { want: p.want }); const n = hcMake(); n.refresh = p.refresh + 1; n.tries = p.tries; h.pend = n; persist(); return { ok: false, hc: hcPub(n) }; }
+  const h = hcState(uid), p = h.pend, now = Date.now(); if (h.jail) return { ok: false, jail: { t: h.jail.t }, msg: h.jail.script ? JAIL_MSG_SCRIPT : JAIL_MSG }; if (!p) return { ok: true, done: true };
+  if (b.refresh) { if (p.refresh >= HC.refreshes) return { ok: false, msg: p.type === 'code' ? 'No more new codes. Type this one.' : 'No more new pictures. Pick a shape in this one.', hc: hcPub(p) }; hcLog(uid, 'new picture', { want: p.type === 'code' ? 'code' : p.want }); const n = hcMake(p.type === 'code'); n.refresh = p.refresh + 1; n.tries = p.tries; h.pend = n; persist(); return { ok: false, hc: hcPub(n) }; }
   if (String(b.id || '') !== p.id) return { ok: false, msg: 'That picture changed. Try this one.', hc: hcPub(p) };
   if (h.lock > now) return { ok: false, lock: h.lock, msg: `Wait ${Math.ceil((h.lock - now) / 1000)} seconds, then try again.`, hc: hcPub(p) };
-  const W = +b.w, H = +b.h, x = +b.x / W * HC.W, y = +b.y / H * HC.H;
-  const info = { want: p.want, ms: Math.max(0, Math.min(6e5, Math.round(+b.ms || 0))), mv: Math.max(-1, Math.min(1e5, Math.round(b.mv == null ? -1 : +b.mv))), press: Math.max(-1, Math.min(9999, Math.round(b.press == null ? -1 : +b.press))), pt: ['m', 't', 'p', 'k'].includes(b.pt) ? b.pt : 'x', trusted: b.tr === 1 ? 1 : 0 };
-  const hit = isFinite(x) && isFinite(y) && W > 0 && H > 0 ? p.items.find(it => x >= it.b[0] && x <= it.b[2] && y >= it.b[1] && y <= it.b[3]) : null; info.pick = hit ? hit.k : 'empty space';
-  if (hit && hit.k === p.want) {
-    const odd = []; if (info.ms < HC.fastMs) odd.push(`solved in ${info.ms} ms`); if (info.pt === 'm' && info.mv === 0) odd.push('mouse never moved'); if (!info.trusted) odd.push('click made by code');
+  const isCode = p.type === 'code';
+  if (isCode && b.code == null) { const n = hcMake(false); n.tries = p.tries; h.pend = n; persist(); return { ok: false, msg: 'Tap the shape it asks for.', hc: hcPub(n) }; } // a page from before this update cannot show a code box
+  const info = { want: isCode ? 'code' : p.want, ms: Math.max(0, Math.min(6e5, Math.round(+b.ms || 0))), mv: Math.max(-1, Math.min(1e5, Math.round(b.mv == null ? -1 : +b.mv))), press: Math.max(-1, Math.min(9999, Math.round(b.press == null ? -1 : +b.press))), pt: ['m', 't', 'p', 'k'].includes(b.pt) ? b.pt : 'x', trusted: b.tr === 1 ? 1 : 0 };
+  let right;
+  if (isCode) { const got = String(b.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12); info.pick = got || '(empty)'; info.keys = Math.max(0, Math.min(999, Math.round(+b.keys || 0))); right = got === p.want; }
+  else { const W = +b.w, H = +b.h, x = +b.x / W * HC.W, y = +b.y / H * HC.H; const hit = isFinite(x) && isFinite(y) && W > 0 && H > 0 ? p.items.find(it => x >= it.b[0] && x <= it.b[2] && y >= it.b[1] && y <= it.b[3]) : null; info.pick = hit ? hit.k : 'empty space'; right = !!(hit && hit.k === p.want); }
+  if (right) {
+    const odd = [], fast = info.ms < (isCode ? HC.fastCodeMs : HC.fastMs); if (fast) odd.push(`solved in ${info.ms} ms`); if (!isCode && info.pt === 'm' && info.mv === 0) odd.push('mouse never moved');
+    const byCode = isCode ? info.keys === 0 || !info.trusted : !info.trusted; if (byCode) odd.push(isCode ? 'code filled in by a program, not typed' : 'click made by code');
     hcLog(uid, odd.length ? 'pass (odd)' : 'pass', { ...info, odd: odd.join(', ') });
+    if (byCode && autoJail(uid, isCode ? 'the human check was answered by a program (the code was never typed)' : 'the human check was clicked by code, not by a person', true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT };
+    if (fast) { const prev = h.log.slice(1).filter(x => x.r === 'pass (odd)' && /solved in/.test(x.odd || '') && now - x.t < 48 * HOUR).length; if (prev >= 1 && autoJail(uid, `solved the human check faster than a person can, twice (${info.ms} ms)`, true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT }; }
     if (odd.length) flag(uid, `Human check passed oddly: ${odd.join(', ')}`);
-    h.pend = null; h.last = now; h.streak = 0; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
+    h.pend = null; h.pendHits = 0; h.last = now; h.streak = 0; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
   }
   p.tries++; h.streak = (h.streak || 0) + 1; hcLog(uid, 'miss', info);
-  if (h.streak >= HC.jailAfter) { h.jail = { t: now, why: `Tapped the wrong shape ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: p.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why} on the human check`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
-  if (p.tries >= HC.tries) { hcLog(uid, 'fail', { want: p.want }); flag(uid, `Failed the human check ${HC.tries} times in a row`); h.lock = now + HC.lockMs; h.pend = hcMake(); persist(); return { ok: false, lock: h.lock, msg: `Three wrong answers. Operations are paused for ${HC.lockMs / 60e3} minutes.`, hc: hcPub(h.pend) }; }
-  persist(); return { ok: false, msg: `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
+  if (h.streak >= HC.jailAfter && !hcExempt(uid)) { h.jail = { t: now, why: `Answered the human check wrong ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: info.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why}`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
+  if (p.tries >= HC.tries) { hcLog(uid, 'fail', { want: info.want }); flag(uid, `Failed the human check ${HC.tries} times in a row`); h.lock = now + HC.lockMs; h.pend = hcMake(isCode); persist(); return { ok: false, lock: h.lock, msg: `Three wrong answers. Operations are paused for ${HC.lockMs / 60e3} minutes.`, hc: hcPub(h.pend) }; }
+  persist(); return { ok: false, msg: isCode ? `That's not the code. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.` : `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
 }
 // a summary of one player's human checks over the last 48 hours, for Cheat watch
 function hcSummary(uid) { const L = ((S.hc[uid] || {}).log || []).filter(x => Date.now() - x.t < 48 * HOUR); if (!L.length && !(S.hc[uid] || {}).pend) return null; const c = k => L.filter(x => x.r === k).length, ms = L.filter(x => /^pass/.test(x.r)).map(x => x.ms).sort((a, b) => a - b);
@@ -1615,6 +1700,7 @@ function botRecord(uid, b, readyAt, req, cdLen) {
   let pt = null; { const m = String(req.headers['x-wp-p'] || '').match(/^(-?\d{1,5}),(-?\d{1,5}),(-?\d{1,4}),(\d{1,5}),([mtpk]),(\d{10,14})$/); if (m) pt = [+m[1], +m[2], +m[3], +m[4], m[5], +m[6]]; } // the click behind this action: x, y, press ms, mouse travel, pointer type, click time
   s.a.push([now, b.c === 'act' ? String(b.k).slice(0, 16) : String(b.c).slice(0, 16), readyAt > 0 && readyAt <= now ? now - readyAt : -1, vis, live, click, inp, cdLen || 0, pt]);
   const cut = now - 72 * HOUR; while (s.a.length && (s.a.length > 600 || s.a[0][0] < cut)) s.a.shift();
+  if (!hcExempt(uid) && !(S.hc[uid] || {}).jail) { const why = scriptProof(s.a); if (why) autoJail(uid, why, true); } // clear signs of a script: straight to cheat jail
 }
 // other warnings about a player from the last 7 days (shared networks, aid between them, speed flags), for the verdict box
 function netWarn(uid) { const from = Date.now() - 7 * 864e5, f = (S.flags || []).filter(x => x.uid === uid && x.t >= from); const kinds = {}; for (const x of f) { const k = /same network|second ac/i.test(x.r) ? 'Shares a network with another account' : /faster than a person|bot|script/i.test(x.r) ? 'Sent actions faster than a person can click' : /charged back/i.test(x.r) ? 'Charged back a donation' : 'Other flag'; kinds[k] = (kinds[k] || 0) + 1; } return Object.entries(kinds).map(([k, n]) => `${k} (${n}×)`); }
@@ -2262,7 +2348,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
-    case '/api/admin/hcrelease': { const h = (S.hc || {})[String(b.id || '')]; if (!h || !h.jail) return send(res, 400, { error: 'That player is not in jail.' }); const was = h.jail; delete h.jail; h.streak = 0; h.pend = null; h.lock = 0; hcLog(b.id, 'released', { by: me.name }); addNote(b.id, 'war', '✅ The review is done and your account has been released. Thanks for your patience.'); persist(); return send(res, 200, { ok: true, was }); }
+    case '/api/admin/hcrelease': { const h = (S.hc || {})[String(b.id || '')]; if (!h || !h.jail) return send(res, 400, { error: 'That player is not in jail.' }); const was = h.jail; delete h.jail; h.streak = 0; h.pend = null; h.lock = 0; h.pendHits = 0; if (S.botsig && S.botsig[String(b.id)]) S.botsig[String(b.id)].a = []; /* a fresh start: the actions that led to the jail don't count again */ hcLog(b.id, 'released', { by: me.name }); addNote(b.id, 'war', '✅ The review is done and your account has been released. Thanks for your patience.'); persist(); return send(res, 200, { ok: true, was }); }
     case '/api/admin/hcset': { S.config.humanCheck = !!b.on; if (!b.on) for (const h of Object.values(S.hc || {})) { h.pend = null; h.lock = 0; } persist(); return send(res, 200, { ok: true, on: !!b.on }); } // turn the human check on or off (turning it off clears any open checks)
     case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), jailed: Object.entries(S.hc || {}).filter(([, h]) => h && h.jail).map(([uid, h]) => ({ uid, name: (S.users[uid] || {}).name || '?', nation: ((S.docs['nations/' + uid]) || {}).name || '', t: h.jail.t, why: h.jail.why })), t: Date.now() });
     case '/api/admin/cheatreview': { // your decision on a player after reviewing the evidence (only admins see it)
@@ -2509,7 +2595,7 @@ async function handle(req, res) {
       const b = await readBody(req, 8 * 1024);
       touch(me.id, req); health.cmds++; stat('cmds');
       { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
-      if (b && b.c === 'act') { const g = hcGate(me.id); if (g) return send(res, 428, g); } // now and then, a quick human check before an operation
+      if (b && b.c) { const g = hcGate(me.id, b.c === 'act'); if (g) return send(res, g.jail ? 423 : 428, g); } // now and then, a quick human check before an operation (any kind)
       const W = mkWorld();
       if (S.fresh && ['aid', 'offer'].includes(b.c) && typeof b.v === 'string' && b.v !== me.id && sharesNetwork(me.id, b.v)) return send(res, 400, { error: 'During the season you can\'t send aid or trade offers to an account on the same network as yours.' });
       if (S.fresh && b.c === 'relief') { const d = (S.dis || []).find(x => x.id === String(b.id)); if (d && d.u !== me.id && sharesNetwork(me.id, d.u)) return send(res, 400, { error: 'During the season you can\'t send relief to an account on the same network as yours.' }); }
