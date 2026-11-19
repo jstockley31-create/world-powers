@@ -1343,7 +1343,7 @@ function connect(){const zip=!noZip,es=new EventSource('/api/stream?k=1'+(zip?'&
 on('init',e=>{es._init=1;const d=JSON.parse(e.data);
   // a new version was deployed while this page stayed open (phones keep apps alive for days): reload into it
   if(d.ver){if(!WP.ver)WP.ver=d.ver;else if(d.ver!==WP.ver&&!WP.updating){WP.updating=true;window.dispatchEvent(new CustomEvent('wp-update'))}}
-  applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}))});
+  applyInit(d);window.dispatchEvent(new CustomEvent('wp-burn',{detail:d.burn||[]}));if(d.finale)setTimeout(()=>window.dispatchEvent(new CustomEvent('wp-finale',{detail:d.finale})),1500)});
 on('note',e=>{const n=JSON.parse(e.data);WP.extra.notes=[n,...(WP.extra.notes||[])].slice(0,100);emit('wp-note',n)});
 on('mail',e=>{WP.extra.mailUnread=JSON.parse(e.data).unread;emit('wp-mail',WP.extra.mailUnread)});
 on('fallen',e=>{WP.extra.fallen=JSON.parse(e.data);emit('wp-fallen',WP.extra.fallen)});
@@ -1361,7 +1361,9 @@ on('event',e=>{WP.extra.event=JSON.parse(e.data);emit('wp-event',WP.extra.event)
 on('doc',e=>{lastDoc=Date.now();const d=JSON.parse(e.data);if(st.me&&d.id===st.me.id)lastOwn=lastDoc;if(!st.cols[d.col])st.cols[d.col]={};if(d.data==null)delete st.cols[d.col][d.id];else{if(d.data._k){const prev=st.cols[d.col][d.id]||{};for(const k of d.data._k)d.data[k]=prev[k];delete d.data._k}st.cols[d.col][d.id]=d.data}fire(d.col)});
 on('user',e=>{const d=JSON.parse(e.data);if(d.name==null)delete st.users[d.id];else st.users[d.id]=d.name});
 on('config',e=>setCfg(JSON.parse(e.data)));
-on('reload',()=>setTimeout(()=>location.reload(),300+Math.random()*2500));
+on('reload',()=>{if(window.WP_HOLD){window.WP_RELOAD_WAIT=true;return} /* the season finale holds the switch to the real world until the player leaves the congratulations screen */setTimeout(()=>location.reload(),300+Math.random()*2500)});
+on('finale',e=>window.dispatchEvent(new CustomEvent('wp-finale',{detail:JSON.parse(e.data)})));
+on('finaleEnd',e=>window.dispatchEvent(new CustomEvent('wp-finaleend',{detail:JSON.parse(e.data)})));
 on('nuke',e=>window.dispatchEvent(new CustomEvent('wp-nuke',{detail:JSON.parse(e.data)})));
 on('strike',e=>window.dispatchEvent(new CustomEvent('wp-strike',{detail:JSON.parse(e.data)})));
 on('ntestwarn',e=>window.dispatchEvent(new CustomEvent('wp-ntestwarn',{detail:JSON.parse(e.data)})));
@@ -1675,6 +1677,51 @@ function battleCard(b){const old=$('btCard');if(old)old.remove();const el=docume
  document.body.appendChild(el);setTimeout(()=>{if(el.isConnected){el.classList.add('out');setTimeout(()=>el.remove(),400)}},12000)}
 async function attack(h,Xt,AIR,vassal){const r=await cmd({c:'attack',h,x:Xt,air:AIR,vassal:!!vassal},false);if(!r||!r.battle)return;planner=null;const b=r.battle;
  goWatch(b.h,2.2);setTimeout(()=>{battleCard(b);if(r.fell)lastWordsModal(r.fell,b)},450);setTimeout(()=>{if(b.win){SND.play('win');confetti()}else SND.play('lose')},700)}
+/* ================= season finale =================
+   The last minute of a season: a countdown, then every nation with a nuclear program fires at random targets in four waves, so the world
+   is exploding as the season ends, then a congratulations screen. Purely visual: the server changes nothing. The switch to the real world
+   waits until the player leaves the congratulations screen (or a minute passes). */
+let FINALE=null;
+function finaleStyle(){if($('finstyle'))return;const st_=document.createElement('style');st_.id='finstyle';st_.textContent=`
+#finbar{position:fixed;left:50%;top:max(10px,env(safe-area-inset-top));transform:translateX(-50%);z-index:9998;pointer-events:none;text-align:center;padding:8px 18px 10px;max-width:calc(100vw - 24px);border-radius:14px;background:rgba(24,4,6,.86);border:1px solid #b8352d;box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 40px rgba(229,83,75,.45);color:#ffd9d4;font-family:Inter,system-ui,sans-serif;min-width:240px;animation:finpulse 1s ease-in-out infinite}
+#finbar .k{font-size:11px;letter-spacing:.1em;font-weight:700;color:#ff8f87}#finbar .t{font:700 clamp(30px,9vw,46px)/1.05 'JetBrains Mono',ui-monospace,monospace;color:#fff;text-shadow:0 0 18px rgba(255,90,70,.8)}#finbar .s{font-size:13px;color:#ffc2bb;margin-top:2px}
+#finbar.go{background:rgba(40,8,0,.9);border-color:#ffb347}#finbar.go .t{color:#ffe08a}
+@keyframes finpulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 26px rgba(229,83,75,.35)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.4),0 0 60px rgba(229,83,75,.75)}}
+#finflash{position:fixed;inset:0;z-index:9997;pointer-events:none;background:radial-gradient(circle,rgba(255,250,225,.9),rgba(255,170,80,.5) 45%,rgba(255,120,40,0) 75%);opacity:0;transition:opacity .9s ease-out}
+#finend{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at 50% 30%,rgba(60,40,8,.94),rgba(5,8,12,.97) 70%);color:#f3ead2;font-family:Inter,system-ui,sans-serif;animation:finin .8s ease-out}
+#finend .box{max-width:520px;width:100%;text-align:center}#finend .tr{font-size:76px;line-height:1;filter:drop-shadow(0 6px 24px rgba(240,190,80,.55))}
+#finend h1{font-family:Cinzel,Georgia,serif;font-size:32px;margin:14px 0 6px;color:#f6d77e;letter-spacing:.02em}#finend p{font-size:15.5px;line-height:1.55;color:#d9cfb6;margin:8px 0}
+#finend .pod{display:grid;gap:8px;margin:18px 0}#finend .pod div{display:flex;gap:12px;align-items:center;justify-content:center;padding:10px 14px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(246,215,126,.25);font-size:16px}
+#finend .pod b{font-size:20px}#finend button{margin-top:14px;font:600 16px Inter,system-ui,sans-serif;padding:12px 26px;border-radius:12px;border:0;background:#d4a64a;color:#1a1305;cursor:pointer}#finend button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+@keyframes finin{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#finbar{animation:none}#finend{animation:none}}`;document.head.appendChild(st_)}
+function finale(f){if(!f||!f.end||(FINALE&&FINALE.id===f.id))return;const off=(f.now||Date.now())-Date.now(),T=f.end-off;if(Date.now()>T+20000)return;
+ FINALE={id:f.id,f,T,timers:[],top:null,preview:!!f.preview};if(!f.preview)window.WP_HOLD=true;finaleStyle();
+ const bar=document.createElement('div');bar.id='finbar';bar.setAttribute('role','timer');bar.setAttribute('aria-live','off');bar.innerHTML=`<div class="k">☢ ${esc((f.name||'Season').toUpperCase())} · FINAL COUNTDOWN${f.preview?' · PREVIEW':''}</div><div class="t">1:00</div><div class="s">The season ends when the clock hits zero</div>`;document.body.appendChild(bar);
+ const flash=document.createElement('div');flash.id='finflash';document.body.appendChild(flash);
+ const at=(ms,fn)=>{const d=ms-Date.now();FINALE.timers.push(setTimeout(fn,Math.max(0,d)))};
+ let sirenOn=false,lastBoom=0;try{SND.siren(28);sirenOn=true}catch(e){}
+ const tick=()=>{if(!FINALE)return;const left=Math.max(0,T-Date.now()),sec=Math.ceil(left/1000),el=bar.querySelector('.t'),sub=bar.querySelector('.s');el.textContent=`${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+  if(left<=30000&&left>0){bar.classList.add('go');sub.textContent='Every nuclear power is launching'}if(left<=0){el.textContent='0:00';sub.textContent='The season is over'}if(left>0||Date.now()<T+6000)FINALE.timers.push(setTimeout(tick,200))};tick();
+ // bring everyone to the globe, zoomed out to see the whole world
+ at(T-36000,()=>{try{closeModal()}catch(e){}if(page!=='world'){page='world';render()}setTimeout(()=>{try{GL.st.scale=Math.min(GL.st.scale,1.05);GL.redraw()}catch(e){}},400)});
+ // the launches: a ballistic missile arc to each target, then a fireball, a flash and a boom when it lands
+ for(const L of f.launches||[]){if(!P[L.from]||!P[L.h])continue;const t=L.at-off;at(t,()=>{if(!FINALE)return;try{GL.strike({id:L.id,t:Date.now(),from:L.from,h:L.h,by:L.by,to:L.to,kind:'missile',heavy:'ballistic',fin:1},true)}catch(e){}
+   const dur=Math.max(10000,Math.min(16500,10000+d3.geoDistance(P[L.from].c,P[L.h].c)*3000));FINALE.timers.push(setTimeout(()=>{if(!FINALE)return;try{GL.nukeFlash(L.h)}catch(e){}flash.style.transition='none';flash.style.opacity='.55';requestAnimationFrame(()=>{flash.style.transition='opacity .9s ease-out';flash.style.opacity='0'});const n=performance.now();if(n-lastBoom>350){lastBoom=n;try{SND.boom()}catch(e){}}},dur))})}
+ at(T+5500,()=>finaleEnd());
+}
+function finaleEnd(){if(!FINALE||$('finend'))return;const f=FINALE.f,top=FINALE.top||f.lead||null;try{SND.stopSiren()}catch(e){}const bar=$('finbar');if(bar)bar.remove();
+ const el=document.createElement('div');el.id='finend';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label','Season complete');
+ const medal=['🥇','🥈','🥉'];const pod=FINALE.noTop&&!top?'<p class="mu">The final standings are in the Hall of Fame.</p>':top&&top.length?`<div class="pod">${top.slice(0,3).map((n,i)=>`<div><b>${medal[i]}</b><span>${esc(n)}</span></div>`).join('')}</div>`:'<p class="mu" id="finpod">Final standings are being counted…</p>';
+ el.innerHTML=`<div class="box"><div class="tr">🏆</div><h1>${esc(f.name||'The season')} is over!</h1><p>Congratulations, and thank you for playing. Every nation that took part helped make this season.</p>${FINALE.preview&&f.lead?'<p style="font-size:13px;color:#a99d80">Preview: the real screen shows the final top 3 here. Right now the leaders are:</p>':''}${pod}<p>${FINALE.preview?'This was a preview: nothing in the game changed.':'Your real nation is back exactly as you left it, with your season prizes added. The winners join the Hall of Fame forever.'}</p><button id="fincont">${FINALE.preview?'Close preview':'Continue to my nation'}</button></div>`;
+ document.body.appendChild(el);try{confetti();setTimeout(()=>{try{confetti()}catch(e){}},1400)}catch(e){}try{SND.play('win')}catch(e){}
+ const go=()=>{if(FINALE&&FINALE.preview){finaleStop();return}window.WP_HOLD=false;location.reload()};$('fincont').addEventListener('click',go);setTimeout(()=>{try{$('fincont').focus()}catch(e){}},300);
+ if(!FINALE.preview)FINALE.timers.push(setTimeout(go,60000)) /* the real world is already back on the server: move on after a minute even if nobody taps */}
+function finaleStop(){if(!FINALE)return;for(const t of FINALE.timers)clearTimeout(t);try{SND.stopSiren()}catch(e){}for(const id of ['finbar','finflash','finend']){const e=$(id);if(e)e.remove()}FINALE=null;window.WP_HOLD=false;if(window.WP_RELOAD_WAIT)location.reload()}
+window.addEventListener('wp-finale',e=>finale(e.detail));
+window.addEventListener('wp-finaleend',e=>{const d=e.detail||{};if(!FINALE)return;FINALE.top=d.top&&d.top.length?d.top:null;FINALE.noTop=!FINALE.top;const p=$('finpod');if(p&&!FINALE.top){p.textContent='The final standings are in the Hall of Fame.'}if(p&&d.top&&d.top.length){const medal=['🥇','🥈','🥉'];p.outerHTML=`<div class="pod">${d.top.slice(0,3).map((n,i)=>`<div><b>${medal[i]}</b><span>${esc(n)}</span></div>`).join('')}</div>`}});
+// admins can watch the whole show on their own screen: open the game with #finale-preview (the admin panel has a button for it)
+async function finalePreview(){try{const r=await WP.api('POST','/api/admin/finale-preview',{});if(r&&r.finale)finale(r.finale)}catch(e){toast('Only admins can preview the finale.')}}
 /* a player's capital fell to you: you may leave one last message, shown only to them on their fall screen */
 let lwBattle=null;
 function lastWordsModal(f,b){lwBattle=b;const max=200;modal(`<header><h2>${esc(f.name)} has fallen</h2></header><div class="bd lwbox"><p style="margin-top:0">You captured the capital. <b>${esc(f.name)}</b> is no more.</p><div class="field"><label for="lw_txt">Leave a last message for its leader <span class="mu">(optional)</span></label><textarea id="lw_txt" rows="3" maxlength="${max}" placeholder="Something for them to read on their fall screen…"></textarea><div class="lwmeta"><small class="mu">Only they will see it. One message, up to ${max} characters, within ${f.mins||30} minutes.</small><small class="mu" id="lw_n">0/${max}</small></div></div><div class="lwbtns"><button class="btn pri" data-act="lastwords" data-a="${esc(f.id)}|${+f.t}">Send last message</button><button class="btn ghost" data-act="lwskip">${b?'Battle report':'Skip'}</button></div></div>`);
@@ -1800,7 +1847,7 @@ const GL=(()=>{
    const gz=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],rr);gz.addColorStop(0,`rgba(255,${age<1?230:140},60,${.85*pul})`);gz.addColorStop(.25,`rgba(255,90,20,${.45*pul})`);gz.addColorStop(1,'rgba(150,255,60,0)');ctx.fillStyle=gz;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.fill();
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
   // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
-  if(SK.length||st.fx||BURN.size||TX.length||smT){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+  if(SK.length||st.fx||BURN.size||TX.length||smT||NF.length){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  // flags beside nation names: each flag drawn once into an image, redrawn when it changes
@@ -1808,7 +1855,14 @@ const GL=(()=>{
  function flagImg(u,n){if(!n.flag)return null;const k=JSON.stringify(n.flag);let o=FIMG.get(u);if(o&&o.k===k)return o.ok?o.img:null;
   const img=new Image();o={k,img,ok:false};FIMG.set(u,o);img.onload=()=>{o.ok=true;clearTimeout(fimgT);fimgT=setTimeout(()=>{st.baseOk=false;redraw()},120)};
   img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(WPCore.flagSVG(n.flag,60,40,true));return null}
- function overlay(ctr,w,h,r){drawZones();drawBlockades(ctr);drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);
+ // season finale: a nuclear fireball where each missile lands (purely visual)
+ const NF=[];let nfLoop=0;
+ function nukeFlash(h){if(!P[h])return;NF.push({c:P[h].c,t0:performance.now()});if(nfLoop||!st.el||!st.el.isConnected)return;const step=()=>{const now=performance.now();for(let i=NF.length-1;i>=0;i--)if(now-NF[i].t0>4200)NF.splice(i,1);if(!NF.length||!st.el||!st.el.isConnected){nfLoop=0;redraw();return}st.baseOk&&!st.anim&&!st.raf?fastFrame():(!st.raf&&draw());nfLoop=requestAnimationFrame(step)};nfLoop=requestAnimationFrame(step)}
+ function drawNF(ctr){if(!NF.length)return;const now=performance.now(),cvv=unit(ctr),r=radius();for(const f of NF){if(dot(unit(f.c),cvv)<.05)continue;const xy=proj(f.c);if(!xy)continue;const k=Math.min(1,(now-f.t0)/4200),R=Math.max(16,r*.12)*(.35+k*1.3),a=1-k;
+   if(k<.1){ctx.fillStyle=`rgba(255,255,235,${(1-k/.1)*.85})`;ctx.beginPath();ctx.arc(xy[0],xy[1],R*2.4,0,7);ctx.fill()}
+   const g=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],R);g.addColorStop(0,`rgba(255,250,215,${.95*a})`);g.addColorStop(.35,`rgba(255,175,60,${.85*a})`);g.addColorStop(.7,`rgba(225,70,20,${.55*a})`);g.addColorStop(1,'rgba(120,20,0,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(xy[0],xy[1],R,0,7);ctx.fill();
+   ctx.strokeStyle=`rgba(255,235,200,${.75*a})`;ctx.lineWidth=2.2;ctx.beginPath();ctx.arc(xy[0],xy[1],R*(1.25+k*1.8),0,7);ctx.stroke()}}
+ function overlay(ctr,w,h,r){drawZones();drawBlockades(ctr);drawStrikes(ctr,w,h,r);drawFx(ctr,w,h,r);drawNF(ctr);
   const fs=Math.round(clamp(10+st.scale*1.5,10,16));ctx.font=`600 ${fs}px Inter,system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
   // names: biggest nations first, skip any label that would overlap one already drawn or run off the edge; round joins avoid spiky outlines
   ctx.lineJoin='round';ctx.miterLimit=2;const boxes=[];
@@ -1989,7 +2043,7 @@ const GL=(()=>{
   /* the globe stays sharp during strikes: frames paste the cached globe and draw only the moving parts */
   if(st.baseOk&&!st.anim&&!st.raf)fastFrame();else if(!st.raf)draw();skLoop=requestAnimationFrame(step)};skLoop=requestAnimationFrame(step)}
  let skBan=null,skBanKey='';
- function skBanner(now){const act=SK.filter(k=>k.loops&&now-k.t0<k.loops*k.cycle);if(!st.el||!st.el.isConnected||!act.length){if(skBan){skBan.remove();skBan=null;skBanKey=''}return}
+ function skBanner(now){const act=SK.filter(k=>k.loops&&now-k.t0<k.loops*k.cycle&&!k.fx.fin); /* the season finale's missiles need no banner */if(!st.el||!st.el.isConnected||!act.length){if(skBan){skBan.remove();skBan=null;skBanKey=''}return}
   const k=act[act.length-1],key=k.fx.id+':'+act.length;if(skBan&&skBan.parentNode!==st.el){skBan.remove();skBan=null}
   if(!skBan){skBan=document.createElement('div');skBan.className='skban';skBan.addEventListener('click',e=>{const b=e.target.closest('[data-skf]');if(!b)return;const t=SK.find(x=>x.fx.id===b.dataset.skf);if(t){flyTo(t.to,Math.max(st.scale,1.7));setTimeout(kick,950)}});st.el.appendChild(skBan);skBanKey=''}
   if(key!==skBanKey){skBanKey=key;const air_=k.fx.kind==='air';skBan.classList.toggle('air',air_);skBan.innerHTML=`<span class="dot"></span><b>${k.fx.heavy==='drones'?'🛸 DRONE SWARM':k.fx.heavy==='carpet'?'✈ CARPET BOMBING':k.fx.heavy==='hypersonic'?'☄ HYPERSONIC MISSILE':({raid:'🎯 SPECIAL FORCES RAID',artillery:'💥 ARTILLERY BARRAGE',bombard:'⚓ NAVAL BOMBARDMENT',sub:'🌊 SUBMARINE STRIKE',blockade:'⛴ NAVAL BLOCKADE',orbital:'🛰 ORBITAL STRIKE',emp:'⚡ EMP STRIKE',ballistic:'🚀 BALLISTIC MISSILE',cruise:'🔥 CRUISE MISSILE'})[k.fx.heavy]?({raid:'🎯 SPECIAL FORCES RAID',artillery:'💥 ARTILLERY BARRAGE',bombard:'⚓ NAVAL BOMBARDMENT',sub:'🌊 SUBMARINE STRIKE',blockade:'⛴ NAVAL BLOCKADE',orbital:'🛰 ORBITAL STRIKE',emp:'⚡ EMP STRIKE',ballistic:'🚀 BALLISTIC MISSILE',cruise:'🔥 CRUISE MISSILE'})[k.fx.heavy]:air_?'✈ AIR STRIKE':'🚀 MISSILE ALERT'}</b><span class="t">${esc(k.fx.byName)} → ${esc(k.fx.toName)}${act.length>1?` <span class="mu">+${act.length-1} more</span>`:''}</span><button data-skf="${esc(k.fx.id)}">Find it</button>`}}
@@ -2247,7 +2301,7 @@ const GL=(()=>{
     for(let k=0;k<11;k++){const a=k/11*Math.PI*2+t/7000;blit('smokeM',G_SMOKEM,cx+Math.cos(a)*R*.6,cy+Math.sin(a)*R*.25-R*.14,R*.55,.8*fade)}
     blit('smoke',G_SMOKE,cx-R*.2,cy-R*.32,R*.6,.55*fade);
     if(heat>0){blit('fire',G_FIRE,cx,cy+R*.05,R*.8,heat*.9);blit('flash',G_FLASH,cx,cy,R*.45,heat*.6)}}}}
- return{xy:c=>{try{return proj(c)}catch(e){return null}},fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,mapChanged,softRedraw,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,minZ(),9);redraw()}}})();
+ return{xy:c=>{try{return proj(c)}catch(e){return null}},fit:()=>{if(st.el&&st.el.isConnected){size();redraw()}},attach,redraw,mapChanged,softRedraw,nukeFlash,flyTo,flyToVis,missile,stopMissile,nukePhase,coarse,strike,burn,firesOut,ntest,kick,st,zoom:f=>{st.scale=clamp(st.scale*f,minZ(),9);redraw()}}})();
 function showTip(h,e){const t=$('tip');if(h==null){t.style.display='none';return}const u=owner(h),p=P[h];t.innerHTML=`<b>${esc(pname(h))}</b><span class="mu">${TYPE[p.t].n}${p.m?' · mountains':''}${p.r?' · river':''}${p.co?' · coast':''}</span>${u?`<br><span style="color:${esc(A[u].color)}">${esc(A[u].name)}</span>${W.OWN[h].cap?' · capital':''}`:'<br><span class="mu">Unclaimed</span>'}`;t.style.display='block';t.style.left=Math.min(innerWidth-270,e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px'}
 function hideTip(){$('tip').style.display='none'}
 function globeSlot(mode,h,extra){const full=gFull&&mode==='world';return`<div class="gwrap${full?' gfull':''}" style="height:${h}"${mode==='found'?' data-found':''}><div id="gslot" data-mode="${mode}" style="position:absolute;inset:0"></div><div class="gctl">${mode==='world'?`<button data-act="gfull" title="${full?'Exit full screen (Esc)':'Full screen'}">${I(full?'unfull':'full')}</button>`:''}<button data-act="gz" data-a="in" title="Zoom in">${I('plus')}</button><button data-act="gz" data-a="out" title="Zoom out">${I('minus')}</button>${me?`<button data-act="gz" data-a="home" title="My nation">${I('home')}</button>`:''}</div>${mode==='world'&&extra?extra:''}${mode==='mini'?'':`<div class="glegend">${Object.entries(TYPE).map(([k,t])=>`<span><i style="background:${t.col};box-shadow:0 0 0 1px #ffffff30"></i>${t.n}</span>`).join('')}<span>▲ Mountains</span><span style="color:#78b4ff">≈ River</span><span><i style="border:1px dashed var(--ac)"></i>Available to settle</span></div>`}</div>`}
@@ -3981,7 +4035,7 @@ refreshW();
  if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
  let gotN=false,gotC=false,hadMine=false;
  db.collection('nations').onSnapshot(s=>{N={};s.docs.forEach(d=>{if(d.exists)N[d.id]=d.data()});
-  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const b of (WP.extra&&WP.extra.burn)||[])GL.burn(b[0],b[1],b[2]);for(const fx of (WP.extra&&WP.extra.strikes)||[]){GL.strike(fx,true);if(fx.to===uid)HITS.push(fx)}for(const fx of (WP.extra&&WP.extra.ntests)||[])ntestQueue(fx);for(const fx of (WP.extra&&WP.extra.ntestPending)||[])ntWarn(fx)}catch(e){}setTimeout(function away_(){if(nukeBusy||document.querySelector('.nkflash'))return setTimeout(away_,3000);if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
+  if(!gotN){gotN=true;clearTimeout(lt);loaded=true;heartbeat();refreshW();try{for(const b of (WP.extra&&WP.extra.burn)||[])GL.burn(b[0],b[1],b[2]);for(const fx of (WP.extra&&WP.extra.strikes)||[]){GL.strike(fx,true);if(fx.to===uid)HITS.push(fx)}for(const fx of (WP.extra&&WP.extra.ntests)||[])ntestQueue(fx);for(const fx of (WP.extra&&WP.extra.ntestPending)||[])ntWarn(fx)}catch(e){}setTimeout(function away_(){if(nukeBusy||document.querySelector('.nkflash'))return setTimeout(away_,3000);if(me&&$('mod').style.display!=='flex')awaySummary()},1500);if(location.hash==='#finale-preview'){setTimeout(finalePreview,2500);try{history.replaceState(null,'',location.pathname)}catch(e){}}if(me){page=location.hash==='#mail'?'mail':'overview';setTimeout(()=>{if(me&&P[me.cap]){GL.st.rot=[-P[me.cap].c[0],-P[me.cap].c[1],0];GL.st.scale=2;GL.redraw()}},50)}}
   if(N[uid])hadMine=true;else if(hadMine){hadMine=false;if(!X().fallen&&!CFG.fresh)toast('Your nation was reset by an administrator.')}
   refreshSoon();loadNames()},()=>{clearTimeout(lt);loaded=true;$('main').innerHTML='<div class="wrap"><p class="rd">Lost connection to the server. Reload the page to reconnect.</p></div>'});
  db.collection('chat').onSnapshot(s=>{CH={};s.docs.forEach(d=>{if(d.exists)CH[d.id]=d.data()});if(uid&&CH[uid]&&!gotC)myChat=(CH[uid].m||[]).slice();gotC=true;if(uid&&myChat.length&&CH[uid])CH[uid]={m:myChat};renderChat();if(page==='chat'||deskChatOpen())markChatSeen();else chatBadge();renderSide()},()=>{});

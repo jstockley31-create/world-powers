@@ -423,7 +423,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -1103,6 +1103,7 @@ function seasonBegin(W) { const se = S.seasons.cur; if (se.fresh && !S.fresh) { 
 function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !== 'live') return null; if (se.fresh) return seasonFinishFresh(W, by); const M = SEASON_METRICS[se.metric], table = seasonTable(W, se), now = Date.now();
   const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
   const ranked = table.filter(x => x.v > 0 || se.metric === 'gdp'), top = ranked.slice(0, 10);
+  try { broadcast('finaleEnd', { name: se.name, top: top.slice(0, 3).map(x => W.A[x.u] && W.A[x.u].name).filter(Boolean) }); } catch (e) {}
   const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
   // prizes for the top 10, permanent titles and badges, and a badge for everyone who took part
   const ord = i => ['1st', '2nd', '3rd'][i] || `${i + 1}th`, place = ['Champion', '2nd place', '3rd place'];
@@ -1128,6 +1129,28 @@ function seasonTick(W) { const se = S.seasons.cur; if (!se) return; const now = 
   else if (se.status === 'failed') return;
   else if (se.status === 'live') { for (const u of Object.keys(W.A)) if (!se.base[u]) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 }; // nations founded mid-season start from zero
     if (se.end && now >= se.end) seasonFinish(W); } }
+
+// ---------- SEASON FINALE ----------
+// A purely visual show in the last minute of a season: a countdown, then every nation with a nuclear program fires missiles at random
+// targets in four waves, so the world is exploding as the season ends. Nothing in the game changes (no damage, no stats, no rogue status).
+// The season then finishes on the exact second instead of at the next world update, and players see a congratulations screen before
+// their page switches back to the real world.
+let FIN = null, finDone = null;
+function finaleBuild(se, preview) {
+  const W = mkWorld(), A = W.A, end = preview ? Date.now() + 60000 : se.end;
+  let shooters = Object.keys(A).filter(u => A[u] && A[u].nuke && A[u].cap != null && P_OK(A[u].cap));
+  if (!shooters.length) shooters = Object.keys(A).filter(u => A[u] && A[u].cap != null).sort((a, b) => core.hexesOf(W, b).length - core.hexesOf(W, a).length).slice(0, 6); // no nuclear nations: the biggest six put on the show
+  const owned = Object.keys(W.OWN).map(Number), L = [];
+  for (const u of shooters) [30, 24, 18, 13].forEach((w, i) => { const pool = owned.filter(h => W.OWN[h].u !== u); if (!pool.length) return; const h = pool[Math.floor(Math.random() * pool.length)];
+    L.push({ id: `fin-${se.id}-${u}-${i}`, from: A[u].cap, h, by: u, to: W.OWN[h].u, at: end - w * 1000 + Math.floor(Math.random() * 3500) }); });
+  let lead = null; if (preview) { try { lead = S.seasons.cur ? seasonTable(W, S.seasons.cur).slice(0, 3).map(x => W.A[x.u] && W.A[x.u].name).filter(Boolean) : null; } catch (e) {} }
+  return { id: (preview ? 'preview-' : '') + se.id, name: se.name || 'Season', end, launches: L, preview: !!preview, lead };
+}
+function P_OK(h) { return Number.isInteger(+h) && +h >= 0 && +h < core.P.length; }
+setInterval(() => { const se = S.seasons && S.seasons.cur, now = Date.now(); if (!se || se.status !== 'live' || !se.end) return;
+  if ((!FIN || FIN.id !== se.id) && now >= se.end - 60000 && now < se.end) { try { FIN = finaleBuild(se, false); broadcast('finale', { ...FIN, now }); } catch (e) { logErr('Season finale could not start: ' + (e.stack || e)); } }
+  if (now >= se.end && finDone !== se.id) { finDone = se.id; try { const W = mkWorld(); seasonTick(W); W.welcome = null; commit(W); } catch (e) { logErr('Season finish at the end of the finale failed: ' + (e.stack || e)); } }
+}, 1000).unref();
 
 // ---------- FRESH-START SEASONS ----------
 // The real world is saved to a file and set aside; everyone founds a new nation in an empty world for the season; when it ends,
@@ -1213,6 +1236,7 @@ function seasonFinishFresh(W, by) {
   const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, fresh: true, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10), recorded: now };
   if (!HOF.some(h => h.season === se.n && h.fresh && h.start === se.start)) { try { fs.appendFileSync(HOF_FILE, JSON.stringify(entry) + '\n'); } catch (e) { logErr('Could not write the Hall of Fame: ' + e.message); } HOF.push(Object.freeze(entry)); }
   const champ = top[0] ? W.A[top[0].u].name : null, t2 = top[1] ? W.A[top[1].u].name : null, t3 = top[2] ? W.A[top[2].u].name : null;
+  try { broadcast('finaleEnd', { name: se.name, top: [champ, t2, t3].filter(Boolean) }); } catch (e) {}
   freshDropW(W);
   for (const [u, g] of Object.entries(grants)) { const lines = g.lines.length ? g.lines.join('; ') : 'took part'; g.log = `🏆 ${se.name} is over: you ${lines}.${g.cash || g.xp ? ' Your prizes have been added to this nation.' : ''}`; }
   se.grants = grants; // saved with the restored world, so a restart in the middle of the finish still pays exactly these prizes
@@ -2147,6 +2171,7 @@ async function adminRoute(p, req, res, me) {
       return send(res, 200, { ok: true, config: nc });
     }
     case '/api/admin/announce': { const t = String(b.text || '').trim(); if (!t) return send(res, 400, { error: 'Type a message.' }); systemMessage(t); broadcast('announce', { text: t }); for (const id of Object.keys(S.users)) addNote(id, 'event', 'Announcement: ' + t.slice(0, 200)); audit(me.name, 'Announcement', null, t); return send(res, 200, { ok: true }); }
+    case '/api/admin/finale-preview': { const se = (S.seasons && S.seasons.cur) || { id: 'preview', name: 'Season' }; const f = finaleBuild(se, true); return send(res, 200, { ok: true, finale: { ...f, now: Date.now() } }); }
     case '/api/admin/clear-chat': { for (const k of Object.keys(S.docs)) if (k.startsWith('chat/')) setDoc('chat', k.slice(5), null); audit(me.name, 'Cleared chat'); return send(res, 200, { ok: true }); }
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
