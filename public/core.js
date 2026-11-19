@@ -799,7 +799,7 @@ function Core(PD, CARDS) {
 
   // ---------- mutation helpers (server only) ----------
   const rid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  function log(n, t, W) { n.log = [{ t: W ? W.now : Date.now(), x: t }, ...(n.log || [])].slice(0, 60); }
+  function log(n, t, W) { n.log = [{ t: W ? W.now : Date.now(), x: t }, ...(n.log || [])].slice(0, 150); } // routine lines (taxes, recruits, production) used to push a strike result out of a 60-line log within minutes
   function pushOut(W, u, e) { const n = W.A[u]; e.id = rid(); e.t = W.now; n.out = [e, ...(n.out || [])].slice(0, 80); }
   function news(W, u, t) { pushOut(W, u, { type: 'news', x: t }); log(W.A[u], t, W); W.news.push(t); }
   const note = (W, u, kind, text) => { if (W.A[u]) W.notes.push({ u, kind, text }); };
@@ -1235,6 +1235,7 @@ function Core(PD, CARDS) {
     if (traced) me.approval = clamp(me.approval - (k === 'emp' ? 5 : k === 'ballistic' ? 4 : 2), 0, 100);
     const who = traced ? me.name : 'Unknown hackers';
     log(me, `Your ${hvN(H)} on ${k === 'cyber' ? d.name : `${place}, ${d.name}`}: ${sum}.${k === 'cyber' ? traced ? ' The attack was traced back to you.' : ' It was not traced back to you.' : ''}`, W);
+    note(W, u, 'attack', `${H.ic} Your ${hvN(H)} on ${k === 'cyber' ? d.name : `${place}, ${d.name}`}: ${sum}.`); // the attacker's result also goes to their notifications, which last longer than the log
     log(d, `${H.ic} ${who} ${k === 'cyber' ? 'broke into your government networks' : `hit ${place} with ${hvA(H)}`}: ${sum}.`, W);
     note(W, v, 'attack', `${H.ic} ${who} ${k === 'cyber' ? 'launched a cyber attack on your nation' : `hit ${place} with ${hvA(H)}`}: ${sum}.`);
     if (traced) { news(W, u, icept ? `${H.ic} ${me.name} fired ${hvA(H)} at ${d.name}, but the Golden Dome shot it down.` : `${H.ic} ${me.name} ${k === 'cyber' ? `launched a cyber attack on ${d.name}` : `hit ${place}, ${d.name}, with ${hvA(H)}`}.`); for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${H.ic} ${me.name} used ${hvA(H)} on your ally ${d.name}.`); aggrHit(W, u, v, hvN(H)); }

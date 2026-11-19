@@ -32,7 +32,7 @@ const COUNCIL_H = 3, COUNCIL_MIN_YES = 3; // a resolution needs at least 3 yes v
 const HOUR = 36e5;
 const ACTIVE_WINDOW = 2 * HOUR; // nations keep producing for 2 hours after their leader was last seen
 const NOTE_KINDS = ['ready', 'attack', 'war', 'diplo', 'mail', 'election', 'event', 'council', 'covert', 'economy', 'rank', 'mention', 'admin'];
-const DEFAULT_PREFS = { ready: true, attack: true, war: true, diplo: true, mail: true, election: true, event: true, council: true, covert: true, economy: true, rank: false, mention: true, admin: true };
+const DEFAULT_PREFS = { spygames: true, ready: true, attack: true, war: true, diplo: true, mail: true, election: true, event: true, council: true, covert: true, economy: true, rank: false, mention: true, admin: true };
 
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 let S = { users: {}, sessions: {}, docs: {}, meta: {}, flags: [], audit: [], config: { ...WP.DEFCFG } };
@@ -423,7 +423,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid) };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList() };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -1135,6 +1135,7 @@ function seasonTick(W) { const se = S.seasons.cur; if (!se) return; const now = 
 // (so a bad game cannot be retried for free). The server keeps the answer, scores what the player sends back (0 to 1) and rolls the
 // result with odds set mostly by that score. A game left unfinished counts as a score of 0 after 3 minutes.
 const SPYG = new Map(); const SPY_TTL = 3 * 60e3;
+const spyOptList = () => Object.keys(S.meta).filter(u => S.meta[u] && S.meta[u].prefs && S.meta[u].prefs.spygames === false);
 const CIPHER_HINTS = 4;
 // the general's path through the scope: the same formula is used on the page, so the server can check where he was at every shot
 const snipePos = (q, t) => ({ x: 150 + 105 * Math.sin(t * q.w1 + q.p1), y: 118 + 34 * Math.sin(t * q.w2 + q.p2) });
@@ -1189,6 +1190,8 @@ async function spyRoute(p, req, res, me) {
   if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
     const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate'].includes(op)) return send(res, 400, { error: 'Unknown operation.' });
     const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
+    if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy mini-games. Turn them back on from your Intelligence page to use this operation.' });
+    if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That nation'} has opted out of spy mini-games, so this operation cannot be used on them.` });
     const W = mkWorld(); try { core.covertBegin(W, me.id, op, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
     const pz = spyPuzzle(op, W, v); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
     try { duelOpen(me.id, g, pz.pub); } catch (e) {}
@@ -2579,7 +2582,10 @@ async function handle(req, res) {
       return send(res, 200, { ok: true });
     }
     if (p === '/api/prefs' && req.method === 'POST') {
-      const b = await readBody(req, 2048); const pr = prefsOf(me.id); for (const k of NOTE_KINDS) if (typeof b[k] === 'boolean') pr[k] = b[k]; meta(me.id).prefs = pr; persist(); return send(res, 200, { ok: true, prefs: pr });
+      const b = await readBody(req, 2048); const pr = prefsOf(me.id); for (const k of NOTE_KINDS) if (typeof b[k] === 'boolean') pr[k] = b[k];
+      // spy mini-games: a player may opt out (nobody can use the vault, cipher or sniper on them, and they cannot use them either). Once a day, so it cannot be flipped to dodge an attack.
+      if (typeof b.spygames === 'boolean' && b.spygames !== pr.spygames) { const m = meta(me.id), left = (m.spyOptT || 0) + 24 * HOUR - Date.now(); if (left > 0) return send(res, 400, { error: `You can change this again in ${Math.ceil(left / HOUR)} hour${Math.ceil(left / HOUR) === 1 ? '' : 's'}.`, prefs: pr }); if (SPYG.has(me.id)) return send(res, 400, { error: 'Finish your spy operation first.', prefs: pr }); pr.spygames = b.spygames; m.spyOptT = Date.now(); setTimeout(() => broadcast('spyopt', spyOptList()), 0); }
+      meta(me.id).prefs = pr; persist(); return send(res, 200, { ok: true, prefs: pr });
     }
     if (p === '/api/push/subscribe' && req.method === 'POST') {
       const b = await readBody(req, 4096); const s = b.sub || {};
