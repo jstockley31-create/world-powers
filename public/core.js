@@ -1465,7 +1465,7 @@ function Core(PD, CARDS) {
     const sum = detonate(W, u, v, h, false);
     // mutually assured destruction: an armed warhead fires back automatically (and the attacker's own dome may stop it)
     let mad = '';
-    if (warheadReady(W, d) && W.A[u]) { if (domeOn(W, W.A[u]) && R() < domeNuke(W.A[u])) { interceptNuke(W, v, u, W.A[u].cap, true); mad = ` ${d.name} fired back automatically, but your Golden Dome intercepted its missile.`; } else { detonate(W, v, u, W.A[u].cap, true); mad = ` ${d.name} had an armed warhead and retaliated automatically against your capital.`; } }
+    if (warheadReady(W, d) && W.A[u] && d.autoFire !== false) { if (domeOn(W, W.A[u]) && R() < domeNuke(W.A[u])) { interceptNuke(W, v, u, W.A[u].cap, true); mad = ` ${d.name} fired back automatically, but your Golden Dome intercepted its missile.`; } else { detonate(W, v, u, W.A[u].cap, true); mad = ` ${d.name} had an armed warhead and retaliated automatically against your capital.`; } }
     return { msg: `☢ Detonation confirmed — ${sum}.${mad}`, nuked: { h, sum, mad: !!mad } };
   }
   // collective defense: a pact member goes to war with whoever attacked a fellow member (fair war: the aggressor started it)
@@ -2628,6 +2628,7 @@ function Core(PD, CARDS) {
       case 'freevassal': return freeVassal(W, u, String(c.v));
       case 'color': return setColor(W, u, c.color);
       case 'launch': return launchNuke(W, u, String(c.v), c.h, rng);
+      case 'autofire': { const n = W.A[u]; if (!n) fail('Found a nation first.'); n.autoFire = !!c.on; touch(W, u); return { msg: n.autoFire ? 'Automatic fire-back is on: if you are nuked while your warhead is armed, it fires back at the attacker\'s capital.' : 'Automatic fire-back is off: your warhead stays put if you are nuked, and you decide whether to launch.' }; }
       case 'dome': return buildDome(W, u);
       case 'mun': return makeMun(W, u, c.q);
       case 'dip': return dip(W, u, String(c.kind), String(c.v));
