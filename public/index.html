@@ -1887,7 +1887,8 @@ const GL=(()=>{
  const proj=d3.geoOrthographic().clipAngle(90).precision(.4);const path=d3.geoPath(proj,ctx);const grat=d3.geoGraticule10();
  function size(){if(!st.el)return;const r=st.el.getBoundingClientRect();st.dpr=st.lo?1:Math.min(2,window.devicePixelRatio||1);st.w=Math.max(100,r.width);st.h=Math.max(100,r.height);const W_=Math.round(st.w*st.dpr),H_=Math.round(st.h*st.dpr);if(cv.width!==W_||cv.height!==H_){cv.width=W_;cv.height=H_}cv.style.width=st.w+'px';cv.style.height=st.h+'px'}
  // while the globe is being dragged, zoomed or flown, paint at 1x resolution (much cheaper on phones), then repaint sharp once it settles
- function moving(){st.baseOk=false;st.movT=performance.now();if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo&&!st.skLo){st.lo=false;size();redraw()}},180)}
+ function moving(){st.baseOk=false;st.movT=performance.now();if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo&&!st.skLo){st.lo=false;size()}redraw()},180)} /* settled: one sharp, full-detail repaint (also on screens without the low-resolution step) */
+ function isMv(){return st.lo||!!st.anim||performance.now()-(st.movT||0)<200} // the globe is being dragged, zoomed or flown
  /* on the World page the globe fills the width of a wide box (the top and bottom of the sphere may run past the edges; drag to see them) */
  const baseD=()=>st.mode==='world'&&st.w>st.h*1.15?Math.min(st.w*.98,Math.max(st.h,Math.min(st.w*.62,st.h*1.6))):Math.min(st.w,st.h),minZ=()=>st.mode==='world'?.55:.8;
  const radius=()=>baseD()*.46*st.scale;
@@ -1925,7 +1926,7 @@ const GL=(()=>{
  function borders(ctr,OWN,lw){const E=edges(),pb=new Path2D(),pm=new Path2D();let nb_=0,nm=0;const mineOn=me&&st.mode!=='found';
   for(const p of P){const o=OWN[p.id];if(!o||p._r==null||d3.geoDistance(ctr,p.c)+p._r>1.5)continue;const e=E[p.id],mine=mineOn&&o.u===uid;
    for(let i=0;i<e.nb.length;i++){const n=e.nb[i],no=n<0?null:OWN[n];if(no&&no.u===o.u)continue;if(mine){edgeSeg(pm,e.u,i*6);nm++}else if(n>=0){edgeSeg(pb,e.u,i*6);nb_++}}}
-  const mv=st.lo||!!st.anim; /* while the globe is turning, skip the dark underlay: half the work */ ctx.lineCap='round';ctx.lineJoin='round';
+  const mv=isMv(); /* while the globe is turning, skip the dark underlay: half the work */ ctx.lineCap='round';ctx.lineJoin='round';
   if(nb_&&!(mv&&st.scale<1.6)){if(!mv){ctx.strokeStyle='rgba(3,7,12,.7)';ctx.lineWidth=lw*2.4+2.2;ctx.stroke(pb)}ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=Math.max(1.15,lw*1.55);ctx.stroke(pb)}
   if(nm){if(!mv){ctx.strokeStyle='rgba(3,7,12,.75)';ctx.lineWidth=lw*2.6+3;ctx.stroke(pm)}ctx.strokeStyle='#fff';ctx.lineWidth=Math.max(1.6,lw*2.1);ctx.stroke(pm)}
   ctx.lineCap='butt'}
@@ -1942,7 +1943,7 @@ const GL=(()=>{
    for(const[k,list]of grp){const own=k[0]==='o';ctx.beginPath();for(const p of list)provPath(p,ctr);ctx.fillStyle=k.slice(1);ctx.globalAlpha=own?.88:1;ctx.fill();ctx.globalAlpha=1;
     /* a hairline in the fill's own colour closes the seams between neighbours; the province lines themselves are drawn once each by provLines */
     ctx.lineJoin='round';ctx.strokeStyle=k.slice(1);ctx.lineWidth=.8;ctx.stroke()}}
-  provLines(ctr,OWN,plw,(st.lo||!!st.anim)&&st.scale<1.6);
+  provLines(ctr,OWN,plw,isMv()&&st.scale<1.6);
   ctx.beginPath();for(const g of cgPolys())provPath(g,ctr);ctx.strokeStyle='rgba(255,224,150,.22)';ctx.lineWidth=Math.max(4,lw*5);ctx.stroke();ctx.strokeStyle='rgba(255,230,170,.85)';ctx.lineWidth=Math.max(1.1,lw*1.5);ctx.stroke(); /* real-world country borders: a thin gold line with a soft glow */
   if(st.mode!=='mini')borders(ctr,OWN,lw);
   // a thin, drifting cloud layer (fades out as you zoom in, so it never hides the map)
