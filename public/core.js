@@ -1875,7 +1875,7 @@ function Core(PD, CARDS) {
       return !was;
     }
     // rogue states from before this change (24 hours) also end after 12 hours once aggression is below 50
-    if (n.rogue && W.now < n.rogue && (n.aggr || 0) < 50 && W.now >= (n.rogueT || n.rogue - 24 * HOUR) + ROGUE_MIN) n.rogue = W.now;
+    if (n.rogue && !n.nukeRogue && W.now < n.rogue && (n.aggr || 0) < 50 && W.now >= (n.rogueT || n.rogue - 24 * HOUR) + ROGUE_MIN) n.rogue = W.now; // never for a nuclear strike: that rogue status runs its full time
     if (n.rogue && W.now >= n.rogue) {
       if ((n.aggr || 0) < 50) { n.rogue = 0; delete n.nukeRogue; news(W, u, `International sanctions on ${n.name} have been lifted.`); note(W, u, 'war', 'The world has lifted its embargo. Your nation is no longer a rogue state.'); }
       else n.rogue = W.now + 3 * HOUR; // still too aggressive: the embargo continues

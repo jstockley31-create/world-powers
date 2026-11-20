@@ -78,7 +78,7 @@ if (!S.adminPath) S.adminPath = '/hq-' + crypto.randomBytes(12).toString('hex');
 if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 // ---------- fair play: a fingerprint of the exact game code running, its release history, and a public log of admin game actions ----------
-const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Triggered a nuclear accident', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
+const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Set rogue status', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Triggered a nuclear accident', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
 const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'supporters.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
 const CODE = CODE_FILES.filter(f => fs.existsSync(path.join(__dirname, f))).map(f => ({ name: f, sha: crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, f))).digest('hex') }));
 const FINGERPRINT = crypto.createHash('sha256').update(CODE.map(c => c.name + ':' + c.sha).join('\n')).digest('hex');
@@ -837,13 +837,14 @@ setInterval(() => { // expired listings: unsold goods go back to the seller
 function councilBribe(uid) {
   const W = mkWorld(), n = W.A[uid], now = Date.now(); if (!n) throw Object.assign(new Error('Found a nation first.'), { status: 400 });
   if (!core.bribeNeeded(W, n)) throw Object.assign(new Error('Your nation is not under sanctions, rogue status or Council measures.'), { status: 400 });
-  if (core.nukeRogue(W, n)) throw Object.assign(new Error('Rogue status from a nuclear strike cannot be bought off. It ends on its own once your aggression falls below 50.'), { status: 400 });
+  if (core.nukeRogue(W, n)) throw Object.assign(new Error(`Rogue status from a nuclear strike cannot be bought off. It lasts at least ${core.WARHEAD.rogueH} hours after the strike, then ends on its own once your aggression falls below 50.`), { status: 400 });
   if (nukedRecently(uid, now)) throw Object.assign(new Error('No amount of money will buy the Council within 72 hours of a nuclear strike.'), { status: 400 });
   const price = core.bribePrice(W, n); if ((n.cash || 0) < price) throw Object.assign(new Error(`The Council's price is ${WP.money(price)}. Your treasury doesn't cover it.`), { status: 400 });
   const wasRogue = core.rogue(W, n);
   n.cash -= price; n.bribes = [...core.bribeRecent(n, now), now];
   const back = n.frozen ? n.frozen.amt || 0 : 0; n.cash += back; n.frozen = null; n.embargo = 0; n.armsEmb = 0; n.condemned = 0;
   if (wasRogue) { n.rogue = 0; delete n.rogueT; } n.aggr = Math.min(n.aggr || 0, 30); W.changed.add(uid);
+  for (const pr of (S.council && S.council.props) || []) if (pr.status === 'open' && pr.type === 'lift' && pr.target === uid) { pr.status = 'failed'; pr.result = 'withdrawn: they paid the Council instead'; pr.end = now; } // its own petition is no longer needed
   core.news(W, uid, `💰 ${n.name} bribed the World Council to lift its ${wasRogue ? 'rogue-state status' : 'sanctions'} (${WP.moneyS(price)}).`);
   commit(W); persist();
   systemMessage(`💰 ${n.name} paid the World Council ${WP.moneyS(price)} to make its ${wasRogue ? 'rogue-state status' : 'sanctions'} disappear.`);
@@ -2348,6 +2349,15 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
     case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/setrogue': { // make a nation a rogue state until a set time (e.g. to restore status that ended early because of a bug)
+      const id = String(b.id || ''), W = mkWorld(), n = W.A[id], now = Date.now(), until = Math.round(+b.until); if (!n) return send(res, 404, { error: 'That nation was not found.' });
+      if (!isFinite(until) || until < now + 60e3 || until > now + 7 * 864e5) return send(res, 400, { error: 'Pick an end time between now and 7 days from now.' });
+      const was = core.rogue(W, n); n.rogue = until; n.rogueT = now; if (b.nuke) n.nukeRogue = n.nukeRogue && was ? n.nukeRogue : now; else delete n.nukeRogue; W.changed.add(id);
+      const hrs = Math.round((until - now) / 36e5 * 10) / 10;
+      if (!was) core.news(W, id, `☠ ${n.name} is a rogue state again${b.nuke ? ' (from its nuclear strike)' : ''}. Attacking it adds no aggression.`);
+      commit(W); if (!n.ai) addNote(id, 'war', `☠ Your nation's rogue status was set to last about ${hrs} more hours${b.nuke ? ', because of your nuclear strike (it cannot be bought off or voted away)' : ''}. ${String(b.why || '').slice(0, 200)}`.trim());
+      audit(me.name, 'Set rogue status', n.name, `${hrs} hours${b.nuke ? ', nuclear (cannot be bought off)' : ''}`); persist(); return send(res, 200, { ok: true, until, hrs });
+    }
     case '/api/admin/hcrelease': { const h = (S.hc || {})[String(b.id || '')]; if (!h || !h.jail) return send(res, 400, { error: 'That player is not in jail.' }); const was = h.jail; delete h.jail; h.streak = 0; h.pend = null; h.lock = 0; h.pendHits = 0; if (S.botsig && S.botsig[String(b.id)]) S.botsig[String(b.id)].a = []; /* a fresh start: the actions that led to the jail don't count again */ hcLog(b.id, 'released', { by: me.name }); addNote(b.id, 'war', '✅ The review is done and your account has been released. Thanks for your patience.'); persist(); return send(res, 200, { ok: true, was }); }
     case '/api/admin/hcset': { S.config.humanCheck = !!b.on; if (!b.on) for (const h of Object.values(S.hc || {})) { h.pend = null; h.lock = 0; } persist(); return send(res, 200, { ok: true, on: !!b.on }); } // turn the human check on or off (turning it off clears any open checks)
     case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), jailed: Object.entries(S.hc || {}).filter(([, h]) => h && h.jail).map(([uid, h]) => ({ uid, name: (S.users[uid] || {}).name || '?', nation: ((S.docs['nations/' + uid]) || {}).name || '', t: h.jail.t, why: h.jail.why })), t: Date.now() });

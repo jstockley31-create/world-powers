@@ -1887,7 +1887,7 @@ const GL=(()=>{
  const proj=d3.geoOrthographic().clipAngle(90).precision(.4);const path=d3.geoPath(proj,ctx);const grat=d3.geoGraticule10();
  function size(){if(!st.el)return;const r=st.el.getBoundingClientRect();st.dpr=st.lo?1:Math.min(2,window.devicePixelRatio||1);st.w=Math.max(100,r.width);st.h=Math.max(100,r.height);const W_=Math.round(st.w*st.dpr),H_=Math.round(st.h*st.dpr);if(cv.width!==W_||cv.height!==H_){cv.width=W_;cv.height=H_}cv.style.width=st.w+'px';cv.style.height=st.h+'px'}
  // while the globe is being dragged, zoomed or flown, paint at 1x resolution (much cheaper on phones), then repaint sharp once it settles
- function moving(){st.baseOk=false;if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo&&!st.skLo){st.lo=false;size();redraw()}},180)}
+ function moving(){st.baseOk=false;st.movT=performance.now();if(!st.lo&&(window.devicePixelRatio||1)>1){st.lo=true;size()}clearTimeout(st.idleT);st.idleT=setTimeout(()=>{if(st.lo&&!st.skLo){st.lo=false;size();redraw()}},180)}
  /* on the World page the globe fills the width of a wide box (the top and bottom of the sphere may run past the edges; drag to see them) */
  const baseD=()=>st.mode==='world'&&st.w>st.h*1.15?Math.min(st.w*.98,Math.max(st.h,Math.min(st.w*.62,st.h*1.6))):Math.min(st.w,st.h),minZ=()=>st.mode==='world'?.55:.8;
  const radius=()=>baseD()*.46*st.scale;
@@ -1963,7 +1963,8 @@ const GL=(()=>{
    const gz=ctx.createRadialGradient(xy[0],xy[1],0,xy[0],xy[1],rr);gz.addColorStop(0,`rgba(255,${age<1?230:140},60,${.85*pul})`);gz.addColorStop(.25,`rgba(255,90,20,${.45*pul})`);gz.addColorStop(1,'rgba(150,255,60,0)');ctx.fillStyle=gz;ctx.beginPath();ctx.arc(xy[0],xy[1],rr,0,7);ctx.fill();
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
   // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
-  if(SK.length||st.fx||BURN.size||TX.length||smT||NF.length){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+  /* not while the globe is being dragged, zoomed or flown: taking this copy makes the browser finish the whole picture right away, which halved the frame rate while moving */
+   if((SK.length||st.fx||BURN.size||TX.length||smT||NF.length)&&!st.anim&&!(performance.now()-(st.movT||0)<250)){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  // flags beside nation names: each flag drawn once into an image, redrawn when it changes
