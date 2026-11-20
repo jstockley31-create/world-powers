@@ -1554,7 +1554,8 @@ function Core(PD, CARDS) {
     pushOut(W, u, { type: 'aid', to: v, ...a }); log(them, `${me.name} sent you aid: ${txt}.`, W); note(W, v, 'diplo', `${me.name} sent you aid: ${txt}.`); news(W, u, `${me.name} sent aid to ${them.name}.`);
     // XP only for real help: aid worth at least $1M, and once per receiving nation per hour (so $1 gifts can't be spammed for rank)
     { const val = a.cash + Object.keys(RES).reduce((t, r) => t + a[r] * RES[r].p, 0); if (val >= 1e6) xpOnce(W, u, 'aid_' + v, HOUR, 5); if (val >= 1e6 && !them.ai) { me.tally = me.tally || {}; me.tally.aidV = (me.tally.aidV || 0) + val; } }
-    touch(W, u, v); return { msg: `Aid sent: ${txt}.`, amount: a };
+    const val = a.cash + Object.keys(RES).reduce((t, r) => t + a[r] * RES[r].p, 0), need = aidMissionMin(me), mi = ((missionsFor(W, u) || {}).list || []).find(m => m && m.k === 'aid' && !m.done);
+    touch(W, u, v); return { msg: `Aid sent: ${txt}.${mi && val < need ? ` (Aid worth at least ${moneyS(need)} counts for your daily mission.)` : ''}`, amount: a, val };
   }
 
   function market(W, u, r, q, buy) {
@@ -1612,8 +1613,9 @@ function Core(PD, CARDS) {
   }
   function bonds(W, u, amt, repay) {
     const n = W.A[u]; if (!n) fail('Found a nation first.');
-    amt = Math.floor(Number(amt)); if (!(amt > 0) || amt > 1e13) fail('Enter an amount.');
-    if (repay) { if (!(n.debt > 0)) fail('You have no debt to repay.'); if (amt > n.debt) amt = n.debt; if (amt > n.cash) fail('You do not have that much cash.'); n.cash -= amt; n.debt -= amt; if (n.debt < 1) n.debt = 0; /* no leftover cents that can never be repaid */ log(n, `Repaid ${money(amt)} of national debt.`, W); touch(W, u); return { msg: `Repaid ${money(amt)}. Debt is now ${moneyS(n.debt)}.` }; }
+    amt = Math.floor(Number(amt)); if (!(amt > 0)) fail('Enter an amount.');
+    if (!repay && amt > 1e13) fail('That is more than lenders will ever buy. Try a smaller amount.');
+    if (repay) { if (!(n.debt > 0)) fail('You have no debt to repay.'); if (amt > n.debt) amt = n.debt; /* typing more than you owe just repays it all */ if (amt > n.cash) fail('You do not have that much cash.'); n.cash -= amt; n.debt -= amt; if (n.debt < 1) n.debt = 0; /* no leftover cents that can never be repaid */ log(n, `Repaid ${money(amt)} of national debt.`, W); touch(W, u); return { msg: `Repaid ${money(amt)}. Debt is now ${moneyS(n.debt)}.` }; }
     if (defaultedRecently(W, n)) fail(`No one will lend to you for ${CREDIT.defaultH} hours after a default.`);
     { const rt = rating(W, n), mb = maxBorrow(n, W); if (!CREDIT.cap[rt]) fail(`With a ${rt} credit rating, no lender will buy your bonds. Repay debt to improve your rating.`); if (amt > mb) fail(mb > 0 ? `With a ${rt} credit rating, lenders will only lend up to ${money(mb)} more (${Math.round(CREDIT.cap[rt] * 100)}% of GDP in total).` : `With a ${rt} credit rating, lenders won't lend more until your debt falls below ${Math.round(CREDIT.cap[rt] * 100)}% of GDP.`); }
     n.cash += amt; n.debt += amt; n.infl = clamp(n.infl + amt / Math.max(1, n.gdp) * 4, -2, 80);
@@ -2009,6 +2011,7 @@ function Core(PD, CARDS) {
   // ================= daily missions =================
   const dayKey = t => new Date(t).toISOString().slice(0, 10);
   const mReward = n => Math.round(Math.max(2e5, (n.gdp || 0) * .006));
+  const aidMissionMin = n => Math.max(1e6, Math.round(mReward(n) * .1 / 1e6) * 1e6); // a tenth of what a mission pays
   function missionsFor(W, u) {
     const n = W.A[u], day = dayKey(W.now); if (n.mis && n.mis.day === day) return n.mis;
     let h = 0; for (const ch of u + day) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
@@ -2680,7 +2683,7 @@ function Core(PD, CARDS) {
       if (c.c === 'act') { mTrack(W, u, 'ops', 1); blocGoal(W, u, 'ops'); if (['tax', 'prod', 'research', 'expand', 'recruit', 'infra'].includes(c.k)) mTrack(W, u, c.k, 1); }
       else if (c.c === 'decide') { mTrack(W, u, 'decide', 1); blocGoal(W, u, 'dec'); }
       else if (c.c === 'market') { const q = Math.floor(Number(c.q)) || 0; mTrack(W, u, c.buy ? 'import' : 'export', q); n.cnt.trades = (n.cnt.trades || 0) + 1; }
-      else if (c.c === 'aid') mTrack(W, u, 'aid', 1);
+      else if (c.c === 'aid' && r && r.val >= aidMissionMin(n)) mTrack(W, u, 'aid', 1); /* the daily aid mission needs real help, not a $1 gift */
       else if (c.c === 'attack' && r && r.battle) { crisisHit(W, u, r.battle, pre); if (r.battle.win || r.battle.conquered) { t.wins = (t.wins || 0) + 1; mTrack(W, u, 'win', 1); } if (r.battle.conquered) { t.caps = (t.caps || 0) + 1; } }
       mState(W, u); achCheck(W, u);
     } catch (e) { }
