@@ -467,7 +467,10 @@ function hcAnswer(uid, b) {
   persist(); return { ok: false, msg: isCode ? `That's not the code. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.` : `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
 }
 // a summary of one player's human checks over the last 48 hours, for Cheat watch
-function hcSummary(uid) { const L = ((S.hc[uid] || {}).log || []).filter(x => Date.now() - x.t < 48 * HOUR); if (!L.length && !(S.hc[uid] || {}).pend) return null; const c = k => L.filter(x => x.r === k).length, ms = L.filter(x => /^pass/.test(x.r)).map(x => x.ms).sort((a, b) => a - b);
+// iPhone taps used to be recorded as mouse clicks, so they were marked "mouse never moved". Checks from before this version are not held against anyone for that.
+if (!S.hcTouchFixT) S.hcTouchFixT = Date.now();
+const hcRes = x => x.r === 'pass (odd)' && x.t < S.hcTouchFixT && x.odd === 'mouse never moved' ? 'pass' : x.r;
+function hcSummary(uid) { const L = ((S.hc[uid] || {}).log || []).filter(x => Date.now() - x.t < 48 * HOUR); if (!L.length && !(S.hc[uid] || {}).pend) return null; const c = k => L.filter(x => hcRes(x) === k).length, ms = L.filter(x => /^pass/.test(x.r)).map(x => x.ms).sort((a, b) => a - b);
   return { pass: c('pass'), odd: c('pass (odd)'), miss: c('miss'), fail: c('fail'), expired: c('expired'), pics: c('new picture'), medMs: ms.length ? ms[Math.floor(ms.length / 2)] : null, open: !!(S.hc[uid] || {}).pend, last: L.slice(0, 12) }; }
 // same network = a home connection both accounts used. An address many players share (satellite internet like Starlink, mobile carriers,
 // schools: one public address for thousands of people) says nothing about who owns an account, so it doesn't count.
