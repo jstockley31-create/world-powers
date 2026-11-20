@@ -681,7 +681,9 @@ function Core(PD, CARDS) {
   const expandCost = (W, u) => Math.round(8e4 * Math.pow(Math.max(1, hexesOf(W, u).length), 1.35));
   const topTech = W => { let t = 0; for (const x of Object.values(W.A)) t = Math.max(t, x.tech || 0); return t; };
   const catchUp = (W, n) => { if (rogue(W, n)) return 1.5; const top = topTech(W); return n.tech < top ? .5 + .5 * (n.tech + 1) / (top + 1) : 1; }; // rogue states face a technology blockade // known technology is cheaper to copy
-  const researchCost = (W, n) => Math.round(5e4 * Math.pow(n.tech + 1, 1.6) * (GOV[n.gov].res > 1 ? .85 : 1) * W.m.research * catchUp(W, n) * fxMul(n, 'research'));
+  // above tech 200 every level costs 3% more than the last on top of the normal curve (×19 at 300, ×84 at 350), so superweapons, domes and nukes take real, sustained work
+  const RES_SLOW = { from: 200, per: 1.03 }, resSlow = t => Math.pow(RES_SLOW.per, Math.max(0, t - RES_SLOW.from));
+  const researchCost = (W, n) => Math.round(5e4 * Math.pow(n.tech + 1, 1.6) * resSlow(n.tech) * (GOV[n.gov].res > 1 ? .85 : 1) * W.m.research * catchUp(W, n) * fxMul(n, 'research'));
   const maxTrain = n => 10 + rankOf(n.xp) * 5;
   const infraCost = n => Math.round(6e4 * Math.pow(n.infra + 1, 1.5) * cheap(n));
   const fortCost = n => Math.round(1e5 * Math.pow(n.fort + 1, 1.5) * cheap(n));
@@ -1271,12 +1273,16 @@ function Core(PD, CARDS) {
   const domeMis = n => DOME.lv.mis[domeLvl(n) - 1] || DOME.mis, domeNuke = n => DOME.lv.nuke[domeLvl(n) - 1] || DOME.nuke;
   const domeEmp = (W, n) => { const t = n ? Math.max(n.empT || 0, (n.dome && n.dome.emp) || 0) : 0; return t > (W ? W.now : Date.now()) ? t : 0; };
   const domeOn = (W, n) => !!(n && n.dome && n.dome.ready <= (W ? W.now : Date.now()) && !n.dome.off && !domeEmp(W, n) && (n.cash || 0) >= 0);
+  // rarity pricing: every other player nation that already owns one makes the next nuclear deterrent or Golden Dome 1.5× more expensive (AI nations don't count)
+  const RARE = { per: 1.5 };
+  function rareCost(W, k, u) { const B = k === 'nuke' ? NUKE : DOME; let o = 0; for (const [id, x] of Object.entries(W.A)) if (id !== u && x && !x.ai && (k === 'nuke' ? x.nuke : x.dome)) o++;
+    const m = Math.pow(RARE.per, o), r = v => Math.round(v * m); return { m, owners: o, cash: Math.round(B.cash * m / 1e6) * 1e6, steel: r(B.steel), oil: r(B.oil), goods: r(B.goods) }; }
   function canDome(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
     if (n.dome) return n.dome.ready > W.now ? 'Your Golden Dome is under construction.' : 'Your Golden Dome is already protecting your nation.';
     if ((n.tech || 0) < DOME.tech) return `The Golden Dome requires tech level ${DOME.tech}.`;
     if (!W.cfg.nukeTest && rankOf(n.xp) < DOME.rank) return `The Golden Dome requires the rank of ${RANKS[DOME.rank][1]}.`;
-    if (n.cash < DOME.cash || (n.res.steel || 0) < DOME.steel || (n.res.goods || 0) < DOME.goods || (n.res.oil || 0) < DOME.oil) return `The Golden Dome costs ${money(DOME.cash)}, ${num(DOME.steel)} steel, ${num(DOME.goods)} goods and ${num(DOME.oil)} oil.`;
+    { const P = rareCost(W, 'dome', u); if (n.cash < P.cash || (n.res.steel || 0) < P.steel || (n.res.goods || 0) < P.goods || (n.res.oil || 0) < P.oil) return `The Golden Dome costs ${money(P.cash)}, ${num(P.steel)} steel, ${num(P.goods)} goods and ${num(P.oil)} oil${P.owners ? ` (×${P.m < 10 ? P.m.toFixed(2).replace(/\.?0+$/, '') : Math.round(P.m)}, because ${P.owners} nation${P.owners > 1 ? 's' : ''} already ${P.owners > 1 ? 'have' : 'has'} one)` : ''}.`; }
     return null;
   }
   // MUNITIONS: each order is limited by what the factories can turn out in an hour, and the depots only hold so much
@@ -1298,7 +1304,7 @@ function Core(PD, CARDS) {
   }
   function buildDome(W, u) {
     const why = canDome(W, u); if (why) fail(why); const n = W.A[u];
-    n.cash -= DOME.cash; n.res.steel -= DOME.steel; n.res.goods -= DOME.goods; n.res.oil -= DOME.oil;
+    { const P = rareCost(W, 'dome', u); n.cash -= P.cash; n.res.steel -= P.steel; n.res.goods -= P.goods; n.res.oil -= P.oil; n.domePaid = P.cash; }
     n.dome = { t: W.now, ready: W.now + (W.cfg.nukeTest ? 60e3 : DOME.buildH * HOUR), lvl: 1 }; n.approval = clamp(n.approval + 4, 0, 100);
     news(W, u, `🛡 ${n.name} has begun building a Golden Dome: a missile shield over the whole nation.`);
     log(n, `Construction of your Golden Dome has begun. It will be operational in ${W.cfg.nukeTest ? '1 minute' : DOME.buildH + ' hours'}.`, W); touch(W, u);
@@ -1362,8 +1368,9 @@ function Core(PD, CARDS) {
     if (W.m.npt) fail('The Non-proliferation Treaty is in force. No nation may start a nuclear program until it expires.');
     if ((n.tech || 0) < NUKE.tech) fail(`A nuclear program requires tech level ${NUKE.tech}.`);
     if (!W.cfg.nukeTest && rankOf(n.xp) < NUKE.rank) fail(`A nuclear program requires the rank of ${RANKS[NUKE.rank][1]}.`);
-    if (n.cash < NUKE.cash || n.res.steel < NUKE.steel || n.res.oil < NUKE.oil || n.res.goods < NUKE.goods) fail(`Requires ${money(NUKE.cash)}, ${num(NUKE.steel)} steel, ${num(NUKE.oil)} oil and ${num(NUKE.goods)} goods.`);
-    n.cash -= NUKE.cash; n.res.steel -= NUKE.steel; n.res.oil -= NUKE.oil; n.res.goods -= NUKE.goods; n.nuke = W.now; n.nukePaid = NUKE.cash; // refunds on disarming use what was actually paid
+    const P = rareCost(W, 'nuke', u);
+    if (n.cash < P.cash || n.res.steel < P.steel || n.res.oil < P.oil || n.res.goods < P.goods) fail(`Requires ${money(P.cash)}, ${num(P.steel)} steel, ${num(P.oil)} oil and ${num(P.goods)} goods${P.owners ? ` (×${P.m < 10 ? P.m.toFixed(2).replace(/\.?0+$/, '') : Math.round(P.m)}, because ${P.owners} nation${P.owners > 1 ? 's' : ''} already ${P.owners > 1 ? 'have' : 'has'} a deterrent)` : ''}.`);
+    n.cash -= P.cash; n.res.steel -= P.steel; n.res.oil -= P.oil; n.res.goods -= P.goods; n.nuke = W.now; n.nukePaid = P.cash; // refunds on disarming use what was actually paid
     n.aggr = Math.min(100, (n.aggr || 0) + 40); n.stability = clamp(n.stability + 5, 0, 100); rogueCheck(W, u);
     news(W, u, `☢ ${n.name} has tested a nuclear weapon. The world is on alert.`); log(n, 'Your nuclear deterrent is operational. Your capital now defends twice as hard and makes a last stand twice as long, and if it ever falls your last missile fires at the conqueror. The world will not forget.', W);
     for (const v of Object.keys(W.A)) if (v !== u) note(W, v, 'war', `☢ ${n.name} has tested a nuclear weapon.`);
@@ -2681,7 +2688,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
