@@ -619,7 +619,7 @@ function Core(PD, CARDS) {
   }
   // a tax rise only reaches tax collections after it has been in place for 30 minutes (a cut counts at once), so the rate can't be spiked just for one collection
   const TAX_RAISE_MIN = 30, effTax = (W, n) => n.taxUp && W.now - n.taxUp.at < TAX_RAISE_MIN * MIN ? Math.min(n.tax, n.taxUp.from) : n.tax;
-  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = (1 + tradeVal(W, u) * .05 * (sanctioned(n) ? 0 : 1)) * (1 + rankOf(n.xp) * RANK_TAX) * adminF(W, u); return (n.gdp || gdpTarget(W, u)) * effTax(W, n) / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * nukeF(W, n, 0, .5, .85) * fxMul(n, 'tax'); }
+  function taxIncome(W, u) { const n = W.A[u], g = GOV[n.gov]; const trade = (1 + tradeVal(W, u) * .05 * (sanctioned(n) ? 0 : 1)) * (1 + rankOf(n.xp) * RANK_TAX) * adminF(W, u); return (n.gdp || gdpTarget(W, u)) * effTax(W, n) / 100 / 150 * (0.5 + n.approval / 100) * g.inc * trade * (1 + rankOf(n.xp) * .1) * W.cfg.income * W.m.tax * (1 + devAid(W, u)) * (rogue(W, n) ? .8 : 1) * (nuked(W, n) && n.nuked.taxOk ? ((n.fallout || 0) > W.now ? .5 : (n.winter || 0) > W.now ? .85 : 1) : nukeF(W, n, 0, .5, .85)) * ((n.nukeTax || 0) > W.now ? 0 : 1) * fxMul(n, 'tax'); }
   const spendPerTick = n => (n.gdp || 0) * budget(n).spend / 100 / TICKS_PER_YEAR * fxMul(n, 'spend');
   const overAt = n => maxHex(n);
   const bribeRecent = (n, now) => (n.bribes || []).filter(t => now - t < BRIBE.windowD * 864e5);
@@ -897,6 +897,7 @@ function Core(PD, CARDS) {
     const a = ACTS.find(x => x.k === k); if (!a) fail('Unknown operation.');
     if (left(W, n, k)) fail(`${a.n} is available in ${fmtT(left(W, n, k))}.`);
     let msg = '';
+    if (k === 'tax' && (n.nukeTax || 0) > W.now) fail(`Your tax collection is suspended for ${fmtT(n.nukeTax - W.now)} after your nuclear strike.`);
     if (k === 'tax') { const v = taxIncome(W, u); n.cash += v; n.rev = (n.rev || 0) + v; const et = effTax(W, n); if (et > 20) n.approval = clamp(n.approval - (et - 20) * .1, 0, 100); msg = `Collected ${money(v)} in taxes.${et < n.tax ? ` (Your new ${n.tax}% rate applies to collections in ${fmtT(n.taxUp.at + TAX_RAISE_MIN * MIN - W.now)}.)` : ''}`; }
     else if (k === 'prod') { const p = production(W, u); for (const r in p) n.res[r] += p[r] * 2; msg = 'Production boosted: ' + Object.entries(p).filter(e => e[1]).map(([r, v]) => `+${num(v * 2)} ${r}`).join(', ') + '.'; }
     else if (k === 'recruit') { const b = recruitBatch(n), c = b * 150 * cheap(n) * (measure(W, n, 'armsEmb') ? 2 : 1), s = Math.ceil(b / 10); if (n.cash < c || n.res.steel < s) fail(`Requires ${money(c)} and ${num(s)} steel.`); if (n.troops + b > troopCap(n)) fail(`Your population cannot support more soldiers (limit: 4% of population, ${num(troopCap(n))}).`); n.cash -= c; n.res.steel -= s; n.troops += b; n.approval = clamp(n.approval - .3, 0, 100); msg = `${num(b)} soldiers enlisted.`; }
@@ -1413,7 +1414,8 @@ function Core(PD, CARDS) {
     d.pop -= loss.pop; d.troops -= loss.troops; d.ships -= loss.ships; d.air -= loss.air; d.infra -= loss.infra; d.gdp = (d.gdp || 0) * .4;
     for (const r in RES) d.res[r] = Math.floor((d.res[r] || 0) * .45);
     d.approval = clamp(d.approval - 35, 0, 100); d.stability = clamp(d.stability - 50, 0, 100); d.health = clamp((d.health || 50) - 35, 0, 100); d.morale = clamp((d.morale || 50) - 35, 0, 100);
-    d.nuked = { t: W.now, until: Math.max(W.now + WARHEAD.nukedH * HOUR, d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name };
+    d.nuked = { t: W.now, until: Math.max(W.now + WARHEAD.nukedH * HOUR, d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name, taxOk: 1 }; // the target keeps collecting taxes; the launcher loses them instead (below)
+    if (!(retaliation || struckBy(W, me, v))) me.nukeTax = Math.max(me.nukeTax || 0, W.now + WARHEAD.nukedH * HOUR); // a second strike in self-defense is exempt
     d.nukedBy = Object.fromEntries(Object.entries({ ...(d.nukedBy || {}), [u]: W.now }).filter(([, t]) => W.now - t < 72 * HOUR));
     // fallout zone and worldwide nuclear winter
     const hit = [];
@@ -1438,7 +1440,7 @@ function Core(PD, CARDS) {
       for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after its nuclear strike.`); touch(W, a); }
     }
     me.approval = clamp(me.approval - (secondStrike ? 5 : me.gov === 'dic' ? 5 : 20), 0, 100);
-    const sum = `${num(loss.pop)} people and ${num(loss.troops)} troops killed${loss.infra ? `, ${loss.infra} infrastructure level${loss.infra > 1 ? 's' : ''} destroyed` : ''}, GDP −60%, tax collection halted for ${WARHEAD.nukedH} hours`;
+    const sum = `${num(loss.pop)} people and ${num(loss.troops)} troops killed${loss.infra ? `, ${loss.infra} infrastructure level${loss.infra > 1 ? 's' : ''} destroyed` : ''}, GDP −60%${(me.nukeTax || 0) > W.now ? `. Your own tax collection is suspended for ${WARHEAD.nukedH} hours` : ''}`;
     log(me, `☢ Your nuclear strike on ${pname(h)} (${d.name}): ${sum}. Your nation is now a rogue state for at least ${WARHEAD.rogueH} hours.`, W);
     log(d, `☢ ${me.name} detonated a nuclear weapon over ${pname(h)}: ${sum}.`, W);
     note(W, v, 'attack', `☢ ${me.name} launched a nuclear strike on ${pname(h)}. ${sum}.`);

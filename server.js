@@ -260,7 +260,7 @@ S.dev = S.dev || { threads: [], chat: [] };
 const DEV_CATS = ['Ideas', 'Balance', 'Bugs', 'General'];
 const devTxt = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b-\u001f]/g, '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
 const devWho = id => { const u = S.users[id] || {}; return { by: id, name: u.name || 'Leader', role: u.admin ? 'admin' : u.coadmin ? 'mod' : '' }; };
-const devSum = t => ({ id: t.id, title: t.title, cat: t.cat, ...devWho(t.by), t: t.t, last: t.last, n: t.replies.length, likes: (t.likes || []).length, pinned: !!t.pinned, locked: !!t.locked });
+const devSum = t => ({ id: t.id, title: t.title, cat: t.cat, ...devWho(t.by), t: t.t, last: t.last, n: t.replies.length, likes: (t.likes || []).length, pinned: !!t.pinned, locked: !!t.locked, st: t.st || '', stNote: t.stNote || '', stT: t.stT || 0 });
 const devFull = (t, uid) => ({ ...devSum(t), body: t.body, liked: (t.likes || []).includes(uid), replies: t.replies.map(r => ({ id: r.id, ...devWho(r.by), body: r.body, t: r.t, likes: (r.likes || []).length, liked: (r.likes || []).includes(uid) })) });
 function devHandle(me, p, method, b, q) {
   const D = S.dev, mod = isStaff(me), find = id => D.threads.find(t => t.id === String(id || ''));
@@ -274,7 +274,14 @@ function devHandle(me, p, method, b, q) {
     if (op === 'delchat') { D.chat = D.chat.filter(m => m.id !== String(b.cid)); persist(); return { ok: true }; }
     const t = find(b.id); if (!t) throw Object.assign(new Error('That topic was removed.'), { status: 404 });
     if (op === 'del') { if (b.rid) t.replies = t.replies.filter(r => r.id !== String(b.rid)); else D.threads = D.threads.filter(x => x !== t); }
-    else if (op === 'pin') t.pinned = !t.pinned; else if (op === 'lock') t.locked = !t.locked; else throw Object.assign(new Error('Unknown action.'), { status: 400 });
+    else if (op === 'pin') t.pinned = !t.pinned; else if (op === 'lock') t.locked = !t.locked;
+    else if (op === 'status') { // a staff decision on a suggestion: accepted, done or rejected (or cleared), with an optional reason; the author is told and it is posted in the topic
+      const st = String(b.st || ''); if (!['', 'accepted', 'done', 'rejected'].includes(st)) throw Object.assign(new Error('Unknown status.'), { status: 400 });
+      const note = devTxt(b.note, 300).replace(/\n/g, ' '); t.st = st; t.stNote = st ? note : ''; t.stT = st ? Date.now() : 0;
+      if (st) { const L = { accepted: '✅ Accepted', done: '🛠 Done', rejected: '❌ Rejected' }[st]; t.replies.push({ id: rid(), by: me.id, body: `${L}${note ? ': ' + note : ''}`, t: Date.now(), likes: [] }); t.last = Date.now();
+        if (t.by !== me.id) addNote(t.by, 'rank', `${L}: your suggestion "${t.title.slice(0, 60)}"${note ? ' — ' + note : ''}`, '/dev#t=' + t.id); }
+    }
+    else throw Object.assign(new Error('Unknown action.'), { status: 400 });
     persist(); return { ok: true }; }
   if (p === '/api/dev/like') { const t = find(b.id); if (!t) throw Object.assign(new Error('That topic was removed.'), { status: 404 }); const o = b.rid ? t.replies.find(r => r.id === String(b.rid)) : t; if (!o) throw Object.assign(new Error('That reply was removed.'), { status: 404 }); o.likes = o.likes || []; const i = o.likes.indexOf(me.id); if (i >= 0) o.likes.splice(i, 1); else o.likes.push(me.id); persist(); return { ok: true, likes: o.likes.length, liked: i < 0 }; }
   if (isMuted(me.id)) throw Object.assign(new Error('You are muted by the administrators and cannot post right now.'), { status: 403 });
