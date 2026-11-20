@@ -631,6 +631,7 @@ function rebelSpawn(W) {
   if (S.freedQ && Date.now() - (S.freedAt || 0) > 6 * 36e5) { systemMessage(`🏴 ${S.freedQ === 1 ? `${S.freedLast[0]} broke away from its empire and is` : `${S.freedQ} provinces broke away from empires recently (${S.freedLast.join(', ')}…) and are`} now free land anyone can settle.`); S.freedQ = 0; S.freedAt = Date.now(); }
   for (const b of list) {
     if (b.free) continue;
+    if (S.config.noAI) { S.freedQ = (S.freedQ || 0) + 1; S.freedLast = [...(S.freedLast || []), core.pname(b.h)].slice(-3); continue; } // all AI off: the province simply becomes free land
     const rebels = Object.values(W.A).filter(n => n.ai && n.ai.rebel).length; if (rebels >= WP.REBEL.maxNations) { S.freedQ = (S.freedQ || 0) + 1; S.freedLast = [...(S.freedLast || []), core.pname(b.h)].slice(-3); continue; }
     const id = 'ai_' + crypto.randomBytes(5).toString('hex'), from = W.A[b.from]; const name = core.foundRebel(W, id, b.h, { color: BOTS.distinctColor(W), dev: b.dev, from: b.from, fromName: b.fromName, tech: from ? from.tech : 2 });
     if (name) { W.changed.add(id); systemMessage(`🏴 ${core.pname(b.h)} has declared independence from ${b.fromName} as ${name}. Its land is up for grabs.`); }
@@ -641,6 +642,7 @@ function rebelSpawn(W) {
 function botTarget(W) { const real = humans(W).length; const want = Math.max(0, Math.min(30, +S.config.bots || 0)); return S.config.botRetire ? Math.max(0, want - Math.floor(real / 3)) : want; }
 function removeBot(W, u, why) { const n = W.A[u]; if (!n) return; delete W.A[u]; W.changed.delete(u); for (const v of Object.keys(W.A)) if (W.A[v].rel && W.A[v].rel[u]) { delete W.A[v].rel[u]; W.changed.add(v); } setDoc('nations', u, null); W.OWN = core.computeOwn(W.A); if (why) systemMessage(`${n.name} (AI) has withdrawn from the world${why === 'retire' ? ' to make room for new leaders' : ''}.`); }
 function manageBots(W) {
+  if (S.config.noAI) { const ai = Object.keys(W.A).filter(u => BOTS.isBot(u)); for (const u of ai) removeBot(W, u); return; } // all AI off: any AI nation that appears (breakaway, Rising Power, anything) is removed and its land freed
   const bots = Object.keys(W.A).filter(u => BOTS.isBot(u) && !(W.A[u].ai && W.A[u].ai.rebel)); const target = botTarget(W); // breakaway nations don't count: they exist until someone conquers them
   if (bots.length < target) for (let i = 0; i < target - bots.length; i++) BOTS.spawn(W);
   else if (bots.length > target) { const weakest = bots.filter(b => !(W.A[b].ai && W.A[b].ai.boss)).sort((a, b) => core.score(W, a) - core.score(W, b))[0]; if (weakest) removeBot(W, weakest, 'retire'); } // the Rising Power is never quietly retired: it has to be beaten
@@ -656,6 +658,7 @@ function crisisStart(key, hours, diff, by) {
   hours = Math.max(2, Math.min(96, Math.round(+hours || crisisCfg().hours))); diff = WP.CRISIS.diff[diff] ? diff : 'normal';
   let W = mkWorld(); const now = Date.now(); let boss = null;
   if (key === 'boss') {
+    if (S.config.noAI) throw Object.assign(new Error('All AI is turned off, so there is no Rising Power. Turn AI back on first.'), { status: 400 });
     boss = Object.keys(W.A).find(u => W.A[u].ai && W.A[u].ai.boss) || null;
     if (!boss) { if (!Object.keys(W.A).some(k => BOTS.isBot(k))) throw Object.assign(new Error('There are no AI nations to become the Rising Power.'), { status: 400 });
       S.bossFell = 0; S.config.aiBoss = true; W = mkWorld(); boss = BOTS.raiseBoss(W, W.cfg, ''); if (!boss) throw Object.assign(new Error('Could not raise a Rising Power right now.'), { status: 400 }); commit(W); W = mkWorld(); }
@@ -2041,6 +2044,7 @@ async function adminRoute(p, req, res, me) {
   if (p === '/api/admin/boss-now' && req.method === 'POST') { // raise the Rising Power right away (skips the 48-hour breather after one falls)
     const W0 = mkWorld(), ids = Object.keys(W0.A), cur = ids.find(k => BOTS.isBot(k) && W0.A[k].ai && W0.A[k].ai.boss);
     if (cur) return send(res, 400, { error: `${W0.A[cur].name} is already the Rising Power.` });
+    if (S.config.noAI) return send(res, 400, { error: 'All AI is turned off. Turn AI back on (Game settings) first.' }); 
     if (!ids.some(k => BOTS.isBot(k))) { const Ws = mkWorld(), sp = BOTS.spawn(Ws); if (!sp) return send(res, 400, { error: 'There are no AI nations to raise, and there is no land to start a new one.' }); Ws.welcome = null; commit(Ws); } // no AI left: start one, then raise it
     if (!ids.some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
     S.bossFell = 0; S.config.aiBoss = true;
@@ -2155,7 +2159,7 @@ async function adminRoute(p, req, res, me) {
       if (['yes', 'deter', 'no'].includes(c.nukes)) bs.nukes = c.nukes;
       if (c.target != null) bs.target = typeof c.target === 'string' && Object.prototype.hasOwnProperty.call(W.A, c.target) ? c.target : '';
       if (c.breatherH != null && isFinite(+c.breatherH)) bs.breatherH = Math.max(0, Math.min(720, Math.round(+c.breatherH)));
-      const was = JSON.stringify(S.config.boss || {}); S.config.boss = bs; if (b.auto != null) S.config.aiBoss = !!b.auto; persist();
+      const was = JSON.stringify(S.config.boss || {}); S.config.boss = bs; if (b.auto != null) S.config.aiBoss = !!b.auto && !S.config.noAI; persist();
       audit(me.name, 'Changed Rising Power settings', `${was} → ${JSON.stringify(bs)}${b.auto != null ? ` · auto spawn ${S.config.aiBoss ? 'on' : 'off'}` : ''}`); return send(res, 200, { ok: true });
     }
     if (op === 'raise') {
@@ -2164,6 +2168,7 @@ async function adminRoute(p, req, res, me) {
       if (!Object.keys(W.A).some(k => BOTS.isBot(k))) return send(res, 400, { error: 'There are no AI nations to raise. Turn AI nations on first.' });
       if (!Object.keys(W.A).some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
       S.bossFell = 0; S.config.aiBoss = true;
+      if (S.config.noAI) return send(res, 400, { error: 'All AI is turned off. Turn AI back on (Game settings) first.' }); 
       const W2 = mkWorld(), nb = BOTS.raiseBoss(W2, W2.cfg, want); if (!nb) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
       commit(W2); persist(); systemMessage(`⚠ ${W2.A[nb].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
       audit(me.name, 'Raised the Rising Power', W2.A[nb].name); return send(res, 200, { ok: true, name: W2.A[nb].name });
@@ -2388,6 +2393,12 @@ async function adminRoute(p, req, res, me) {
       audit(me.name, 'Deleted account', target + ' (' + email + ')'); return send(res, 200, { ok: true });
     }
     case '/api/admin/clear-flags': { S.flags = u ? S.flags.filter(f => f.uid !== b.id) : []; audit(me.name, 'Cleared cheat flags', target || 'everyone'); return send(res, 200, { ok: true }); }
+    case '/api/admin/noai': { // master switch: every AI nation off (and removed), or back on
+      const on = !!b.on; S.config.noAI = on; let gone = 0;
+      if (on) { S.config.bots = 0; S.config.aiBoss = false; const W = mkWorld(); const ai = Object.keys(W.A).filter(u => BOTS.isBot(u)); for (const u of ai) removeBot(W, u); gone = ai.length; if (S.crisis && S.crisis.key === 'boss' && !S.crisis.over) S.crisis.over = true; commit(W); if (gone) systemMessage(`🤖 All AI nations have been removed from the world${gone > 1 ? ` (${gone})` : ''}. Their land is free to settle.`); }
+      audit(me.name, on ? 'Turned all AI off' : 'Turned AI back on', on ? `${gone} AI nation${gone === 1 ? '' : 's'} removed` : 'Set AI nations and the Rising Power in Game settings'); persist(); broadcast('config', effCfg());
+      return send(res, 200, { ok: true, gone, msg: on ? `All AI is off.${gone ? ` ${gone} AI nation${gone === 1 ? ' was' : 's were'} removed and their land is free.` : ''} New ones will not appear, including breakaway free states.` : 'AI is allowed again. Set how many AI nations you want and the Rising Power in Game settings.' });
+    }
     case '/api/admin/config': {
       const c = b.config || {}, nc = { ...S.config };
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
@@ -2398,6 +2409,7 @@ async function adminRoute(p, req, res, me) {
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 1000);
       if (c.donateUrl != null) { const d = String(c.donateUrl).trim(); if (d && !/^https:\/\/[^\s"'<>]+$/i.test(d)) return send(res, 400, { error: 'The donation link must start with https://' }); nc.donateUrl = d || WP.DEFCFG.donateUrl; }
       if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
+      if (S.config.noAI) { nc.bots = 0; nc.aiBoss = false; } // the all-AI-off switch wins until it is turned back off
       if (['yes', 'retaliate', 'no'].includes(c.botWar)) nc.botWar = c.botWar;
       const diff = Object.keys(nc).filter(k => nc[k] !== S.config[k]).map(k => `${k}: ${S.config[k]} → ${nc[k]}`).join('; ');
       S.config = nc; persist(); broadcast('config', effCfg()); audit(me.name, 'Changed game settings', null, diff || 'no changes');
@@ -2453,6 +2465,7 @@ async function adminRoute(p, req, res, me) {
       audit(me.name, 'Removed AI nation', name); return send(res, 200, { ok: true });
     }
     case '/api/admin/bot-add': {
+      if (S.config.noAI) return send(res, 400, { error: 'All AI is turned off. Turn AI back on (Game settings) first.' }); 
       S.config.bots = Math.min(30, (S.config.bots || 0) + 1); const W = mkWorld(); const id = BOTS.spawn(W); W.welcome = null; commit(W); broadcast('config', effCfg());
       if (!id) return send(res, 400, { error: 'No room for another nation on the map.' });
       audit(me.name, 'Added AI nation', W.A[id].name); return send(res, 200, { ok: true });
