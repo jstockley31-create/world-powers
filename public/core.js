@@ -108,9 +108,9 @@ const GRAND = {
 const GRANDC = { rank: 3, failCdH: 12, failAp: 5 };
 // PRESTIGE UNITS: the most expensive hardware in the world, with heavy upkeep every hour. If the treasury cannot pay, one is scrapped.
 const PUNITS = {
-  carrier: { n: 'Supercarrier', ic: '🚢', cost: 4e10, steel: 20000, oil: 8000, up: 5e8, max: 3, tech: 60, atk: .05, def: .03, d: '+5% attack and +3% defense each.' },
-  sub: { n: 'Nuclear Submarine', ic: '🌊', cost: 2.5e10, steel: 12000, oil: 4000, up: 3e8, max: 3, tech: 50, atk: .03, def: .04, d: '+3% attack and +4% defense each.' },
-  bomber: { n: 'Stealth Bomber Wing', ic: '🛩', cost: 1.5e10, steel: 6000, oil: 6000, up: 2e8, max: 3, tech: 40, atk: .05, def: 0, d: '+5% attack each.' }
+  carrier: { n: 'Supercarrier', ic: '🚢', cost: 4e10, steel: 20000, oil: 8000, up: 5e8, max: 3, tech: 160, atk: .05, def: .03, d: '+5% attack and +3% defense each.' },
+  sub: { n: 'Nuclear Submarine', ic: '🌊', cost: 2.5e10, steel: 12000, oil: 4000, up: 3e8, max: 3, tech: 140, atk: .03, def: .04, d: '+3% attack and +4% defense each.' },
+  bomber: { n: 'Stealth Bomber Wing', ic: '🛩', cost: 1.5e10, steel: 6000, oil: 6000, up: 2e8, max: 3, tech: 120, atk: .05, def: 0, d: '+5% attack each.' }
 };
 // running a war costs money every hour: the nation that declared it pays in full, the defender a quarter
 const WARCOST = { base: 1e7, troop: 40, ship: 400, air: 500, defender: .25, gdpCap: .002, floor: 1e5 }; // per war per hour; never more than 0.2% of the nation's GDP an hour (about 5% of a day's output), so small and new nations are not ruined by one war
@@ -293,11 +293,11 @@ function flagSVG(f, w, h, ns) {
   return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g>${f.fr ? '<rect x=".9" y=".9" width="28.2" height="18.2" fill="none" stroke="#ffd25e" stroke-width="1.8"/><rect x=".2" y=".2" width="29.6" height="19.6" fill="none" stroke="#7a5612" stroke-width=".45"/><rect x="2" y="2" width="26" height="16" fill="none" stroke="rgba(255,240,190,.55)" stroke-width=".35"/>' : '<rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/>'}</svg>`;
 }
 const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
-const NUKE = { tech: 100, rank: 6, cash: 500e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
+const NUKE = { tech: 350, rank: 6, cash: 500e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
 // mandatory international inspections for every nuclear nation: charged automatically once a day
 const INSPECT = { base: 10e6, pct: .01, cap: 80e6, warhead: 1.5, everyH: 24 };
 // a dirty bomb: a conventional missile carrying radioactive material. Far cheaper than a nuclear program; leaves a radioactive cloud over one province for 24 hours
-const DIRTY = { tech: 45, mun: 100, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300, cdH: 12, h: 24, aggr: 25, km: 380 };
+const DIRTY = { tech: 120, tier: 2, mun: 100, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300, cdH: 12, h: 24, aggr: 25, km: 380 };
 // imperial overstretch: only the very biggest empires (28 provinces or more) pay upkeep for every province past 27 (rising steeply), lose stability and risk far-off provinces breaking away
 // paying off the World Council to lift sanctions or rogue status at once: 25% of the treasury (at least $50M), double for a rogue state, and doubling again for every payoff in the last 7 days
 const BRIBE = { pct: .25, min: 50e6, rogueX: 2, windowD: 7 };
@@ -318,26 +318,28 @@ const OUTPOST = { max: 4, rank: 2, stageKm: 2500, def: 1.1, cdH: 2, conv: { cash
 const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
-const WARHEAD = { tech: 120, rank: 7, cash: 2e9, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
+const WARHEAD = { tech: 400, rank: 7, cash: 2e9, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
 // conventional and non-nuclear heavy weapons: real options short of a nuke
+// every heavy weapon belongs to a tier: the higher tiers take far more research, so the big weapons stay special
+const HV_TIER = { 1: 'Tactical', 2: 'Strategic', 3: 'Advanced', 4: 'Superweapon' };
 const HEAVY = {
-  ballistic: { n: 'Ballistic missile', ic: '🚀', tech: 75, mun: 120, rank: 3, cash: 3e7, steel: 900, oil: 700, goods: 200, cdH: 6, aggr: 14, domeX: .5, pop: .04, troops: .1, gdp: .05, infra: 1, st: 6 },
-  bombard: { n: 'Naval bombardment', ic: '⚓', tech: 10, mun: 40, rank: 2, ships: 10, oilPer: 5, cdH: 3, aggr: 7 },
-  cyber: { n: 'Cyber attack', ic: '💻', tech: 40, mun: 0, rank: 2, cash: 2e7, goods: 300, cdH: 8, aggr: 5, h: 12, tax: .75, research: 1.5, trace: .35 },
-  emp: { n: 'EMP strike', ic: '⚡', tech: 110, mun: 500, rank: 7, cash: 1e9, steel: 5000, oil: 5000, goods: 4000, cdH: 72, aggr: 40, h: 12, air: .3, gdp: .08, tax: .6, domeP: [1, .9, .8, .7, .6], domeH: [12, 10, 8, 6, 4] }, // a dome's level decides how likely the pulse knocks it out and how soon it comes back
-  drones: { n: 'Drone swarm', ic: '🛸', tech: 20, mun: 30, rank: 2, cash: 5e6, oil: 200, goods: 300, cdH: 2, aggr: 6, troops: .06, air: .04 },
-  hypersonic: { n: 'Hypersonic missile', ic: '☄', tech: 125, mun: 200, rank: 5, cash: 2.5e8, steel: 1200, oil: 900, goods: 400, cdH: 12, aggr: 18, pop: .06, troops: .15, gdp: .07, infra: 2, st: 8 },
-  blockade: { n: 'Naval blockade', ic: '⛴', tech: 25, mun: 40, rank: 2, ships: 20, oilPer: 3, cdH: 12, aggr: 8, h: 12, tax: .7, gdp: .95 },
-  raid: { n: 'Special forces raid', ic: '🎯', tech: 50, mun: 25, rank: 3, cash: 1.5e7, cdH: 8, aggr: 10, steal: .04, stealMax: 1e8, res: .1 },
-  artillery: { n: 'Artillery barrage', ic: '💥', tech: 5, mun: 20, rank: 1, cash: 3e6, steel: 150, oil: 60, cdH: 2, aggr: 5, troops: .035, fort: 1 },
-  cruise: { n: 'Cruise missile', ic: '🔥', tech: 35, mun: 50, rank: 2, cash: 1.5e7, steel: 400, oil: 400, goods: 100, cdH: 4, aggr: 8, domeX: 1, infra: 1, troops: .03 },
-  carpet: { n: 'Carpet bombing', ic: '✈', tech: 30, mun: 60, rank: 3, air: 40, oilPer: 4, cdH: 6, aggr: 16, pop: .025, troops: .07, infra: 1, st: 5 },
+  ballistic: { n: 'Ballistic missile', ic: '🚀', tech: 150, tier: 3, mun: 120, rank: 3, cash: 3e7, steel: 900, oil: 700, goods: 200, cdH: 6, aggr: 14, domeX: .5, pop: .04, troops: .1, gdp: .05, infra: 1, st: 6 },
+  bombard: { n: 'Naval bombardment', ic: '⚓', tech: 20, tier: 1, mun: 40, rank: 2, ships: 10, oilPer: 5, cdH: 3, aggr: 7 },
+  cyber: { n: 'Cyber attack', ic: '💻', tech: 90, tier: 2, mun: 0, rank: 2, cash: 2e7, goods: 300, cdH: 8, aggr: 5, h: 12, tax: .75, research: 1.5, trace: .35 },
+  emp: { n: 'EMP strike', ic: '⚡', tech: 280, tier: 4, mun: 500, rank: 7, cash: 1e9, steel: 5000, oil: 5000, goods: 4000, cdH: 72, aggr: 40, h: 12, air: .3, gdp: .08, tax: .6, domeP: [1, .9, .8, .7, .6], domeH: [12, 10, 8, 6, 4] }, // a dome's level decides how likely the pulse knocks it out and how soon it comes back
+  drones: { n: 'Drone swarm', ic: '🛸', tech: 30, tier: 1, mun: 30, rank: 2, cash: 5e6, oil: 200, goods: 300, cdH: 2, aggr: 6, troops: .06, air: .04 },
+  hypersonic: { n: 'Hypersonic missile', ic: '☄', tech: 250, tier: 4, mun: 200, rank: 5, cash: 2.5e8, steel: 1200, oil: 900, goods: 400, cdH: 12, aggr: 18, pop: .06, troops: .15, gdp: .07, infra: 2, st: 8 },
+  blockade: { n: 'Naval blockade', ic: '⛴', tech: 40, tier: 1, mun: 40, rank: 2, ships: 20, oilPer: 3, cdH: 12, aggr: 8, h: 12, tax: .7, gdp: .95 },
+  raid: { n: 'Special forces raid', ic: '🎯', tech: 100, tier: 2, mun: 25, rank: 3, cash: 1.5e7, cdH: 8, aggr: 10, steal: .04, stealMax: 1e8, res: .1 },
+  artillery: { n: 'Artillery barrage', ic: '💥', tech: 10, tier: 1, mun: 20, rank: 1, cash: 3e6, steel: 150, oil: 60, cdH: 2, aggr: 5, troops: .035, fort: 1 },
+  cruise: { n: 'Cruise missile', ic: '🔥', tech: 70, tier: 2, mun: 50, rank: 2, cash: 1.5e7, steel: 400, oil: 400, goods: 100, cdH: 4, aggr: 8, domeX: 1, infra: 1, troops: .03 },
+  carpet: { n: 'Carpet bombing', ic: '✈', tech: 80, tier: 2, mun: 60, rank: 3, air: 40, oilPer: 4, cdH: 6, aggr: 16, pop: .025, troops: .07, infra: 1, st: 5 },
   // strikes unlocked by owning a prestige unit (Prestige page): more units make the strike stronger
-  subsalvo: { n: 'Submarine missile salvo', ic: '🌊', pu: 'sub', tech: 50, mun: 150, rank: 4, cash: 3e8, oil: 1000, cdH: 8, aggr: 12, troops: .05, pop: .01, infra: 1, gdp: .03, st: 4, domeX: .5 },
-  stealth: { n: 'Stealth bomber run', ic: '🛩', pu: 'bomber', tech: 40, mun: 120, rank: 4, cash: 4e8, oil: 2000, cdH: 8, aggr: 15, pop: .02, troops: .06, infra: 1, st: 6 },
-  carrier: { n: 'Carrier strike group', ic: '🚢', pu: 'carrier', tech: 60, mun: 150, rank: 4, cash: 5e8, oil: 3000, cdH: 10, aggr: 14, troops: .08, ships: .1, air: .05 },
-  sub: { n: 'Submarine strike', ic: '🌊', tech: 60, mun: 60, rank: 3, ships: 5, cash: 1e7, steel: 300, oil: 300, cdH: 6, aggr: 9, sink: .2 },
-  orbital: { n: 'Orbital strike', ic: '🛰', tech: 175, mun: 400, rank: 7, cash: 7.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
+  subsalvo: { n: 'Submarine missile salvo', ic: '🌊', pu: 'sub', tech: 180, tier: 3, mun: 150, rank: 4, cash: 3e8, oil: 1000, cdH: 8, aggr: 12, troops: .05, pop: .01, infra: 1, gdp: .03, st: 4, domeX: .5 },
+  stealth: { n: 'Stealth bomber run', ic: '🛩', pu: 'bomber', tech: 170, tier: 3, mun: 120, rank: 4, cash: 4e8, oil: 2000, cdH: 8, aggr: 15, pop: .02, troops: .06, infra: 1, st: 6 },
+  carrier: { n: 'Carrier strike group', ic: '🚢', pu: 'carrier', tech: 200, tier: 3, mun: 150, rank: 4, cash: 5e8, oil: 3000, cdH: 10, aggr: 14, troops: .08, ships: .1, air: .05 },
+  sub: { n: 'Submarine strike', ic: '🌊', tech: 110, tier: 2, mun: 60, rank: 3, ships: 5, cash: 1e7, steel: 300, oil: 300, cdH: 6, aggr: 9, sink: .2 },
+  orbital: { n: 'Orbital strike', ic: '🛰', tech: 320, tier: 4, mun: 400, rank: 7, cash: 7.5e8, steel: 4000, oil: 2000, goods: 3000, cdH: 48, aggr: 30, pop: .1, troops: .25, gdp: .12, infra: 3, st: 15 },
 };
 const DEBT_PROPOSE_MAX = .15; // only nations with debt under this share of GDP may propose debt relief in the Council
 const EFFKEYS = ['tr', 'ap', 'st', 'pop', 'troops', 'tech', 'food', 'oil', 'steel', 'goods', 'infra', 'fort', 'train', 'aggr', 'gdp', 'unemp', 'infl', 'health', 'edu', 'debt', 'ships', 'air', 'spies', 'morale'];
@@ -492,7 +494,7 @@ function Core(PD, CARDS) {
   }
   // fresh-start season worlds (cfg.noAdmin): nukes come earlier with shorter waits, and the Golden Dome earlier still, so a defence always exists before the first warhead
   // and every nuclear consequence is timed for a 7-day season: half as long (so a victim can still recover before the end), with costs scaled to season wealth
-  const seasonNukes = on => { NUKE.tech = on ? 60 : 100; WARHEAD.tech = on ? 75 : 120; WARHEAD.holdH = on ? 12 : 24; WARHEAD.buildH = on ? 12 : 24; DOME.tech = on ? 55 : 80; DOME.lv.tech = on ? [55, 60, 65, 70, 75] : [80, 85, 90, 95, 100];
+  const seasonNukes = on => { WARHEAD.holdH = on ? 12 : 24; WARHEAD.buildH = on ? 12 : 24; /* tech levels are the same in seasons: nukes and domes stay rare */
     WARHEAD.warH = on ? 12 : 24; WARHEAD.rogueH = on ? 36 : 72; WARHEAD.nukedH = on ? 36 : 72; WARHEAD.falloutH = on ? 24 : 48; WARHEAD.winterH = on ? 18 : 36; WARHEAD.angerD = on ? 3 : 7; NUKE.upkeep = on ? 1.5e6 : 3e5; INSPECT.cap = on ? 1e9 : 80e6;
     // every other multi-day timer, sized for a 7-day season
     DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 36 : 72; HEAVY.orbital.cdH = on ? 24 : 48;
@@ -1073,7 +1075,7 @@ function Core(PD, CARDS) {
     if (!noRearm && left(W, me, 'strike')) return `Your strike forces are rearming: ${fmtT(left(W, me, 'strike'))}.`;
     return null;
   }
-  const MISSILE = { tech: 15, cash: 4e5, steel: 40, oil: 40, mun: 10 };
+  const MISSILE = { tech: 25, cash: 4e5, steel: 40, oil: 40, mun: 10 };
   // missiles per strike: 5 at tech 15, +1 for every 2 tech levels above that, +1 each at Senator, President and Emperor (up to 10), then +1 for every 4 provinces (up to 10 more)
   const maxMissiles = n => { if (!n || (n.tech || 0) < MISSILE.tech) return 0; const r = rankOf(n.xp); return Math.min(10, 5 + Math.floor(((n.tech || 0) - MISSILE.tech) / 2) + (r >= 4 ? 1 : 0) + (r >= 6 ? 1 : 0) + (r >= 8 ? 1 : 0)) + Math.min(10, Math.floor(hexN(n) / 4)); };
   function strike(W, u, v, kind, target, count, rng) { dropShield(W.A[u]);
@@ -1260,9 +1262,9 @@ function Core(PD, CARDS) {
     return { msg: `${H.ic} ${H.n}: ${sum}.${k === 'cyber' ? traced ? ' They traced it back to you.' : ' They don\'t know it was you.' : ''}`, heavy: { k, h, icept, traced, dmg } };
   }
   // GOLDEN DOME: a national missile shield. Very expensive, takes 12 hours to build, costs upkeep, and shoots down 75% of incoming missiles and 40% of nuclear missiles.
-  const DOME = { tech: 80, rank: 5, cash: 2e9, steel: 12000, goods: 9000, oil: 6000, buildH: 48, upkeep: 1.35e6, mis: .75, nuke: .4,
+  const DOME = { tech: 300, rank: 5, cash: 2e9, steel: 12000, goods: 9000, oil: 6000, buildH: 48, upkeep: 1.35e6, mis: .75, nuke: .4,
     // upgrade levels: each one shoots down more missiles and has a better chance against a nuclear missile
-    lv: { max: 5, mis: [.75, .8, .85, .89, .92], nuke: [.4, .5, .58, .65, .72], cash: [0, 3e8, 5e8, 8e8, 1.2e9], steel: [0, 4000, 6000, 9000, 12000], goods: [0, 3000, 5000, 7000, 10000], oil: [0, 2000, 3000, 5000, 7000], tech: [80, 85, 90, 95, 100], h: [0, 6, 8, 10, 12] } };
+    lv: { max: 5, mis: [.75, .8, .85, .89, .92], nuke: [.4, .5, .58, .65, .72], cash: [0, 3e8, 5e8, 8e8, 1.2e9], steel: [0, 4000, 6000, 9000, 12000], goods: [0, 3000, 5000, 7000, 10000], oil: [0, 2000, 3000, 5000, 7000], tech: [300, 320, 340, 370, 400], h: [0, 6, 8, 10, 12] } };
   // running cost, billed straight from the treasury every tick once the dome is built (the boss nation's free dome is exempt)
   const domeUpkeep = (W, n) => n && n.dome && n.dome.ready <= W.now && !(n.ai && n.ai.boss) ? Math.round(DOME.upkeep * (1 + .5 * (domeLvl(n) - 1)) * W.m.upkeep) : 0;
   const domeLvl = n => n && n.dome ? clamp(n.dome.lvl || 1, 1, DOME.lv.max) : 0;
@@ -2684,5 +2686,5 @@ function Core(PD, CARDS) {
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { DEBT_PROPOSE_MAX, UWONDERS, UW, GRAND, GRANDC, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { HV_TIER, DEBT_PROPOSE_MAX, UWONDERS, UW, GRAND, GRANDC, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });

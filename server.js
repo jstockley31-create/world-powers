@@ -247,6 +247,24 @@ function touch(uid, req) { const m = meta(uid); if (m.lastSeen && Date.now() - m
 const COADMIN_OK = new Set(['overview', 'player', 'ipbans', 'ipblock', 'ipunblock', 'ban', 'unban', 'mute', 'kick', 'clear-chat', 'clear-user-chat', 'report-done', 'bug-done', 'announce', 'poll', 'bug-img', 'finale-preview', 'scriptcheck', 'cheatreview', 'hcrelease']); // moderation only: co-admins also play, so they never see other players' nations, actions or the world's numbers
 const isStaff = u => !!(u && (u.admin || u.coadmin));
 S.coLog = Array.isArray(S.coLog) ? S.coLog : [];
+// Helpdesk: players mail questions to 'helpdesk'; the owner answers from the admin page and the answer arrives in the player's mail. Private: never on /fair or the audit log.
+S.helpdesk = S.helpdesk && typeof S.helpdesk === 'object' && !Array.isArray(S.helpdesk) ? S.helpdesk : {};
+const HD = 'helpdesk', HD_MAX = 400;
+function hdView() {
+  return Object.entries(S.helpdesk).map(([id, T]) => { const u = S.users[id]; const n = S.docs['nations/' + id];
+    return { id, name: u ? u.name : 'Deleted player', nation: n ? n.name : '', gone: !u, open: !!T.open, unread: !!T.unread, last: T.last || 0, msgs: T.msgs || [] }; })
+    .sort((a, b) => (b.open && b.unread) - (a.open && a.unread) || b.open - a.open || b.last - a.last);
+}
+function hdIn(me, b) {
+  const subj = MOD.clean(String(b.subj || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80)) || 'Question';
+  const body = MOD.clean(String(b.body || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 5000)); if (!body) throw Object.assign(new Error('Write your question.'), { status: 400 });
+  const t = Date.now(), T = S.helpdesk[me.id] || (S.helpdesk[me.id] = { msgs: [] });
+  T.msgs = [...(T.msgs || []), { id: rid(), t, from: 'player', subj, body }].slice(-100); T.open = true; T.unread = true; T.last = t;
+  const ids = Object.keys(S.helpdesk); if (ids.length > HD_MAX) { const old = ids.filter(k => !S.helpdesk[k].open).sort((x, y) => S.helpdesk[x].last - S.helpdesk[y].last); for (const k of old.slice(0, ids.length - HD_MAX)) delete S.helpdesk[k]; }
+  S.mail[me.id] = [{ id: rid(), from: me.id, to: HD, t, subj, body, box: 'out', read: true }, ...(S.mail[me.id] || [])].slice(0, 200);
+  for (const [id, u] of Object.entries(S.users)) if (u.admin) addNote(id, 'mail', `🛟 New Helpdesk question from ${nationName(me.id)}: ${subj}. Answer it in the Helpdesk tab of the admin page.`);
+  stat('mail'); persist(); return { ok: true, helpdesk: true };
+}
 function coLog(me, p, b, ok, note) { S.coLog.unshift({ t: Date.now(), by: me.name, id: me.id, act: p.replace('/api/admin/', ''), target: b && typeof b.id === 'string' && S.users[b.id] ? S.users[b.id].name : null, detail: b ? JSON.stringify(Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'id' && k !== 'password'))).slice(0, 300) : '', ok, note: note || null }); S.coLog = S.coLog.slice(0, 2000); persist(); }
 function audit(by, action, target, detail) { S.audit.unshift({ t: Date.now(), by, action, target: target || null, detail: detail || null }); S.audit = S.audit.slice(0, 500);
   if (FAIR_ACTIONS.has(action)) { S.fairlog.unshift({ t: Date.now(), action, target: target || null, detail: detail || null }); S.fairlog = S.fairlog.slice(0, 3000); }
@@ -458,7 +476,7 @@ const ipUsers = ip => { if (Date.now() - ipUseT > 60e3) { ipUse = new Map(); for
 const SHARED_IP = 4;
 const sharesNetwork = (a, b) => { const A = (S.meta[a] || {}).ips || [], B = (S.meta[b] || {}).ips || []; return A.some(ip => B.includes(ip) && ipUsers(ip) < SHARED_IP); };
 const isMuted = uid => (S.users[uid] && S.users[uid].mutedUntil || 0) > Date.now();
-const nationName = uid => (S.docs['nations/' + uid] || {}).name || (S.users[uid] || {}).name || 'Unknown';
+const nationName = uid => uid === 'helpdesk' ? 'Helpdesk' : (S.docs['nations/' + uid] || {}).name || (S.users[uid] || {}).name || 'Unknown';
 
 // ---------- what other players may see ----------
 function publicView(n) {
@@ -1672,6 +1690,7 @@ function cleanChat(d) { const m = Array.isArray(d.m) ? d.m : []; return { m: m.s
 
 // ---------- mail ----------
 function mailSend(me, b) {
+  if (String(b.to || '') === HD) return hdIn(me, b); // anyone can ask the Helpdesk, even guests, muted or jailed players
   if ((S.users[me.id] || {}).guest) throw Object.assign(new Error('Save your account (Account page) to send mail.'), { status: 403 });
   const to = String(b.to || ''); if (!S.users[to] || to === me.id) throw Object.assign(new Error(BOTS.isBot(to) ? 'This nation is run by the computer and does not read mail.' : 'Choose a leader to write to.'), { status: 400 });
   if (isMuted(me.id)) throw Object.assign(new Error('You are muted by the administrators and cannot send mail right now.'), { status: 403 });
@@ -1723,6 +1742,7 @@ function botRecord(uid, b, readyAt, req, cdLen) {
 // other warnings about a player from the last 7 days (shared networks, aid between them, speed flags), for the verdict box
 function netWarn(uid) { const from = Date.now() - 7 * 864e5, f = (S.flags || []).filter(x => x.uid === uid && x.t >= from); const kinds = {}; for (const x of f) { const k = /same network|second ac/i.test(x.r) ? 'Shares a network with another account' : /faster than a person|bot|script/i.test(x.r) ? 'Sent actions faster than a person can click' : /charged back/i.test(x.r) ? 'Charged back a donation' : 'Other flag'; kinds[k] = (kinds[k] || 0) + 1; } return Object.entries(kinds).map(([k, n]) => `${k} (${n}×)`); }
 S.cheatReview = S.cheatReview || {};
+const CLEAN_H = 24; // hours a "Not cheating" decision keeps a player green on Cheat watch
 function scriptCheck() {
   const now = Date.now(), from = now - 48 * HOUR, out = [], sd = a => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
   for (const [uid, s] of Object.entries(S.botsig)) {
@@ -1786,8 +1806,10 @@ function scriptCheck() {
     const n = S.docs['nations/' + uid];
     out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, streakN: streak.n || 0, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hs, jail: ((S.hc || {})[uid] || {}).jail || null, hourly: (() => { const H = new Array(48).fill(0); for (const x of L) { const i = Math.floor((x[0] - from) / HOUR); if (i >= 0 && i < 48) H[i]++; } return H; })(), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
-  for (const r of out) r.case = caseFile(r);
-  return out.sort((a, b) => b.score - a.score || b.acts - a.acts);
+  for (const r of out) { r.case = caseFile(r);
+    // you marked them "Not cheating": they stay green for 24 hours (unless locked in cheat jail), then are judged normally again
+    const rv = r.review; if (rv && rv.d === 'clean' && now - rv.t < CLEAN_H * HOUR && !r.jail) { r.okUntil = rv.t + CLEAN_H * HOUR; r.verdict = 'ok'; r.case = { ...r.case, level: 'clear', tone: 'green', conf: 'None', action: `You marked them as not cheating, so they stay green for 24 hours. After that they are judged normally again, and come back here only if new signs appear.` }; } }
+  return out.sort((a, b) => (a.okUntil ? 1 : 0) - (b.okUntil ? 1 : 0) || b.score - a.score || b.acts - a.acts);
 }
 // turns one player's numbers into a decision: how worried to be, how sure, what to do, and evidence worded so it can be shown to them
 function caseFile(r) {
@@ -1971,7 +1993,25 @@ async function adminRoute(p, req, res, me) {
     if (p === '/api/admin/player' && req.method === 'POST') { const u = b0 && typeof b0.id === 'string' ? S.users[b0.id] : null; if (!u) return send(res, 404, { error: 'Unknown player.' }); const n = S.docs['nations/' + b0.id];
       return send(res, 200, { lite: true, id: b0.id, name: u.name, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[b0.id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }); }
   }
-  if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner' });
+  if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner', hd: Object.values(S.helpdesk).filter(T => T.open && T.unread).length });
+  if (p === '/api/admin/helpdesk') { // owner only (not in COADMIN_OK); nothing here is audit-logged, so it never shows on /fair
+    if (req.method === 'GET') return send(res, 200, { list: hdView() });
+    const b = await readBody(req, 12 * 1024), id = String(b.id || ''), T = S.helpdesk[id];
+    if (!T) return send(res, 404, { error: 'That conversation no longer exists.' });
+    let msg = 'Done.';
+    if (b.op === 'reply') {
+      const body = String(b.body || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 5000); if (!body) return send(res, 400, { error: 'Write an answer.' });
+      const t = Date.now(), last = [...T.msgs].reverse().find(m => m.from === 'player'), subj = last ? (/^re:/i.test(last.subj) ? last.subj : 'Re: ' + last.subj).slice(0, 80) : 'Helpdesk';
+      T.msgs = [...T.msgs, { id: rid(), t, from: 'staff', by: me.name, subj, body }].slice(-100); T.unread = false; T.last = t; if (b.close) T.open = false;
+      if (S.users[id]) { S.mail[id] = [{ id: rid(), from: HD, to: id, t, subj, body, box: 'in', read: false }, ...(S.mail[id] || [])].slice(0, 200); sendTo(id, 'mail', { unread: S.mail[id].filter(m => m.box === 'in' && !m.read).length }); addNote(id, 'mail', `🛟 The Helpdesk answered your question: ${subj}`, '/play#mail'); msg = 'Answer sent to their mail.'; }
+      else msg = 'Saved, but this player has deleted their account, so nobody will receive it.';
+    } else if (b.op === 'seen') T.unread = false;
+    else if (b.op === 'close') { T.open = false; T.unread = false; msg = 'Marked as resolved.'; }
+    else if (b.op === 'reopen') { T.open = true; msg = 'Reopened.'; }
+    else if (b.op === 'delete') { delete S.helpdesk[id]; msg = 'Conversation deleted.'; }
+    else return send(res, 400, { error: 'Unknown action.' });
+    persist(); return send(res, 200, { ok: true, msg, list: hdView() });
+  }
   if (p === '/api/admin/coadmins') { // the owner adds or removes co-admins and reads everything they have done
     if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' });
     if (req.method === 'POST') { const b = (req._body || await readBody(req, 2048)), q = String(b.who || '').trim().toLowerCase();
@@ -2668,7 +2708,7 @@ async function handle(req, res) {
     }
 
     // ---- mail ----
-    if (p === '/api/mail' && req.method === 'GET') return send(res, 200, { mail: (S.mail[me.id] || []).map(m => ({ ...m, fromName: nationName(m.from), toName: nationName(m.to), fromLeader: (S.users[m.from] || {}).name, toLeader: (S.users[m.to] || {}).name })) });
+    if (p === '/api/mail' && req.method === 'GET') return send(res, 200, { mail: (S.mail[me.id] || []).map(m => ({ ...m, fromName: nationName(m.from), toName: nationName(m.to), fromLeader: m.from === HD ? 'Game staff' : (S.users[m.from] || {}).name, toLeader: m.to === HD ? 'Game staff' : (S.users[m.to] || {}).name })) });
     if (p === '/api/mail/send' && req.method === 'POST') {
       if (limited('mail:' + me.id, 10, 10 * 60e3)) return send(res, 429, { error: 'You are sending mail too quickly. Try again in a few minutes.' });
       const b = await readBody(req, 8 * 1024); touch(me.id, req); return send(res, 200, mailSend(me, b));
