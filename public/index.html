@@ -1944,7 +1944,7 @@ const GL=(()=>{
   const g=ctx.createRadialGradient(w/2,h/2,r*.96,w/2,h/2,r*1.16);g.addColorStop(0,'rgba(110,175,255,.38)');g.addColorStop(.35,'rgba(76,154,255,.14)');g.addColorStop(1,'rgba(76,154,255,0)');ctx.fillStyle=g;ctx.beginPath();ctx.arc(w/2,h/2,r*1.16,0,7);ctx.fill();
   const oc=ctx.createRadialGradient(w/2-r*.4,h/2-r*.45,r*.05,w/2,h/2,r);oc.addColorStop(0,'#1f5378');oc.addColorStop(.55,'#0e2c48');oc.addColorStop(1,'#061524');ctx.fillStyle=oc;ctx.beginPath();path({type:'Sphere'});ctx.fill();
   {const gl=ctx.createRadialGradient(w/2-r*.36,h/2-r*.42,0,w/2-r*.36,h/2-r*.42,r*.42);gl.addColorStop(0,'rgba(200,225,255,.16)');gl.addColorStop(1,'rgba(200,225,255,0)');ctx.fillStyle=gl;ctx.beginPath();ctx.arc(w/2,h/2,r,0,7);ctx.fill()} // sunlight glinting off the sea
-  ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=.6;ctx.beginPath();path(grat);ctx.stroke();
+  if(!isMv()){ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=.6;ctx.beginPath();path(grat);ctx.stroke()} /* the faint grid is skipped while the globe moves */
   const ctr=[-st.rot[0],-st.rot[1]];if(candW!==W){candW=W;candS=me?new Set(expandTargets()):null;mineS=me?myHexes():[]}const cand=st.mode==='world'?candS:null;const pick=st.mode==='found'?found_.hex:selHex;const lw=Math.max(.35,Math.min(1,st.scale*.4)),plw=Math.max(.75,Math.min(1.35,st.scale*.55));
   // provinces are drawn in batches, one path per colour (a nation, or a terrain type): a few dozen fills instead of hundreds, which keeps phones smooth
   {const grp=new Map();for(const p of P){if(d3.geoDistance(ctr,p.c)>1.85||offScr(p))continue;const o=OWN[p.id];const fill=o&&A[o.u]?A[o.u].color:TYPE[p.t].col,k=(o?'o':'u')+fill;let g=grp.get(k);if(!g)grp.set(k,g=[]);g.push(p)}
@@ -1952,7 +1952,7 @@ const GL=(()=>{
     /* a hairline in the fill's own colour closes the seams between neighbours; the province lines themselves are drawn once each by provLines */
     ctx.lineJoin='round';ctx.strokeStyle=k.slice(1);ctx.lineWidth=.8;ctx.stroke()}}
   provLines(ctr,OWN,plw,isMv()&&st.scale<1.6);
-  ctx.beginPath();for(const g of cgPolys())provPath(g,ctr);ctx.strokeStyle='rgba(255,224,150,.22)';ctx.lineWidth=Math.max(4,lw*5);ctx.stroke();ctx.strokeStyle='rgba(255,230,170,.85)';ctx.lineWidth=Math.max(1.1,lw*1.5);ctx.stroke(); /* real-world country borders: a thin gold line with a soft glow */
+  ctx.beginPath();for(const g of cgPolys()){if(offScr(g)||d3.geoDistance(ctr,g.c)-g._r>1.58)continue;provPath(g,ctr)} /* off-screen and far-side borders are skipped */ctx.strokeStyle='rgba(255,224,150,.22)';ctx.lineWidth=Math.max(4,lw*5);ctx.stroke();ctx.strokeStyle='rgba(255,230,170,.85)';ctx.lineWidth=Math.max(1.1,lw*1.5);ctx.stroke(); /* real-world country borders: a thin gold line with a soft glow */
   if(st.mode!=='mini')borders(ctr,OWN,lw);
   // a thin, drifting cloud layer (fades out as you zoom in, so it never hides the map)
   if(false&&st.mode!=='mini'&&st.scale<2.6){const ca=Math.min(1,(2.6-st.scale)/1.2)*.16,dr=Date.now()/9e5;for(const c_ of CLOUDS){const lon=c_[0]+dr*c_[3],v=unit([lon,c_[1]]),cvv=unit(ctr);if(dot(v,cvv)<.25)continue;const xy=proj([lon,c_[1]]);if(!xy)continue;const edge=Math.min(1,(dot(v,cvv)-.25)/.35);const rr=r*c_[2];ctx.save();ctx.globalAlpha=ca*edge;ctx.translate(xy[0],xy[1]);ctx.scale(1.7,1);ctx.drawImage(spr('cloud',G_CLOUD),-rr,-rr,rr*2,rr*2);ctx.restore()}ctx.globalAlpha=1}
