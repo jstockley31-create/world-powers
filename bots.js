@@ -257,6 +257,7 @@ module.exports = function makeBots(core, WP, rng) {
     // 3) keep supplies healthy via the market
     const cons = core.consumption(n), prod = core.production(W, u);
     for (const r of ['food', 'oil', 'steel', 'goods']) { const need = (cons[r] - prod[r]) * 6 + 60; if (n.res[r] < need && n.cash > 4e5) { const q = Math.round(Math.max(60, need - n.res[r] + 60)); if (tryExec(W, u, { c: 'market', r, q, buy: true })) return; } }
+    if (core.mkOn && core.mkOn(W) && core.emerRoom(W, u) && tryExec(W, u, { c: 'market', r: 'food', q: core.emerRoom(W, u), buy: true, emer: true })) return; // the limited market is short of food: a computer nation uses the emergency import like a player would
     if (per.sell || rng() < .3) for (const r of ['food', 'oil', 'steel', 'goods']) if (n.res[r] > 900) { if (tryExec(W, u, { c: 'market', r, q: Math.round(n.res[r] * .4), buy: false })) return; }
     // 4) diplomacy
     const others = core.others(W, u);

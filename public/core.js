@@ -360,10 +360,10 @@ const COVERT = {
   wiretap: { n: 'Wiretap their alliance', spies: 3, cost: 400000, d: 'Bug their alliance chat: read everything they say for the next 6 hours on your Intelligence page. They may notice the bug and be warned that someone is listening.' },
   bankers: { n: 'Leak to their bankers', spies: 3, cost: 500000, d: 'Leak damaging figures to their lenders: their credit rating drops one step for 24 hours, so borrowing costs them more.' },
   falseflag: { n: 'False flag', spies: 4, cost: 3000000, d: 'Frame this nation. If your next operation in the next 6 hours is caught, the evidence points to them instead of you. One time in three the frame-up is exposed: it is pinned on you and the whole world hears about it.' },
-  heist: { n: 'Crack the treasury vault', spies: 3, cost: 400000, skill: 'safe', d: 'Break into their central bank and crack the vault yourself: turn the dial, listen for the clicks and lock in the combination before the guards arrive. The better you do, the more likely you get away with up to 3% of their treasury (at most $80M).' },
-  cipher: { n: 'Intercept and decode', spies: 2, cost: 250000, skill: 'cipher', d: 'Intercept an encrypted message from their government and break the code yourself. The message is real: their army, treasury, wars and next target. Decode it well and fast and your agents get away clean.' },
-  warplans: { n: 'Steal their war plans', spies: 4, cost: 1500000, skill: 'memory', d: 'Your agents get a few seconds in their war room. Memorize the classified cards, then match the pairs once they flip face down, before the guards return. Pull it off and their defenses are 12% weaker against everyone for 12 hours, and you learn the size of their army, navy and air force.' },
-  assassinate: { n: 'Assassinate a general', spies: 5, cost: 2000000, skill: 'sniper', d: 'Take the shot yourself: steady the swaying scope, hold your breath and fire on their best general (the one with the most stars). Three bullets. If your agents are caught the world finds out and they get a 48-hour just cause against you.' }
+  heist: { n: 'Crack the vault', spies: 0, cost: 0, skill: 'safe', solo: 1, d: 'A training vault at your intelligence academy. Turn the dial, listen for the clicks and lock in the combination before the alarm. The better you do, the bigger your prize.' },
+  cipher: { n: 'Break the code', spies: 0, cost: 0, skill: 'cipher', solo: 1, d: 'Your code-breakers hand you an encrypted message. Work out the cipher and decode it against the clock. A faster, cleaner decode wins a bigger prize.' },
+  warplans: { n: 'War room memory', spies: 0, cost: 0, skill: 'memory', solo: 1, d: 'A few seconds to memorize the classified cards, then match the pairs once they flip face down. Fewer mistakes and a faster time win a bigger prize. Harder boards pay more.' },
+  assassinate: { n: 'Sharpshooter range', spies: 0, cost: 0, skill: 'sniper', solo: 1, d: 'Three bullets on the academy range: steady the swaying scope, hold your breath and hit the moving target. Shots near the centre win a bigger prize.' }
 };
 // World Council resolutions. kind: 'punish' and 'protect' name a target nation; 'global' applies to everyone. h = how long it lasts.
 const RESOLUTIONS = {
@@ -502,7 +502,7 @@ function Core(PD, CARDS) {
     DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 36 : 72; HEAVY.orbital.cdH = on ? 24 : 48;
     CAPMOVE.cdH = on ? 24 : 72; CAPMOVE.holdH = on ? 12 : 24; CAPMOVE.weakH = on ? 12 : 24; VASSAL.freeH = on ? 24 : 48; COMEBACK.gapH = on ? 24 : 72; COMEBACK.shieldH = on ? 12 : 24;
     NTEST.cdD = on ? 2 : 7; DISARM.banD = on ? 2 : 7; BRIBE.windowD = on ? 2 : 7; NUKEACC.gapD = on ? 2 : 7; BLOC.inviteH = on ? 24 : 72; ROUTE_D = on ? 2 : 7; };
-  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = mods(ev, council, now); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
+  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], MK: (ext && ext.mkt) || null, changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = mods(ev, council, now); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
   const owner = (W, h) => W.OWN[h] && W.OWN[h].u;
   // a read-only pass (drawing a page) can freeze the world so province lists are worked out once per nation instead of on every call
   let HXC = null; const freeze = W => { HXC = { W, m: new Map() }; }, thaw = () => { HXC = null; };
@@ -674,12 +674,50 @@ function Core(PD, CARDS) {
   function mktNets(W, r, skip) { let other = 0, mine = 0; const since = W.now - 6 * HOUR;
     const cap = mktK(W) * .75; for (const [u, n] of Object.entries(W.A)) { let v = 0; for (const t of n.trades || []) if (t.t > since && t.r === r) v += t.q; v = clamp(v, -cap, cap); if (u === skip) mine = v; else other += v; }
     return { other, mine }; }
-  function prices(W) { const p = {}; for (const k in RES) { const { other } = mktNets(W, k, null); p[k] = Math.round(RES[k].p * mktMult(W, other) * (W.m.price[k] || 1)); } return p; }
+  // FINITE WORLD MARKET (an admin switch). The market holds a real stock of each commodity: selling adds to it, buying takes from it,
+  // and an empty market sells nothing. Foreign suppliers deliver part of the world's shortfall every 10 minutes (only while the
+  // stock is below its normal level; a commodity the world makes enough of gets a small trickle instead), computer nations sell their surplus into it, and each nation can import only so much in 24 hours.
+  // Food has an emergency import at a steep price, for a nation that is about to run out, so a shortage hurts but never kills.
+  const MKT = { refH: 24, cap: 4, sup: .4, trickle: .25, elast: .75, pmin: .55, pmax: 4, limPad: .1, emerX: 3, emerH: 24, emerLow: 12, histH: 168,
+    floor: { food: 2e5, oil: 1e5, steel: 1e5, goods: 6e4, mun: 4000 }, perHex: { food: 500, oil: 400, steel: 400, goods: 150, mun: 8 }, limMin: { food: 40000, oil: 8000, steel: 8000, goods: 8000, mun: 150 } };
+  const mkOn = W => !!(W && W.MK && W.MK.on && W.MK.stock);
+  function mktDemand(W) { if (W._mkd && W._mkd.t === W.now) return W._mkd; const c = {}, p = {}; let munCap = 0; for (const r in RES) { c[r] = 0; p[r] = 0; }
+    for (const u in W.A) { const n = W.A[u]; if (!n || n.cap == null) continue; const cc = consumption(n), pp = production(W, u); for (const r in RES) { c[r] += cc[r] || 0; p[r] += pp[r] || 0; } munCap += MUN.cap(n); }
+    const ref = {}; for (const r in RES) ref[r] = Math.round(Math.max(MKT.floor[r], (r === 'mun' ? munCap * .2 : Math.max(c[r], p[r]) * 6 * MKT.refH)));
+    return (W._mkd = { t: W.now, c, p, ref }); }
+  const mkRef = (W, r) => (W.MK && W.MK.ref && W.MK.ref[r]) || mktDemand(W).ref[r];
+  const mkStock = (W, r) => Math.max(0, (W.MK.stock && W.MK.stock[r]) || 0);
+  const mkMul = (W, r, s) => clamp(Math.pow(mkRef(W, r) / Math.max(s, mkRef(W, r) * .01), MKT.elast), MKT.pmin, MKT.pmax);
+  const mkRoomSell = (W, r) => Math.max(0, Math.floor(mkRef(W, r) * MKT.cap - mkStock(W, r)));
+  const mkSup = W => (W.MK && W.MK.sup != null ? W.MK.sup : MKT.sup);
+  function mkLimit(W, u, r) { const n = W.A[u], need = Math.max(0, (consumption(n)[r] || 0) - (production(W, u)[r] || 0)); const lo = Math.min(1.1, mkSup(W) + MKT.limPad), full = mkOn(W) ? clamp((mkStock(W, r) / Math.max(1, mkRef(W, r)) - .5) / .5, 0, 1) : 1; // a well-stocked market is not rationed: the limit tightens only as the stock falls below its normal level
+    return Math.round(MKT.limMin[r] + hexesOf(W, u).length * MKT.perHex[r] + need * 144 * (lo + (1.1 - lo) * full)); }
+  function mkUsed(W, n, r) { const since = W.now - 24 * HOUR; let v = 0; for (const t of n.mbuy || []) if (t.t > since && t.r === r) v += t.q; return v; }
+  const mkLeft = (W, u, r) => Math.max(0, mkLimit(W, u, r) - mkUsed(W, W.A[u], r));
+  function mkNoteBuy(W, n, r, q) { const since = W.now - 24 * HOUR, L = (n.mbuy || []).filter(t => t.t > since), top = L.find(t => t.r === r && W.now - t.t < HOUR); if (top) top.q += q; else L.unshift({ t: W.now, r, q }); n.mbuy = L.slice(0, 130); }
+  // emergency food: only when your food would run out within 12 hours; it fills you up to a day's worth, at three times the price
+  const emerNeed = n => Math.max(1000, (consumption(n).food || 0) * 6);
+  const emerRoom = (W, u) => { const n = W.A[u]; if (!n || (n.res.food || 0) >= emerNeed(n) * MKT.emerLow) return 0; return Math.max(0, Math.floor(emerNeed(n) * MKT.emerH - (n.res.food || 0))); };
+  const emerUnit = (W, u) => RES.food.p * (W.m.price.food || 1) * MKT.emerX * spreads(W, u).buy;
+  function mkHist(W) { const M = W.MK; M.hist = M.hist || []; const last = M.hist[M.hist.length - 1]; if (last && W.now - last.t < HOUR) return false;
+    M.hist.push({ t: W.now, s: { ...M.stock }, p: prices(W) }); if (M.hist.length > MKT.histH) M.hist.splice(0, M.hist.length - MKT.histH); return true; }
+  // runs from the world loop: primes an empty market, then delivers the foreign suppliers' share every 10 minutes
+  function mktTick(W) { const M = W.MK; if (!M || !M.on) return 0; const d = mktDemand(W);
+    if (!M.stock) { M.ref = { ...d.ref }; M.stock = {}; for (const r in RES) M.stock[r] = Math.round(d.ref[r] * (M.prime || 1)); M.t = W.now; M.primed = W.now; M.hist = []; M.del = {}; mkHist(W); return 2; }
+    let k = Math.floor((W.now - (M.t || W.now)) / TICK); if (k <= 0) return 0; M.t = k > 144 ? W.now : M.t + k * TICK; k = Math.min(k, 144);
+    const sup = mkSup(W); M.del = M.del || {}; M.ref = { ...d.ref };
+    for (const r in RES) { const short = Math.max(0, d.c[r] - d.p[r]); let s = M.stock[r] || 0; const s0 = s;
+      for (let i = 0; i < k; i++) if (s < d.ref[r]) s = Math.min(d.ref[r], s + (short > 0 ? sup * short : MKT.trickle * d.ref[r] / 144));
+      M.stock[r] = Math.round(s); M.del[r] = Math.round((M.del[r] || 0) + s - s0); }
+    return mkHist(W) ? 2 : 1; }
+  function prices(W) { const p = {}; for (const k in RES) { const m_ = mkOn(W) ? mkMul(W, k, mkStock(W, k)) : mktMult(W, mktNets(W, k, null).other); p[k] = Math.round(RES[k].p * m_ * (W.m.price[k] || 1)); } return p; }
   // average price multiplier for an order of q units (+ buy, − sell) by nation u, integrated along the price path
-  function orderMult(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75, N = 60; let sum = 0;
+  function orderMult(W, u, r, q) { if (mkOn(W)) { const s = mkStock(W, r), q_ = q > 0 ? Math.min(q, s) : q, N = 40; let sum = 0; for (let i = 0; i < N; i++) sum += mkMul(W, r, s - q_ * (i + .5) / N); return sum / N; }
+    const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75, N = 60; let sum = 0;
     for (let i = 0; i < N; i++) sum += mktMult(W, other + clamp(mine + q * (i + .5) / N, -cap, cap)); return sum / N; }
   // price multiplier at the very end of an order of q units, relative to the price before it (for "sensible max" buttons)
-  function orderEdge(W, u, r, q) { const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75; return mktMult(W, other + clamp(mine + q, -cap, cap)) / mktMult(W, other + mine); }
+  function orderEdge(W, u, r, q) { if (mkOn(W)) { const s = mkStock(W, r); return mkMul(W, r, s - (q > 0 ? Math.min(q, s) : q)) / mkMul(W, r, s); }
+    const { other, mine } = mktNets(W, r, u), cap = mktK(W) * .75; return mktMult(W, other + clamp(mine + q, -cap, cap)) / mktMult(W, other + mine); }
   function spreads(W, u) { const n = W.A[u]; const sp = sanctioned(n) ? .3 : 0, tb = Math.min(tcap(n), traders(W, u).length) * .03 * (sanctioned(n) ? 0 : 1) * W.m.tradeMul; const inf = Math.max(0, (n.infl || 0) - 3) / 200; const lx = fxAdd(n, 'spread'); return { buy: Math.max(1.02 + sp + inf, 1.08 + sp - tb - W.m.spread + inf - lx), sell: Math.min(.98 - sp, .92 - sp + tb + W.m.spread + lx) }; } // trade bonuses narrow the fee but can never cross it: buying and selling straight back always loses at least 4%
   const maxBorrow = (n, W0) => { const W_ = W0 || { now: Date.now() }; return Math.max(0, (n.gdp || 0) * CREDIT.cap[rating(W_, n)] - (n.debt || 0)); };
 
@@ -1582,16 +1620,23 @@ function Core(PD, CARDS) {
   function pushTrade(W, n, r, q) { const since = W.now - 6 * HOUR; let L = [{ t: W.now, r, q }, ...(n.trades || [])].filter(t => t.t > since);
     if (L.length > 40) { const keep = L.slice(0, 30), old = L.slice(30), m = {}; for (const t of old) { const x = m[t.r] || (m[t.r] = { t: t.t, r: t.r, q: 0 }); x.q += t.q; x.t = Math.max(x.t, t.t); } L = [...keep, ...Object.values(m).filter(x => x.q)]; }
     n.trades = L; }
-  function market(W, u, r, q, buy) {
+  function market(W, u, r, q, buy, emer) {
     const me = W.A[u]; if (!me) fail('Found a nation first.'); if (!has(RES, r)) fail('Unknown commodity.');
     if (embargoed(W, me)) fail('You are under a World Council embargo and cannot trade on the world market.');
     if ((me.blockade || 0) > W.now) fail(`Enemy warships are blockading your ports: no market trade for ${fmtT(me.blockade - W.now)}.`);
     if (rogue(W, me)) fail('Your nation is a rogue state under a full international embargo. The world market is closed to you.');
-    q = Math.floor(Number(q)); if (!(q > 0) || q > 1e6) fail('Enter a valid quantity.');
+    q = Math.floor(Number(q)); if (!(q > 0) || (q > 1e6 && !(buy && emer))) fail('Enter a valid quantity.'); // an emergency import is capped by what the nation needs, not by the order size
     const s = spreads(W, u), base = RES[r].p * (W.m.price[r] || 1); let msg;
     if (buy && r === 'mun' && q > munRoom(me)) fail(munRoom(me) ? `Your depots only have room for ${num(munRoom(me))} more munitions.` : `Your depots are full (${num(MUN.cap(me))} munitions).`);
-    if (buy) { const cost = Math.round(base * orderMult(W, u, r, q) * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; pushTrade(W, me, r, q); msg = `Imported ${num(q)} ${rName(r)} for ${money(cost)}.`; }
-    else { if (q > me.res[r]) fail('You do not have that much.'); const got = Math.round(base * orderMult(W, u, r, -q) * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; pushTrade(W, me, r, -q); msg = `Exported ${num(q)} ${rName(r)} for ${money(got)}.`; }
+    if (buy && emer) { if (!mkOn(W) || r !== 'food') fail('Emergency imports are only for food while the world market has limited stock.'); const room = emerRoom(W, u); if (!room) fail(`Emergency food is only for a nation about to run out: it unlocks when your food would last less than ${MKT.emerLow} hours.`);
+      q = Math.min(q, room); const cost = Math.round(emerUnit(W, u) * q); if (cost > me.cash) fail(`That emergency import costs ${money(cost)}.`); me.cash -= cost; me.res.food += q; me.imp = (me.imp || 0) + cost; msg = `Emergency import: ${num(q)} food for ${money(cost)} (three times the normal price).`; }
+    else if (buy) { if (mkOn(W)) { const st = Math.floor(mkStock(W, r)), left = mkLeft(W, u, r);
+        if (st <= 0) fail(`The world market has no ${rName(r)} left. Suppliers restock it every 10 minutes${r === 'food' && emerRoom(W, u) ? ', and you can use an emergency food import now' : ''}.`);
+        if (q > st) fail(`The world market only has ${num(st)} ${rName(r)} in stock.`);
+        if (!left) fail(`You have reached your import limit for ${rName(r)} (${num(mkLimit(W, u, r))} every 24 hours). It frees up as the day passes.`);
+        if (q > left) fail(`You can import ${num(left)} more ${rName(r)} in the next 24 hours.`); }
+      const cost = Math.round(base * orderMult(W, u, r, q) * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; pushTrade(W, me, r, q); if (mkOn(W)) { W.MK.stock[r] = Math.max(0, mkStock(W, r) - q); mkNoteBuy(W, me, r, q); W.mkch = W.mkch || 1; } msg = `Imported ${num(q)} ${rName(r)} for ${money(cost)}.`; }
+    else { if (q > me.res[r]) fail('You do not have that much.'); if (mkOn(W)) { const room = mkRoomSell(W, r); if (!room) fail(`The world market is full of ${rName(r)} and is not buying right now.`); if (q > room) fail(`The world market can take at most ${num(room)} more ${rName(r)} right now.`); } const got = Math.round(base * orderMult(W, u, r, -q) * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; pushTrade(W, me, r, -q); if (mkOn(W)) { W.MK.stock[r] = mkStock(W, r) + q; W.mkch = W.mkch || 1; } msg = `Exported ${num(q)} ${rName(r)} for ${money(got)}.`; }
     log(me, msg, W); if (base * q >= 1e5) xpOnce(W, u, 'mkt', 5 * MIN, 2); touch(W, u); return { msg };
   }
 
@@ -1616,13 +1661,14 @@ function Core(PD, CARDS) {
     if (n.autoT && W.now - n.autoT < AUTOBUY.everyMs) return false; n.autoT = W.now; let ch = false;
     for (const r of ks) {
       const o = n.auto[r]; if ((n.res[r] || 0) >= o.below) continue;
-      let q = o.q; if (r === 'mun') q = Math.min(q, munRoom(n));
+      let q = o.q; if (r === 'mun') q = Math.min(q, munRoom(n)); let emer = false;
+      if (mkOn(W) && q > 0) { const room = Math.min(Math.floor(mkStock(W, r)), mkLeft(W, u, r)); if (room < q) { if (r === 'food' && emerRoom(W, u)) { emer = true; q = Math.min(q, emerRoom(W, u)); } else if (room > 0) q = room; else { o.fail = mkStock(W, r) < 1 ? 'the world market is out of stock' : 'you reached your 24-hour import limit'; o.failT = W.now; if (!o.warnT || W.now - o.warnT > AUTOBUY.warnH * HOUR) { o.warnT = W.now; note(W, u, 'economy', `🛒 Auto-buy couldn't restock ${rName(r)}: ${o.fail}.`); log(n, `Auto-buy skipped for ${rName(r)}: ${o.fail}.`, W); } ch = true; continue; } } }
       const why = q <= 0 ? 'your depots are full' : embargoed(W, n) ? 'a World Council embargo closes the world market to you' : (n.blockade || 0) > W.now ? 'enemy warships are blockading your ports' : rogue(W, n) ? 'rogue states are shut out of the world market' : null;
-      let cost = 0, unit = 0; if (!why) { unit = autoUnit(W, u, r, q); cost = Math.round(unit * q); }
+      let cost = 0, unit = 0; if (!why) { unit = emer ? emerUnit(W, u) : autoUnit(W, u, r, q); cost = Math.round(unit * q); }
       const why2 = why || (o.maxp && unit > o.maxp ? `the price (${money(Math.round(unit))} each) is above your limit of ${money(o.maxp)}` : cost > Math.max(0, n.cash) ? `you need ${money(cost)} and have ${money(Math.max(0, Math.floor(n.cash)))}` : null);
       if (why2) { o.fail = why2; o.failT = W.now; if (!o.warnT || W.now - o.warnT > AUTOBUY.warnH * HOUR) { o.warnT = W.now; note(W, u, 'economy', `🛒 Auto-buy couldn't restock ${rName(r)}: ${why2}.`); log(n, `Auto-buy skipped for ${rName(r)}: ${why2}.`, W); } ch = true; continue; }
-      n.cash -= cost; n.res[r] = (n.res[r] || 0) + q; n.imp = (n.imp || 0) + cost; pushTrade(W, n, r, q);
-      o.last = { t: W.now, q, cost }; delete o.fail; delete o.warnT;
+      n.cash -= cost; n.res[r] = (n.res[r] || 0) + q; n.imp = (n.imp || 0) + cost; if (!emer) pushTrade(W, n, r, q); if (mkOn(W) && !emer) { W.MK.stock[r] = Math.max(0, mkStock(W, r) - q); mkNoteBuy(W, n, r, q); W.mkch = W.mkch || 1; }
+      o.last = { t: W.now, q, cost, emer }; delete o.fail; delete o.warnT;
       log(n, `🛒 Auto-buy: imported ${num(q)} ${rName(r)} for ${money(cost)} (stock had fallen below ${num(o.below)}).`, W); ch = true;
     }
     if (ch) touch(W, u); return ch;
@@ -1651,7 +1697,15 @@ function Core(PD, CARDS) {
   const COVERT_ID = { any: .2, assassinate: .45 }; // chance a failed operation's agents are identified
   // skill operations are played as a mini-game: the start pays and starts the cooldown, the server scores the game (0 to 1),
   // and the result is then rolled with odds set mostly by that score (always between about 15% and 90%)
-  function covertBegin(W, u, op, v) { const o = COVERT[op]; if (!o || !o.skill) fail('Unknown operation.'); covertCheck(W, u, op, v, false); const me = W.A[u]; me.cash -= o.cost; me.cd.covert = W.now + tq(W, 20 * MIN); touch(W, u); return { ok: true }; }
+  const MGAME = { cdH: 2, feeF: .08, min: 250000, max: 1e8, need: .3, k: { heist: .5, cipher: .35, warplans: .6, assassinate: .75 }, lvl: { easy: .6, medium: 1, hard: 1.5 }, xp: 8 };
+  const mgPrize = (W, u, op, lvl) => Math.round(clamp(taxIncome(W, u) * (MGAME.k[op] || 0), MGAME.min, MGAME.max) * (MGAME.lvl[lvl] || 1) / 1000) * 1000;
+  const mgFee = (W, u, op, lvl) => Math.round(mgPrize(W, u, op, lvl) * MGAME.feeF / 1000) * 1000;
+  const mgWait = (W, u, op) => { const n = W.A[u]; return Math.max(0, ((n && n.mgT && n.mgT[op]) || 0) + tq(W, MGAME.cdH * HOUR) - W.now); };
+  const mgShare = sk => sk < MGAME.need ? 0 : Math.min(1, (sk - MGAME.need) / .6);
+  function mgBegin(W, u, op, lvl) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!MGAME.k[op]) fail('Unknown game.'); const w = mgWait(W, u, op); if (w > 0) fail(`You can play ${COVERT[op].n} for a prize again in ${fmtT(w)}. Practice is free any time.`);
+    const fee = mgFee(W, u, op, lvl); if (n.cash < fee) fail(`The entry fee is ${money(fee)}.`); n.cash -= fee; n.spent = (n.spent || 0) + fee; (n.mgT = n.mgT || {})[op] = W.now; touch(W, u); return { fee, prize: mgPrize(W, u, op, lvl) }; }
+  function mgPay(W, u, op, prize, sk) { const n = W.A[u]; if (!n) return { won: 0, xp: 0 }; const f = mgShare(sk), won = Math.round(prize * f / 1000) * 1000, xp = Math.round(MGAME.xp * f); if (won > 0) { n.cash += won; n.rev = (n.rev || 0) + won; } if (xp > 0) gainXP(W, u, xp); log(n, won ? `${COVERT[op].n}: scored ${Math.round(sk * 100)} and won ${money(won)}.` : `${COVERT[op].n}: scored ${Math.round(sk * 100)}, not enough for a prize.`, W); touch(W, u); return { won, xp }; }
+  function covertBegin(W, u, op, v) { if (COVERT[op] && COVERT[op].solo) fail('That is now a prize game you play on your own, from the Intelligence page.'); const o = COVERT[op]; if (!o || !o.skill) fail('Unknown operation.'); covertCheck(W, u, op, v, false); const me = W.A[u]; me.cash -= o.cost; me.cd.covert = W.now + tq(W, 20 * MIN); touch(W, u); return { ok: true }; }
   function covertCheck(W, u, op, v, paid) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
@@ -2699,7 +2753,7 @@ function Core(PD, CARDS) {
       case 'mun': return makeMun(W, u, c.q);
       case 'dip': return dip(W, u, String(c.kind), String(c.v));
       case 'aid': return aid(W, u, String(c.v), c.amt || {});
-      case 'market': return market(W, u, String(c.r), c.q, !!c.buy);
+      case 'market': return market(W, u, String(c.r), c.q, !!c.buy, !!c.emer);
       case 'autobuy': return setAutoBuy(W, u, c);
       case 'tax': return setTax(W, u, c.t);
       case 'budget': return setBudget(W, u, c.b || {});
@@ -2742,7 +2796,7 @@ function Core(PD, CARDS) {
 
 
   return { aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, covertCheck, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
-    noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
+    noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, MGAME, mgPrize, mgFee, mgWait, mgShare, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }

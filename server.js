@@ -561,7 +561,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -601,7 +601,7 @@ function effCfg() {
   return c;
 }
 const bossBreatherH = () => { const h = +((S.config.boss || {}).breatherH); return isFinite(h) && h >= 0 ? h : 48; };
-const extW = () => ({ games: S.games, dis: S.dis });
+const extW = () => ({ games: S.games, dis: S.dis, mkt: S.mkt });
 // FAIR SCORING: every 10 minutes each nation's score is sampled; rankings use the average of the last 12 hours (core.score reads it as n.rs)
 S.scoreHist = S.scoreHist || {};
 function fairSample() { try { const W = mkWorld(); if (!core.fairOn(W)) return; const now = Date.now(), cut = now - core.FAIR.avgH * HOUR;
@@ -630,6 +630,7 @@ function commit(W) {
   if (W.crch) { W.crch = false; persist(); broadcast('crisis', crisisView()); }
   if (W.gch) { W.gch = false; persist(); broadcast('games', S.games); }
   if (W.disch) { W.disch = false; persist(); broadcast('dis', disView()); }
+  if (W.mkch) { const full_ = W.mkch === 2; W.mkch = 0; persist(); broadcast('mkt', mktView(full_)); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
   // nuclear tests: everyone online watches it happen
@@ -1249,6 +1250,7 @@ function seasonView(W, se, uid) { if (!se) return null; const live = se.status =
   return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
 function seasonBegin(W) { S.finaleLast = null; /* the replay of the last finale is only shown until the next season starts */ const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
   se.status = 'live'; se.start = Date.now(); se.base = {};
+  if (S.mkt && S.mkt.on && !se.fresh) { S.mkt.stock = null; S.mkt.hist = []; } // every season starts with a freshly primed world market
   if (S.countdown) { audit('System', 'Removed the countdown banner', 'the season has started'); S.countdown = null; } // the "starts in" banner must not keep counting once the season is on
   for (const u of Object.keys(W.A)) se.base[u] = { score: core.score(W, u), prov: core.hexesOf(W, u).length, gdp: W.A[u].gdp || 0 };
   const t = se.fresh ? `🏆 ${se.name} has begun! Everyone starts fresh in a brand-new world: found your season nation now. Your real nation is saved and comes back${se.end ? ` on ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ' when the season ends'}, with your prizes.` : `🏆 ${se.name} has begun! Nations are ranked by ${SEASON_METRICS[se.metric].n.toLowerCase()}${se.end ? ` until ${new Date(se.end).toUTCString().slice(0, 22)} UTC` : ''}.${se.prizes && se.prizes[0] ? ` The champion wins $${Math.round(se.prizes[0]).toLocaleString('en-US')}.` : ''} See Rankings for the live standings.`;
@@ -1334,7 +1336,7 @@ function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r; try
 // SPY DUELS: if the target is online when a mini-game operation starts, they are warned and may defend by playing the same puzzle at the
 // same time. The better score wins: if the defender wins, the operation fails and the agents are identified. A defender who does not
 // answer within 20 seconds is simply not there, and the operation is rolled as usual.
-const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map(); const SPYPR = new Map(); // practice rounds, one per player
+const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map(); const SPYPR = new Map(), SPYPL = new Map(); // practice rounds and prize rounds, one per player
 // a duel against a player who is online waits for them to accept: 30 seconds, then it is called off (and costs the challenger nothing)
 const DUEL_WAIT = 30e3, SPYP = new Map(); // invite id -> { by, v, op, at }
 const spyPubOf = g => g.pub || null;
@@ -1367,7 +1369,18 @@ async function spyRoute(p, req, res, me) {
     SPYPR.set(me.id, { id, op, secret: pz.secret, t0: Date.now() }); return send(res, 200, { ok: true, id, game: pz.pub, practice: true }); }
   if (p === '/api/spy/practicedone') { const g = SPYPR.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That practice round is over.' }); SPYPR.delete(me.id);
     const sc = spyScore(g, b, g.t0); return send(res, 200, { ok: true, practice: true, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' ? g.secret : undefined }); }
-  if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
+  // PRIZE ROUND: the same puzzles, played alone. A small entry fee, a prize by score, and a cooldown per game. Nobody else is involved.
+  if (p === '/api/spy/play') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
+    const op = String(b.op || ''); if (!core.MGAME.k[op]) return send(res, 400, { error: 'Unknown game.' }); const lvl = op === 'warplans' && ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
+    { const g = hcGate(me.id, false); if (g) return send(res, g.jail ? 423 : 428, g); }
+    const old = SPYPL.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the game you already started first.' });
+    const W = mkWorld(); let st; try { st = core.mgBegin(W, me.id, op, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+    const pz = spyPuzzle(op, W, me.id, lvl); if (pz.pub.kind === 'sniper') pz.pub.gen = { name: 'Range target', stars: 0 }; commit(W); const id = rid();
+    SPYPL.set(me.id, { id, op, lvl, secret: pz.secret, t0: Date.now(), prize: st.prize, fee: st.fee }); return send(res, 200, { ok: true, id, game: pz.pub, play: true, prize: st.prize, fee: st.fee, own: S.docs['nations/' + me.id] }); }
+  if (p === '/api/spy/playdone') { const g = SPYPL.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That game is over.' }); SPYPL.delete(me.id);
+    const sc = spyScore(g, b, g.t0); const W = mkWorld(); const r = core.mgPay(W, me.id, g.op, g.prize, sc.skill); commit(W); try { actLog(me.id, W, { c: 'minigame', op: g.op, skill: Math.round(sc.skill * 100) }, true, r.won ? 'won ' + r.won : 'no prize'); } catch (e) {}
+    return send(res, 200, { ok: true, play: true, score: Math.round(sc.skill * 100), why: sc.why, won: r.won, xp: r.xp, fee: g.fee, prize: g.prize, plain: g.op === 'cipher' ? g.secret : undefined, own: S.docs['nations/' + me.id] }); }
+  if (p === '/api/spy/start') { if (core.MGAME.k[String(b.op || '')]) return send(res, 400, { error: 'That is now a prize game you play on your own. Reload the page to see it.' }); if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
     const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
     const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
     if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy mini-games. Turn them back on from your Intelligence page to use this operation.' });
@@ -1442,7 +1455,7 @@ setInterval(() => { const se = S.seasons && S.seasons.cur, now = Date.now(); if 
 // the real world comes back exactly as it was saved and the prizes are paid into each player's real nation.
 // Accounts, chat, mail, notes, the Hall of Fame, casino records and admin data are never touched.
 const FRESH_FILE = path.join(DATA_DIR, 'season-realworld.json');
-const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'overPause', 'overPauseSet'];
+const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'overPause', 'overPauseSet', 'mkt'];
 function freshSave(se) {
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m && (m.fallen || m.rem)) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
@@ -1462,6 +1475,7 @@ function freshClear() {
   S.nextGames = now + 12 * HOUR; S.nextDis = now + 3 * HOUR; S.nextCrisis = now + 36 * HOUR; S.event = null; S.nextEvent = now + 6 * HOUR; S.lastEventKey = null;
   S.fallen = []; S.nukes = []; S.strikes = []; S.strikeLog = []; S.ntests = []; S.ntestPending = []; S.burn = {}; S.bm = { list: [] }; S.freedQ = 0; S.freedLast = []; S.freedAt = 0; S.bossFell = 0; S.overPause = 0; S.overPauseSet = 1;
   for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
+  S.mkt = { on: !!(S.mkt && S.mkt.on), sup: S.mkt ? S.mkt.sup : undefined }; // a fresh world gets a freshly primed market
   RH = []; rhGz = null; try { fs.writeFileSync(RANK_FILE, '[]'); } catch (e) {}
 }
 // the world loop's copy of the old world must never be written back after the switch
@@ -1483,7 +1497,7 @@ function freshRestore(by, why) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
   const gone = Object.keys(snap.nations).filter(id => !S.users[id] && !BOTS.isBot(id)); // players who deleted their account during the season
   for (const [id, n] of Object.entries(snap.nations)) { if (gone.includes(id)) continue; n.lastTick = now; if (n.nextCard && n.nextCard < now) n.nextCard = now + 10 * 60e3; if (gone.length && n.rel) for (const g of gone) delete n.rel[g]; S.docs['nations/' + id] = n; }
-  for (const k of FRESH_KEYS) S[k] = snap.keys[k] === null || snap.keys[k] === undefined ? (k === 'blocs' ? Object.create(null) : S[k]) : snap.keys[k];
+  for (const k of FRESH_KEYS) S[k] = snap.keys[k] === null || snap.keys[k] === undefined ? (k === 'blocs' ? Object.create(null) : k === 'mkt' ? { on: !!(S.mkt && S.mkt.on), sup: S.mkt ? S.mkt.sup : undefined } : S[k]) : snap.keys[k];
   S.blocs = Object.assign(Object.create(null), S.blocs || {}); if (gone.length) for (const [bid, b] of Object.entries(S.blocs)) { b.members = (b.members || []).filter(m => !gone.includes(m)); if (!b.members.length) { delete S.blocs[bid]; continue; } b.co = (b.co || []).filter(m => !gone.includes(m) && b.members.includes(m)); if (gone.includes(b.leader)) { b.leader = b.co[0] || b.members[0]; b.co = b.co.filter(m => m !== b.leader); } } if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
   for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
   for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
@@ -1673,6 +1687,9 @@ function seasonFinishFresh(W, by) {
 
 // casino bookkeeping for the admin page: totals by game and by day, biggest wins, recent plays
 S.casino = S.casino || { tot: {}, days: {}, recent: [], big: [] };
+// the finite world market (off until the owner switches it on): its stock, foreign supply rate and hourly history
+S.mkt = S.mkt && typeof S.mkt === 'object' ? S.mkt : { on: false };
+function mktView(full) { const M = S.mkt || {}; const v = { on: !!M.on, stock: M.stock || null, ref: M.ref || null, sup: M.sup != null ? M.sup : core.MKT.sup, primed: M.primed || 0 }; if (full) v.hist = (M.hist || []).slice(-72); return v; }
 const casinoTotals = () => Object.fromEntries(Object.entries((S.casino && S.casino.tot) || {}).map(([k, x]) => [k, { plays: x.plays, wag: x.wag, net: x.net, wins: x.wins, won: x.won || 0, lost: x.lost || 0 }])); // all-time table results, sums only
 function casinoRecord(W) { const C_ = S.casino; for (const e of W.casinoEv || []) { const n = W.A[e.u] || {}, day = new Date(e.t).toISOString().slice(0, 10);
   const add = (o, k) => { const x = o[k] = o[k] || { plays: 0, wag: 0, net: 0, wins: 0 }; x.plays++; x.wag += e.bet; x.net += e.net; if (e.net > 0) { x.wins++; x.won = (x.won || 0) + e.net; } else if (e.net < 0) x.lost = (x.lost || 0) - e.net; };
@@ -1698,6 +1715,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
+    try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
     pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
@@ -2246,6 +2264,18 @@ async function adminRoute(p, req, res, me) {
       return send(res, 200, { lite: true, id: b0.id, name: u.name, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[b0.id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }); }
   }
   if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner', hd: Object.values(S.helpdesk).filter(T => T.open && T.unread).length });
+  if (p === '/api/admin/market') { // owner only: the finite world market
+    const view = () => { const W = mkWorld(), d = core.mktDemand(W), M = S.mkt || {}, since = Date.now() - 24 * HOUR, imp = [];
+      for (const [u, n] of Object.entries(W.A)) { const q = {}; for (const t of n.mbuy || []) if (t.t > since) q[t.r] = (q[t.r] || 0) + t.q; if (Object.keys(q).length) imp.push({ name: n.name, color: n.color, q, lim: Object.fromEntries(Object.keys(q).map(r => [r, core.mkLimit(W, u, r)])) }); }
+      return { on: !!M.on, live: core.mkOn(W), sup: M.sup != null ? M.sup : core.MKT.sup, primed: M.primed || 0, stock: M.stock || null, ref: d.ref, use: d.c, make: d.p, del: M.del || {}, prices: core.prices(W), base: Object.fromEntries(Object.entries(core.RES || WP.RES).map(([k, v]) => [k, v.p])), hist: M.hist || [], imp: imp.sort((a, b) => Object.values(b.q).reduce((x, y) => x + y, 0) - Object.values(a.q).reduce((x, y) => x + y, 0)) }; };
+    if (req.method === 'GET') return send(res, 200, view());
+    const b = req._body || await readBody(req, 2048);
+    if (b.op === 'on' || b.op === 'off') { const on = b.op === 'on'; if (on && !S.mkt.on) { S.mkt.on = true; S.mkt.stock = null; S.mkt.hist = []; } else if (!on) S.mkt.on = false; audit(me.name, on ? 'Switched on the limited world market' : 'Switched off the limited world market (back to unlimited)', on ? 'stock primed from the current world' : null); }
+    else if (b.op === 'sup') { const v = Math.round(Number(b.v) * 100) / 100; if (!(v >= 0 && v <= 1.5)) return send(res, 400, { error: 'Supply must be between 0% and 150% of the world\'s shortfall.' }); S.mkt.sup = v; audit(me.name, 'Changed world market supply', `${Math.round(v * 100)}% of the world's shortfall`); }
+    else if (b.op === 'prime') { if (!S.mkt.on) return send(res, 400, { error: 'Switch the limited market on first.' }); S.mkt.stock = null; S.mkt.hist = []; audit(me.name, 'Re-primed the world market', null); }
+    else return send(res, 400, { error: 'Unknown action.' });
+    { const W = mkWorld(); core.mktTick(W); } persist(true); broadcast('mkt', mktView(true)); return send(res, 200, { ok: true, view: view() });
+  }
   if (p === '/api/admin/chaos') { // owner only: start or end Chaos world
     if (req.method === 'GET') return send(res, 200, chaosView());
     const b = req._body || await readBody(req, 4096);
