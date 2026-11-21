@@ -438,7 +438,7 @@ function hcGate(uid, isAct) {
   if (h.n == null) h.n = HC.min + crypto.randomInt(HC.max - HC.min);
   if (isAct || sus) h.n -= sus ? 5 : 1; // every kind of action can be stopped by a check, but for an ordinary player only economy actions count down, so checks come no more often than before
   if (h.n > 0 || now - (h.last || 0) < (sus ? HC.susGapMs : HC.gapMs)) return null;
-  h.pend = hcMake(crypto.randomInt(100) < (S.config && S.config.hcCodePct != null ? +S.config.hcCodePct : sus ? 70 : 35)); // how often it's "type the code" rather than "tap the shape" h.pendHits = 0; persist();
+  h.pend = hcMake(crypto.randomInt(100) < (S.config && S.config.hcCodePct != null ? +S.config.hcCodePct : sus ? 70 : 35)); /* how often it's "type the code" rather than "tap the shape" */ h.pendHits = 0; persist();
   return { error: h.pend.type === 'code' ? 'Quick check: type the code to carry on.' : 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) };
 }
 function hcAnswer(uid, b) {

@@ -1687,7 +1687,7 @@ async function runAllOps(){if(runningAll||busy)return;const list=readyOps();if(!
 // so tapping through several decisions quickly never loses one (and a card can't flash back while its answer is on the way)
 const decPend=new Set(),decQ=[];let decBusy=false;
 const decide=(id,o)=>{if(!me||!(me.cards||[]).some(c=>c.id===id)||decPend.has(id))return;decPend.add(id);me.cards=me.cards.filter(c=>c.id!==id);decQ.push({id,o});render();decRun()};
-async function decRun(){if(decBusy)return;decBusy=true;while(decQ.length){const {id,o}=decQ.shift();try{const r=await WP.api('POST','/api/cmd',{c:'decide',id,o});if(r&&r.me&&WP.applyOwn)WP.applyOwn(r.me);if(r&&r.msg)toast(r.msg);SND.play('ok');if(r&&r.promoted)setTimeout(()=>promo(r.promoted),700)}catch(e){toast(e.message||'Something went wrong.');SND.play('err')}
+async function decRun(){if(decBusy)return;decBusy=true;while(decQ.length){const {id,o}=decQ.shift();try{const r=await WP.api('POST','/api/cmd',{c:'decide',id,o});if(r&&r.me&&WP.applyOwn)WP.applyOwn(r.me);if(r&&r.msg)toast(r.msg);SND.play('ok');if(r&&r.promoted)setTimeout(()=>promo(r.promoted),700)}catch(e){if(e.status===428&&e.data&&e.data.hc){decQ.unshift({id,o});decBusy=false;setTimeout(()=>humanCheck(e.data,()=>decRun()),0);return} /* quick human check first, then the decision goes through */ if(e.status===423&&e.data&&e.data.jail){decQ.length=0;decPend.delete(id);decBusy=false;setTimeout(()=>jailModal(e.message),0);refreshSoon();return}toast(e.message||'Something went wrong.');SND.play('err')}
  setTimeout(()=>{decPend.delete(id);refreshSoon()},(decQ.length?0:400))}decBusy=false}
 // after you attack: close the planner, take you to the battlefield on the globe, and show the result as a small card (full report one tap away)
 function goWatch(h,scale){if(!P[h])return;closeModal();const go=()=>GL.flyTo(P[h].c,Math.max(GL.st.scale,scale||2));if(page!=='world'){page='world';render();setTimeout(go,350)}else go()}
@@ -3834,7 +3834,7 @@ function renderTeamChat(force){const b=myBloc(),el=$('chat');if(!b||!el)return;c
  if(atBot||force)el.scrollTop=el.scrollHeight;if(page==='chat'||deskChatOpen())markTeamSeen();else teamTabUpd()}
 let teamSending=false;async function sendTeam(text){text=text.trim().slice(0,1000);const b=myBloc();if(!text||!b)return;if(teamSending)return;teamSending=true;
  b.wall=[{t:Date.now(),u:uid,x:text},...(b.wall||[])];renderTeamChat(true); /* shows at once; the server copy replaces it a moment later */
- try{await WP.api('POST','/api/cmd',{c:'bloc',op:'post',text})}catch(e){b.wall=b.wall.filter(w=>!(w.u===uid&&w.x===text&&Date.now()-w.t<15e3));renderTeamChat(true);toast(e.message||'Message failed to send.')}teamSending=false}
+ try{await WP.api('POST','/api/cmd',{c:'bloc',op:'post',text})}catch(e){if(e.status===428&&e.data&&e.data.hc){b.wall=b.wall.filter(w=>!(w.u===uid&&w.x===text&&Date.now()-w.t<15e3));renderTeamChat(true);setTimeout(()=>humanCheck(e.data,()=>WP.api('POST','/api/cmd',{c:'bloc',op:'post',text}).catch(x=>toast(x.message))),0);return}b.wall=b.wall.filter(w=>!(w.u===uid&&w.x===text&&Date.now()-w.t<15e3));renderTeamChat(true);toast(e.message||'Message failed to send.')}teamSending=false}
 // open the chat at the newest message (after the layout settles, since a closed chat has no height to scroll)
 function chatToBottom(){const go=()=>{const c=$('chat');if(c)c.scrollTop=c.scrollHeight};requestAnimationFrame(()=>{go();setTimeout(go,60)})}
 let chatPre='';
