@@ -262,7 +262,7 @@ function hdIn(me, b) {
   T.msgs = [...(T.msgs || []), { id: rid(), t, from: 'player', subj, body }].slice(-100); T.open = true; T.unread = true; T.last = t;
   const ids = Object.keys(S.helpdesk); if (ids.length > HD_MAX) { const old = ids.filter(k => !S.helpdesk[k].open).sort((x, y) => S.helpdesk[x].last - S.helpdesk[y].last); for (const k of old.slice(0, ids.length - HD_MAX)) delete S.helpdesk[k]; }
   S.mail[me.id] = [{ id: rid(), from: me.id, to: HD, t, subj, body, box: 'out', read: true }, ...(S.mail[me.id] || [])].slice(0, 200);
-  for (const [id, u] of Object.entries(S.users)) if (u.admin) addNote(id, 'mail', `🛟 New Helpdesk question from ${nationName(me.id)}: ${subj}. Answer it in the Helpdesk tab of the admin page.`);
+  for (const [id, u] of Object.entries(S.users)) if (u.admin) addNote(id, 'mail', `❓ New Helpdesk question from ${nationName(me.id)}: ${subj}. Answer it in the Helpdesk tab of the admin page.`);
   stat('mail'); persist(); return { ok: true, helpdesk: true };
 }
 function coLog(me, p, b, ok, note) { S.coLog.unshift({ t: Date.now(), by: me.name, id: me.id, act: p.replace('/api/admin/', ''), target: b && typeof b.id === 'string' && S.users[b.id] ? S.users[b.id].name : null, detail: b ? JSON.stringify(Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'id' && k !== 'password'))).slice(0, 300) : '', ok, note: note || null }); S.coLog = S.coLog.slice(0, 2000); persist(); }
@@ -496,6 +496,11 @@ function writeRaw(c, str) { if (c.res.writableEnded || c.res.destroyed) { client
 function endStream(c) { try { if (c.out) c.out.end(); else c.res.end(); } catch (e) {} }
 function broadcast(event, data) { if (!clients.size) return; const str = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`; for (const c of clients) writeRaw(c, str); }
 // ---- polls: questions the admin sends to every player; each player sees the pop-up once (answer or skip) ----
+// ---- mission votes: players thumb up/down each intelligence mission; the admin sees totals under Polls ----
+S.opVotes = S.opVotes || {};
+const OPV = () => (S.opVotes = S.opVotes || {});
+const opVotesFor = uid => { const o = {}; for (const k in OPV()) if (S.opVotes[k][uid]) o[k] = S.opVotes[k][uid]; return o; };
+const opVoteTotals = () => Object.keys(WP.COVERT).map(k => { const v = Object.values(OPV()[k] || {}); return { op: k, name: WP.COVERT[k].n, up: v.filter(x => x > 0).length, down: v.filter(x => x < 0).length }; });
 const pollOpen = q => q && q.active && (!q.ends || q.ends > Date.now());
 const pollPublic = q => ({ id: q.id, title: q.title, intro: q.intro, questions: q.questions, ends: q.ends || 0 });
 const pollFor = uid => S.polls.filter(q => pollOpen(q) && !(q.answers || {})[uid] && !(q.skips || {})[uid]).slice(0, 3).map(pollPublic);
@@ -536,7 +541,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList() };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -1266,7 +1271,12 @@ const spyOptList = () => Object.keys(S.meta).filter(u => S.meta[u] && S.meta[u].
 const CIPHER_HINTS = 4;
 // the general's path through the scope: the same formula is used on the page, so the server can check where he was at every shot
 const snipePos = (q, t) => ({ x: 150 + 105 * Math.sin(t * q.w1 + q.p1), y: 118 + 34 * Math.sin(t * q.w2 + q.p2) });
-function spyPuzzle(op, W, v) {
+const MEMO = { easy: { pairs: 4, show: 4, time: 45, f: .78 }, medium: { pairs: 6, show: 5, time: 60, f: .9 }, hard: { pairs: 8, show: 6, time: 75, f: 1 } };
+const MEMO_ICONS = ['tank', 'jet', 'ship', 'missile', 'radar', 'sub', 'heli', 'sat', 'shield', 'flag', 'map', 'key'];
+function spyPuzzle(op, W, v, lvl) {
+  if (op === 'warplans') { const L = MEMO[lvl] ? lvl : 'medium', M = MEMO[L], ic = MEMO_ICONS.slice(); for (let i = ic.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [ic[i], ic[j]] = [ic[j], ic[i]]; }
+    const cards = []; for (const x of ic.slice(0, M.pairs)) cards.push(x, x); for (let i = cards.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [cards[i], cards[j]] = [cards[j], cards[i]]; }
+    return { secret: { cards, lvl: L }, pub: { kind: 'memory', cards, lvl: L, pairs: M.pairs, show: M.show, time: M.time } }; }
   if (op === 'assassinate') { const r = () => crypto.randomInt(0, 1e6) / 1e6, q = { w1: .45 + r() * .35, w2: .9 + r() * .6, p1: r() * 6.28, p2: r() * 6.28 }; const g = (W.A[v].gens || []).reduce((b, x) => !b || x.stars > b.stars ? x : b, null);
     return { secret: q, pub: { kind: 'sniper', ...q, time: 30, bullets: 3, r: 10, gen: g ? { name: g.name, stars: g.stars } : null } }; }
   if (op === 'heist') { const combo = [], dirs = ['right', 'left', 'right']; while (combo.length < 3) { const x = crypto.randomInt(4, 96); if (combo.every(c => Math.abs(c - x) > 8)) combo.push(x); } return { secret: combo, pub: { kind: 'safe', combo, dirs, time: 50 } }; }
@@ -1279,6 +1289,13 @@ function spyPuzzle(op, W, v) {
 }
 function spyScore(g, b, t0) {
   const secs = (Date.now() - (t0 || g.t0)) / 1000;
+  if (g.op === 'warplans') { const S_ = g.secret, M = MEMO[S_.lvl], flips = Array.isArray(b.flips) ? b.flips.slice(0, 200) : []; let last = M.show - .3, open = null, matched = new Set(), miss = 0;
+    for (const f of flips) { const i = Math.round(+f.i), t = +f.t; if (!(i >= 0 && i < S_.cards.length) || !(t >= last) || t > secs + 1.5) return { skill: 0, why: 'the flips did not add up' }; last = t; if (matched.has(i) || i === open) continue;
+      if (open == null) { open = i; continue; } if (S_.cards[open] === S_.cards[i]) { matched.add(open); matched.add(i); } else miss++; open = null; }
+    const pairs = matched.size / 2, all = pairs === M.pairs; if (all && last < M.show + M.pairs * .9) return { skill: 0, why: 'too fast to be real' }; // a person cannot match every pair this quickly
+    const tf = Math.max(0, Math.min(1, 1 - (last - M.show - M.pairs * 2) / (M.time - M.show)));
+    const skill = all ? Math.max(.3, Math.min(1, (.55 + .45 * tf - .06 * miss) * M.f)) : Math.max(0, pairs / M.pairs * .45 * M.f - .03 * miss);
+    return { skill, why: `${pairs} of ${M.pairs} pairs${all ? ` in ${Math.round(last)} s` : ''}${miss ? ` with ${miss} wrong match${miss > 1 ? 'es' : ''}` : ''} (${S_.lvl})` }; }
   if (g.op === 'assassinate') { const shots = Array.isArray(b.shots) ? b.shots.slice(0, 3) : []; let last = 0, miss = 0;
     for (const sh of shots) { const t = +sh.t, x = +sh.x, y = +sh.y; if (!(t >= 1.2) || t > secs + 1.5 || t < last || !isFinite(x) || !isFinite(y)) return { skill: 0, why: 'the shot did not add up' }; last = t;
       const q = snipePos(g.secret, t), d = Math.hypot(q.x - x, q.y - y); if (d <= 10) { const qual = Math.max(.5, 1 - d / 20); return { skill: Math.max(.2, Math.min(1, qual - .15 * miss)), why: `${d <= 3 ? 'a clean hit' : 'a hit'} with bullet ${miss + 1}${miss ? ` after ${miss} miss${miss > 1 ? 'es' : ''}` : ''}` }; } miss++; }
@@ -1296,7 +1313,13 @@ function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r; try
 // same time. The better score wins: if the defender wins, the operation fails and the agents are identified. A defender who does not
 // answer within 20 seconds is simply not there, and the operation is rolled as usual.
 const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map();
-const duelNames = { heist: 'crack your central bank vault', cipher: 'read your government\'s secret messages', assassinate: 'assassinate one of your generals' };
+// a duel against a player who is online waits for them to accept: 30 seconds, then it is called off (and costs the challenger nothing)
+const DUEL_WAIT = 30e3, SPYP = new Map(); // invite id -> { by, v, op, at }
+const spyPubOf = g => g.pub || null;
+const spyOnline = v => [...clients].some(c => c.uid === v) && S.users[v] && !BOTS.isBot(v);
+function spyCallOff(id, why) { const P = SPYP.get(id); if (!P) return; SPYP.delete(id); sendTo(P.by, 'spyno', { id, msg: why }); sendTo(P.v, 'spyduelgone', { id }); }
+setInterval(() => { const now = Date.now(); for (const [id, P] of SPYP) if (now - P.at > DUEL_WAIT) spyCallOff(id, `${(S.docs['nations/' + P.v] || {}).name || 'They'} did not accept within 30 seconds. The operation was called off and cost you nothing.`); }, 2000).unref();
+const duelNames = { warplans: 'steal your war plans', heist: 'crack your central bank vault', cipher: 'read your government\'s secret messages', assassinate: 'assassinate one of your generals' };
 function duelOpen(uid, g, pub) { const online = [...clients].some(c => c.uid === g.v) && S.users[g.v] && !BOTS.isBot(g.v); if (!online) return; g.duel = { state: 'invited', at: Date.now() }; DUELBY.set(g.id, uid);
   sendTo(g.v, 'spyduel', { id: g.id, op: g.op, what: duelNames[g.op], game: pub, answer: DUEL_ANSWER }); }
 function duelSettle(uid, g) { // both scores are in (or the defender never showed up): decide and tell both sides
@@ -1315,12 +1338,19 @@ async function spyRoute(p, req, res, me) {
   if (finaleLock()) return send(res, 423, FINALE_LOCK_MSG); { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
   const b = await readBody(req, 4096); touch(me.id, req);
   if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
-    const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate'].includes(op)) return send(res, 400, { error: 'Unknown operation.' });
+    const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
     const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
     if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy mini-games. Turn them back on from your Intelligence page to use this operation.' });
     if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That nation'} has opted out of spy mini-games, so this operation cannot be used on them.` });
+    if (v !== me.id && spyOnline(v)) { // they are online: ask them first
+      for (const [id, P] of SPYP) if (P.by === me.id) return send(res, 400, { error: `You are already waiting for ${(S.docs['nations/' + P.v] || {}).name || 'another nation'} to accept.` });
+      if (limited('spyinv:' + me.id + ':' + v, 3, 5 * 60e3)) return send(res, 429, { error: 'You have challenged that nation several times just now. Try again in a few minutes.' });
+      try { core.covertCheck(mkWorld(), me.id, op, v, false); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+      const id = crypto.randomBytes(6).toString('hex'); SPYP.set(id, { by: me.id, v, op, lvl, at: Date.now() });
+      sendTo(v, 'spyduel', { id, op, what: duelNames[op], pending: true, answer: DUEL_WAIT });
+      return send(res, 200, { ok: true, pending: true, id, wait: DUEL_WAIT, name: (S.docs['nations/' + v] || {}).name || 'They' }); }
     const W = mkWorld(); try { core.covertBegin(W, me.id, op, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
-    const pz = spyPuzzle(op, W, v); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
+    const pz = spyPuzzle(op, W, v, lvl); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
     try { duelOpen(me.id, g, pz.pub); } catch (e) {}
     return send(res, 200, { ok: true, id, game: pz.pub, duel: !!g.duel, own: S.docs['nations/' + me.id] }); }
   if (p === '/api/spy/finish') { const g = SPYG.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That operation is over.' });
@@ -1329,6 +1359,18 @@ async function spyRoute(p, req, res, me) {
     SPYG.delete(me.id); const sc = sc0; const r = spyResolve(me.id, g, sc); actLog(me.id, mkWorld(), { c: 'covert', op: g.op, v: g.v, skill: Math.round(sc.skill * 100) }, true, r.msg);
     return send(res, 200, { ok: true, success: !!r.ok, msg: r.msg, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : undefined, own: S.docs['nations/' + me.id] }); }
   if (p === '/api/spy/result') { const x = SPYR.get(me.id); if (x && x.id === String(b.id || '')) return send(res, 200, x.out); return send(res, 200, { ok: true, pending: true }); }
+  // a pending duel: the defender accepts or declines, the challenger can cancel or check
+  if (p === '/api/spy/accept' || p === '/api/spy/decline' || p === '/api/spy/cancel' || p === '/api/spy/status') { const id = String(b.id || ''), P = SPYP.get(id);
+    if (p === '/api/spy/status') { if (P && P.by === me.id) return send(res, 200, { ok: true, state: 'pending', left: Math.max(0, DUEL_WAIT - (Date.now() - P.at)) }); const g = SPYG.get(me.id); if (g && g.id === id) return send(res, 200, { ok: true, state: 'go', game: spyPubOf(g), own: S.docs['nations/' + me.id] }); return send(res, 200, { ok: true, state: 'off' }); }
+    if (p === '/api/spy/cancel') { if (P && P.by === me.id) spyCallOff(id, 'You called the operation off.'); return send(res, 200, { ok: true }); }
+    if (!P || P.v !== me.id || Date.now() - P.at > DUEL_WAIT) return send(res, 400, { error: 'Too late: that challenge is over.' });
+    if (p === '/api/spy/decline') { spyCallOff(id, `${(S.docs['nations/' + me.id] || {}).name || 'They'} declined. The operation was called off and cost you nothing.`); return send(res, 200, { ok: true }); }
+    SPYP.delete(id); sendTo(P.v, 'spyduelgone', { id });
+    const W = mkWorld(); try { core.covertBegin(W, P.by, P.op, P.v); } catch (e) { const why = e && e.user ? e.message : 'Something went wrong.'; sendTo(P.by, 'spyno', { id, msg: 'Your operation could not start: ' + why }); return send(res, 400, { error: 'The operation was called off.' }); }
+    const pz = spyPuzzle(P.op, W, P.v, P.lvl); commit(W); const now = Date.now();
+    const g = { id, op: P.op, v: P.v, t0: now, secret: pz.secret, pubTime: pz.pub.time, pub: pz.pub, duel: { state: 'playing', at: now, t0: now } }; SPYG.set(P.by, g); SPYR.delete(P.by); DUELBY.set(id, P.by);
+    sendTo(P.by, 'spygo', { id, game: pz.pub, own: S.docs['nations/' + P.by] });
+    return send(res, 200, { ok: true, id, game: pz.pub, op: P.op }); }
   // the defender's side of a duel
   if (p === '/api/spy/defstart' || p === '/api/spy/defend') { const uid = DUELBY.get(String(b.id || '')), g = uid && SPYG.get(uid); if (!g || g.v !== me.id || !g.duel) return send(res, 400, { error: 'Too late: that operation is already over.' });
     if (p === '/api/spy/defstart') { if (g.duel.state !== 'invited') return send(res, 400, { error: 'Too late: that operation is already over.' }); g.duel.state = 'playing'; g.duel.t0 = Date.now(); return send(res, 200, { ok: true }); }
@@ -1510,6 +1552,34 @@ if (!S.radsBackfilled) { try { const now = Date.now(), hours = core.DIRTY.h * 36
   for (const n of Object.values(S.docs)) if (n && Array.isArray(n.rads)) { n.rads.sort((a, b) => a.t - b.t); n.rads = n.rads.slice(-5); if (!n.rads.length) delete n.rads; }
   S.radsBackfilled = Date.now(); if (k) { console.log(`Restored ${k} radioactive cloud(s) from recent dirty bombs.`); persist(); } } catch (e) { logErr('radsBackfill: ' + e.message); } }
 setInterval(worldLoop, 30000).unref(); setTimeout(worldLoop, 1000);
+
+// ===================== TEST LAB =====================
+const labView = () => ({ on: !!S.testLab.on, paused: !!S.testLab.paused, speed: S.testLab.speed || 'normal', running: !!labW, state: LAB, testId: TEST_ID });
+// A separate thread plays a COPY of the world nonstop with many kinds of simulated players, looking for crashes, broken numbers and unfair
+// loopholes. It never touches the real game: it only receives a snapshot and sends reports back. The "Test" account shows as online while it runs.
+const { Worker } = require('worker_threads');
+const TEST_ID = 'admin-test';
+S.testLab = S.testLab && typeof S.testLab === 'object' ? S.testLab : { on: true, speed: 'normal', paused: false };
+let LAB = S.testLab.state || null, labW = null, labRestart = 0, labSaveT = 0;
+function ensureTestAccount() { const u = S.users[TEST_ID]; if (!u || u.name !== 'Test' || !u.test) { S.users[TEST_ID] = { id: TEST_ID, name: 'Test', test: true, created: (u && u.created) || Date.now() }; persist(); } } // no email or password: nobody can sign in as it
+const labSnap = () => { const nations = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/') && d && !d.ai) nations[k.slice(8)] = d; return { nations, cfg: S.config, fresh: !!S.fresh }; };
+function labStart() {
+  if (labW || !S.testLab.on) return;
+  try {
+    labW = new Worker(path.join(__dirname, 'testlab.js'), { workerData: { snap: labSnap(), speed: S.testLab.speed, paused: S.testLab.paused, prev: LAB }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    labW.on('message', m => { if (m.type === 'report') { LAB = m.state; if (Date.now() - labSaveT > 120e3) { labSaveT = Date.now(); S.testLab.state = { gen: LAB.gen, stats: LAB.stats, findings: LAB.findings, coverage: Object.fromEntries(Object.entries(LAB.coverage || {}).map(([k, v]) => [k, { tries: v.tries, ok: v.ok, why: Object.fromEntries(v.why || []) }])), casino: LAB.casino, history: LAB.history }; persist(); } } else if (m.type === 'wantSnap' && labW) labW.postMessage({ type: 'snap', snap: labSnap() }); });
+    labW.on('error', e => { logErr('test lab: ' + e.message); });
+    labW.on('exit', code => { labW = null; if (S.testLab.on && code !== 0) { labRestart = Date.now() + 60e3; } });
+  } catch (e) { labW = null; logErr('test lab start: ' + e.message); }
+}
+function labStop() { if (labW) { const w = labW; labW = null; w.terminate().catch(() => {}); } }
+function labTick() { // keeps the Test account online while the lab runs, and restarts the lab if it ever stops
+  ensureTestAccount();
+  if (S.testLab.on && !labW && Date.now() > labRestart) labStart();
+  const cur = S.docs['online/' + TEST_ID]; if (S.testLab.on && !S.testLab.paused) { if (!cur || Date.now() - (cur.t || 0) > 120e3) setDoc('online', TEST_ID, { t: Date.now(), test: 1 }); }
+}
+setTimeout(labTick, 15000); setInterval(labTick, 60e3).unref();
+
 // a peace offer to a player who has gone inactive (not seen for a day) is signed for them after a short wait,
 // so nobody stays stuck in a war against someone who is no longer playing
 const PEACE_IDLE = { awayH: 24, waitH: 2 };
@@ -1697,6 +1767,7 @@ function cleanChat(d) { const m = Array.isArray(d.m) ? d.m : []; return { m: m.s
 // ---------- mail ----------
 function mailSend(me, b) {
   if (String(b.to || '') === HD) return hdIn(me, b); // anyone can ask the Helpdesk, even guests, muted or jailed players
+  if (String(b.to || '') === 'admin-test') throw Object.assign(new Error('Test is an admin test account that plays in a separate test world. It cannot receive mail.'), { status: 400 });
   if ((S.users[me.id] || {}).guest) throw Object.assign(new Error('Save your account (Account page) to send mail.'), { status: 403 });
   const to = String(b.to || ''); if (!S.users[to] || to === me.id) throw Object.assign(new Error(BOTS.isBot(to) ? 'This nation is run by the computer and does not read mail.' : 'Choose a leader to write to.'), { status: 400 });
   if (isMuted(me.id)) throw Object.assign(new Error('You are muted by the administrators and cannot send mail right now.'), { status: 403 });
@@ -1947,7 +2018,7 @@ function overview() {
   const now = Date.now();
   const nations = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = d;
   const W = core.world(Object.fromEntries(Object.entries(nations).map(([k, v]) => [k, core.normalize(v)])), effCfg(), now, S.event, S.council, S.blocs, S.crisis, extW());
-  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && now - (d.t || 0) < 5 * 60e3).length;
+  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && !d.test && now - (d.t || 0) < 5 * 60e3).length;
   let reqs5 = 0; const m = Math.floor(now / 60000); for (let i = 0; i < 5; i++) reqs5 += health.reqs.get(m - i) || 0;
   const flagCount = {}; for (const f of S.flags) flagCount[f.uid] = (flagCount[f.uid] || 0) + 1;
   const byIp = {}; for (const [id, mt] of Object.entries(S.meta)) if (S.users[id]) for (const ip of mt.ips || []) (byIp[ip] = byIp[ip] || []).push(id);
@@ -2000,6 +2071,18 @@ async function adminRoute(p, req, res, me) {
       return send(res, 200, { lite: true, id: b0.id, name: u.name, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[b0.id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }); }
   }
   if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner', hd: Object.values(S.helpdesk).filter(T => T.open && T.unread).length });
+  if (p === '/api/admin/testlab') { // owner only: the Test lab's results and controls
+    if (req.method === 'POST') { const b = await readBody(req, 2048), op = String(b.op || ''); let msg = 'Done.';
+      if (op === 'on') { S.testLab.on = !!b.on; if (S.testLab.on) { labRestart = 0; labStart(); msg = 'The Test lab is running.'; } else { labStop(); setDoc('online', TEST_ID, null); msg = 'The Test lab is stopped. The Test account is offline.'; } }
+      else if (op === 'pause') { S.testLab.paused = !!b.on; if (labW) labW.postMessage({ type: 'pause', on: S.testLab.paused }); if (S.testLab.paused) setDoc('online', TEST_ID, null); msg = S.testLab.paused ? 'Paused.' : 'Running again.'; }
+      else if (op === 'speed' && ['slow', 'normal', 'fast'].includes(b.speed)) { S.testLab.speed = b.speed; if (labW) labW.postMessage({ type: 'speed', speed: b.speed }); msg = `Speed set to ${b.speed}.`; }
+      else if (op === 'reset') { if (labW) labW.postMessage({ type: 'snap', snap: labSnap() }); msg = 'A fresh test world was started from the current real world.'; }
+      else if (op === 'clear') { if (labW) labW.postMessage({ type: 'clear' }); LAB = null; delete S.testLab.state; msg = 'Results cleared.'; }
+      else if (op === 'dismiss') { if (labW) labW.postMessage({ type: 'dismiss', key: String(b.key || '') }); if (LAB) LAB.findings = (LAB.findings || []).filter(f => f.key !== b.key); msg = 'Finding dismissed.'; }
+      else return send(res, 400, { error: 'Unknown action.' });
+      persist(); return send(res, 200, { ok: true, msg, ...labView() }); }
+    return send(res, 200, labView());
+  }
   if (p === '/api/admin/fullcheck' && req.method === 'GET') { // the Dashboard's "Run full check": everything the admin would want to look at, in one list (owner only; changes nothing)
     const W = mkWorld(), now = Date.now(), out = [], add = (sev, cat, title, detail) => out.push({ sev, cat, title, detail: detail || '' }), nm = u => (W.A[u] || {}).name || (S.users[u] || {}).name || '?';
     try { const rows = scriptCheck(), act = rows.filter(r => r.case.level === 'act'), watch = rows.filter(r => r.case.level === 'watch');
@@ -2030,7 +2113,7 @@ async function adminRoute(p, req, res, me) {
       const body = String(b.body || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim().slice(0, 5000); if (!body) return send(res, 400, { error: 'Write an answer.' });
       const t = Date.now(), last = [...T.msgs].reverse().find(m => m.from === 'player'), subj = last ? (/^re:/i.test(last.subj) ? last.subj : 'Re: ' + last.subj).slice(0, 80) : 'Helpdesk';
       T.msgs = [...T.msgs, { id: rid(), t, from: 'staff', by: me.name, subj, body }].slice(-100); T.unread = false; T.last = t; if (b.close) T.open = false;
-      if (S.users[id]) { S.mail[id] = [{ id: rid(), from: HD, to: id, t, subj, body, box: 'in', read: false }, ...(S.mail[id] || [])].slice(0, 200); sendTo(id, 'mail', { unread: S.mail[id].filter(m => m.box === 'in' && !m.read).length }); addNote(id, 'mail', `🛟 The Helpdesk answered your question: ${subj}`, '/play#mail'); msg = 'Answer sent to their mail.'; }
+      if (S.users[id]) { S.mail[id] = [{ id: rid(), from: HD, to: id, t, subj, body, box: 'in', read: false }, ...(S.mail[id] || [])].slice(0, 200); sendTo(id, 'mail', { unread: S.mail[id].filter(m => m.box === 'in' && !m.read).length }); addNote(id, 'mail', `❓ The Helpdesk answered your question: ${subj}`, '/play#mail'); msg = 'Answer sent to their mail.'; }
       else msg = 'Saved, but this player has deleted their account, so nobody will receive it.';
     } else if (b.op === 'seen') T.unread = false;
     else if (b.op === 'close') { T.open = false; T.unread = false; msg = 'Marked as resolved.'; }
@@ -2123,7 +2206,7 @@ async function adminRoute(p, req, res, me) {
   if (p === '/api/admin/poll' && req.method === 'POST') { // Admin page → Polls: questions sent to every player
     const b = (req._body || await readBody(req, 32768)), op = String(b.op || ''), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim();
     const find = () => S.polls.find(x => x.id === b.id);
-    if (op === 'list') return send(res, 200, { polls: S.polls, players: Object.keys(S.users).filter(id => !S.users[id].banned && S.docs['nations/' + id]).length });
+    if (op === 'list') return send(res, 200, { opVotes: opVoteTotals(), polls: S.polls, players: Object.keys(S.users).filter(id => !S.users[id].banned && S.docs['nations/' + id]).length });
     if (op === 'create') {
       const title = clean(b.title).slice(0, 120), intro = clean(b.intro).slice(0, 600); if (!title) return send(res, 400, { error: 'Give the poll a title.' });
       const qs = (Array.isArray(b.questions) ? b.questions : []).slice(0, 10).map(x => ({ q: clean(x && x.q).slice(0, 300), opts: (Array.isArray(x && x.opts) ? x.opts : []).map(o => clean(o).slice(0, 120)).filter(Boolean).slice(0, 8), multi: !!(x && x.multi), other: !!(x && x.other) })).filter(x => x.q && (x.opts.length >= 2 || (x.other && !x.opts.length)));
@@ -2501,7 +2584,7 @@ function publicStats() {
   if (publicCache && Date.now() - publicCache.t < 30000) return publicCache.v;
   const W = mkWorld(); const now = Date.now();
   const ids = Object.keys(W.A).sort((a, b) => core.score(W, b) - core.score(W, a));
-  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && now - (d.t || 0) < 30 * 60e3).length;
+  const online = Object.entries(S.docs).filter(([k, d]) => k.startsWith('online/') && !d.ai && !d.test && now - (d.t || 0) < 30 * 60e3).length;
   const newsl = []; for (const n of Object.values(W.A)) for (const e of n.out || []) if (e.type === 'news') newsl.push({ t: e.t, x: e.x });
   newsl.sort((a, b) => b.t - a.t);
   const v = { nations: ids.length, players: humans(W).length, online, provinces: core.P.length, scenarios: SCENARIOS.length,
@@ -2760,6 +2843,13 @@ async function handle(req, res) {
     // ---- notifications ----
     if (p === '/api/notes/read' && req.method === 'POST') { for (const n of S.notes[me.id] || []) n.read = true; persist(); return send(res, 200, { ok: true }); }
     if (p === '/api/notes/clear' && req.method === 'POST') { const b = await readBody(req, 1024); if (typeof b.id === 'string') S.notes[me.id] = (S.notes[me.id] || []).filter(n => n.id !== b.id); else S.notes[me.id] = []; persist(); return send(res, 200, { ok: true });}
+    if (p === '/api/opvote' && req.method === 'POST') { // thumbs up/down on an intelligence mission (send the same vote again to take it back)
+      const b = await readBody(req, 512), op = String(b.op || ''), v = b.v > 0 ? 1 : b.v < 0 ? -1 : 0;
+      if (!WP.COVERT[op] || !Object.prototype.hasOwnProperty.call(WP.COVERT, op)) return send(res, 400, { error: 'Unknown mission.' });
+      if (S.users[me.id] && S.users[me.id].test) return send(res, 400, { error: 'Test accounts do not vote.' });
+      const m = OPV()[op] = OPV()[op] || {}; if (v) m[me.id] = v; else delete m[me.id]; persist();
+      return send(res, 200, { ok: true, opVotes: opVotesFor(me.id) });
+    }
     if (p === '/api/poll' && req.method === 'POST') {
       const b = await readBody(req, 8192), q = S.polls.find(x => x.id === b.id); if (!q) return send(res, 404, { error: 'That poll has ended.' });
       if (!pollOpen(q)) return send(res, 400, { error: 'That poll has closed.' }); q.answers = q.answers || {}; q.skips = q.skips || {};
@@ -2793,7 +2883,7 @@ async function handle(req, res) {
     }
     if (p === '/api/report' && req.method === 'POST') {
       if (limited('report:' + me.id, 10, 60 * 60e3)) return send(res, 429, { error: 'Too many reports. Try again later.' });
-      const b = await readBody(req, 4096); const about = String(b.id || ''); if (!S.users[about]) return send(res, 400, { error: 'Unknown player.' });
+      const b = await readBody(req, 4096); const about = String(b.id || ''); if (!S.users[about]) return send(res, 400, { error: 'Unknown player.' }); if (S.users[about].test) return send(res, 400, { error: 'Test is an admin test account, not a real player.' });
       S.reports.unshift({ id: rid(), t: Date.now(), by: me.id, byName: me.name, about, aboutName: S.users[about].name, kind: ['chat', 'mail', 'name', 'other'].includes(b.kind) ? b.kind : 'other', text: String(b.text || '').slice(0, 500), reason: String(b.reason || '').slice(0, 300), done: false });
       S.reports = S.reports.slice(0, 500); persist(); return send(res, 200, { ok: true });
     }

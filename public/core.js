@@ -362,6 +362,7 @@ const COVERT = {
   falseflag: { n: 'False flag', spies: 4, cost: 3000000, d: 'Frame this nation. If your next operation in the next 6 hours is caught, the evidence points to them instead of you. One time in three the frame-up is exposed: it is pinned on you and the whole world hears about it.' },
   heist: { n: 'Crack the treasury vault', spies: 3, cost: 400000, skill: 'safe', d: 'Break into their central bank and crack the vault yourself: turn the dial, listen for the clicks and lock in the combination before the guards arrive. The better you do, the more likely you get away with up to 3% of their treasury (at most $80M).' },
   cipher: { n: 'Intercept and decode', spies: 2, cost: 250000, skill: 'cipher', d: 'Intercept an encrypted message from their government and break the code yourself. The message is real: their army, treasury, wars and next target. Decode it well and fast and your agents get away clean.' },
+  warplans: { n: 'Steal their war plans', spies: 4, cost: 1500000, skill: 'memory', d: 'Your agents get a few seconds in their war room. Memorize the classified cards, then match the pairs once they flip face down, before the guards return. Pull it off and their defenses are 12% weaker against everyone for 12 hours, and you learn the size of their army, navy and air force.' },
   assassinate: { n: 'Assassinate a general', spies: 5, cost: 2000000, skill: 'sniper', d: 'Take the shot yourself: steady the swaying scope, hold your breath and fire on their best general (the one with the most stars). Three bullets. If your agents are caught the world finds out and they get a 48-hour just cause against you.' }
 };
 // World Council resolutions. kind: 'punish' and 'protect' name a target nation; 'global' applies to everyone. h = how long it lasts.
@@ -1564,6 +1565,11 @@ function Core(PD, CARDS) {
     touch(W, u, v); return { msg: `Aid sent: ${txt}.${mi && val < need ? ` (Aid worth at least ${moneyS(need)} counts for your daily mission.)` : ''}`, amount: a, val };
   }
 
+  // a nation's recent market orders: everything from the last 6 hours counts toward its price pressure. Old orders are merged, never dropped,
+  // so trading many times can't push a big earlier order out of the count (that used to let a buy-then-sell come out ahead)
+  function pushTrade(W, n, r, q) { const since = W.now - 6 * HOUR; let L = [{ t: W.now, r, q }, ...(n.trades || [])].filter(t => t.t > since);
+    if (L.length > 40) { const keep = L.slice(0, 30), old = L.slice(30), m = {}; for (const t of old) { const x = m[t.r] || (m[t.r] = { t: t.t, r: t.r, q: 0 }); x.q += t.q; x.t = Math.max(x.t, t.t); } L = [...keep, ...Object.values(m).filter(x => x.q)]; }
+    n.trades = L; }
   function market(W, u, r, q, buy) {
     const me = W.A[u]; if (!me) fail('Found a nation first.'); if (!has(RES, r)) fail('Unknown commodity.');
     if (embargoed(W, me)) fail('You are under a World Council embargo and cannot trade on the world market.');
@@ -1572,8 +1578,8 @@ function Core(PD, CARDS) {
     q = Math.floor(Number(q)); if (!(q > 0) || q > 1e6) fail('Enter a valid quantity.');
     const s = spreads(W, u), base = RES[r].p * (W.m.price[r] || 1); let msg;
     if (buy && r === 'mun' && q > munRoom(me)) fail(munRoom(me) ? `Your depots only have room for ${num(munRoom(me))} more munitions.` : `Your depots are full (${num(MUN.cap(me))} munitions).`);
-    if (buy) { const cost = Math.round(base * orderMult(W, u, r, q) * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; me.trades = [{ t: W.now, r, q }, ...(me.trades || [])].slice(0, 40); msg = `Imported ${num(q)} ${rName(r)} for ${money(cost)}.`; }
-    else { if (q > me.res[r]) fail('You do not have that much.'); const got = Math.round(base * orderMult(W, u, r, -q) * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; me.trades = [{ t: W.now, r, q: -q }, ...(me.trades || [])].slice(0, 40); msg = `Exported ${num(q)} ${rName(r)} for ${money(got)}.`; }
+    if (buy) { const cost = Math.round(base * orderMult(W, u, r, q) * s.buy * q); if (cost > me.cash) fail(`That order costs ${money(cost)}.`); me.cash -= cost; me.res[r] += q; me.imp = (me.imp || 0) + cost; pushTrade(W, me, r, q); msg = `Imported ${num(q)} ${rName(r)} for ${money(cost)}.`; }
+    else { if (q > me.res[r]) fail('You do not have that much.'); const got = Math.round(base * orderMult(W, u, r, -q) * s.sell * q); me.cash += got; me.rev = (me.rev || 0) + got; me.res[r] -= q; me.exp = (me.exp || 0) + got; pushTrade(W, me, r, -q); msg = `Exported ${num(q)} ${rName(r)} for ${money(got)}.`; }
     log(me, msg, W); if (base * q >= 1e5) xpOnce(W, u, 'mkt', 5 * MIN, 2); touch(W, u); return { msg };
   }
 
@@ -1603,7 +1609,7 @@ function Core(PD, CARDS) {
       let cost = 0, unit = 0; if (!why) { unit = autoUnit(W, u, r, q); cost = Math.round(unit * q); }
       const why2 = why || (o.maxp && unit > o.maxp ? `the price (${money(Math.round(unit))} each) is above your limit of ${money(o.maxp)}` : cost > Math.max(0, n.cash) ? `you need ${money(cost)} and have ${money(Math.max(0, Math.floor(n.cash)))}` : null);
       if (why2) { o.fail = why2; o.failT = W.now; if (!o.warnT || W.now - o.warnT > AUTOBUY.warnH * HOUR) { o.warnT = W.now; note(W, u, 'economy', `🛒 Auto-buy couldn't restock ${rName(r)}: ${why2}.`); log(n, `Auto-buy skipped for ${rName(r)}: ${why2}.`, W); } ch = true; continue; }
-      n.cash -= cost; n.res[r] = (n.res[r] || 0) + q; n.imp = (n.imp || 0) + cost; n.trades = [{ t: W.now, r, q }, ...(n.trades || [])].slice(0, 40);
+      n.cash -= cost; n.res[r] = (n.res[r] || 0) + q; n.imp = (n.imp || 0) + cost; pushTrade(W, n, r, q);
       o.last = { t: W.now, q, cost }; delete o.fail; delete o.warnT;
       log(n, `🛒 Auto-buy: imported ${num(q)} ${rName(r)} for ${money(cost)} (stock had fallen below ${num(o.below)}).`, W); ch = true;
     }
@@ -1696,6 +1702,9 @@ function Core(PD, CARDS) {
       else if (op === 'bankers') { them.credHit = W.now + 24 * HOUR; msg = `The leak worked: ${them.name}'s lenders are nervous and its credit rating drops one step for 24 hours.`; note(W, v, 'economy', `🏦 Damaging figures about your finances leaked to the markets. Your credit rating is one step lower for 24 hours.`); }
       else if (op === 'falseflag') { me.frame = { as: v, until: W.now + 6 * HOUR }; msg = `Your cover story is ready. If your next operation in the next 6 hours is caught, the evidence will point to ${them.name}.`; }
       else if (op === 'heist') { const a = Math.round(Math.min(8e7, Math.max(0, them.cash) * .03 * (.5 + .5 * (sk || 0)))); them.cash -= a; me.cash += a; msg = `💰 The vault is open! Your agents walked out of ${them.name}'s central bank with ${money(a)}.`; log(them, `💰 Thieves cracked the central bank vault and escaped with ${money(a)}.`, W); note(W, v, 'covert', `💰 Your central bank vault was cracked: ${money(a)} is gone. Foreign agents are suspected.`); }
+      else if (op === 'warplans') { them.boosts = (them.boosts || []).filter(q => !(q.src === 'warplans')); them.boosts.push({ t: W.now, until: W.now + 12 * HOUR, src: 'warplans', def: .88 });
+        me.intel = me.intel || {}; me.intel[v] = { t: W.now, cash: Math.round(them.cash || 0), troops: them.troops || 0, ships: them.ships || 0, air: them.air || 0, spies: them.spies || 0, tech: them.tech || 0 };
+        msg = `🗺 Your agents copied ${them.name}'s war plans: their defenses are 12% weaker against everyone for 12 hours. They have ${num(them.troops || 0)} troops, ${num(them.ships || 0)} warships and ${num(them.air || 0)} aircraft.`; log(them, '🗺 Spies stole your war plans: your defenses are 12% weaker for 12 hours.', W); note(W, v, 'covert', '🗺 Foreign spies stole your war plans. Your defenses are 12% weaker for 12 hours.'); }
       else if (op === 'cipher') { me.intel = me.intel || {}; me.intel[v] = { t: W.now, cash: Math.round(them.cash || 0), troops: them.troops || 0, ships: them.ships || 0, air: them.air || 0, spies: them.spies || 0, tech: them.tech || 0 }; msg = `📡 Decoded message from ${them.name}: "${opt.plain || cipherIntel(W, v)}" Your agents got away clean.`; }
       else if (op === 'rig') { them.rig = (them.rig || 0) + (self ? 8 : -10); msg = self ? 'Your agents quietly secured votes for the next election (+8%).' : `Your agents are swinging ${them.name}'s next election against its government.`; }
     } else {
@@ -1768,7 +1777,19 @@ function Core(PD, CARDS) {
       const a = String(c.a || 'deal');
       if (a === 'deal') { if (n.bj) fail('Finish your current hand first.'); const bet = casinoBet(W, n, c.bet); n.cash -= bet; n.bj = { bet, p: [cardOf(R), cardOf(R)], d: [cardOf(R)], t: W.now, nz: W.fairNonce != null ? [W.fairNonce] : undefined };
         if (bjVal(n.bj.p) === 21) return bjEnd(W, u, R, true); touch(W, u); return { msg: 'Cards dealt.', casino: { g: 'bj', bj: n.bj, pv: bjVal(n.bj.p) } }; }
-      const h = n.bj; if (!h) fail('Deal a new hand first.'); if (W.fairNonce != null && ['hit', 'double', 'stand'].includes(a)) h.nz = [...(h.nz || []), W.fairNonce];
+      const h = n.bj; if (!h) fail('Deal a new hand first.'); if (W.fairNonce != null && ['hit', 'double', 'stand', 'split'].includes(a)) h.nz = [...(h.nz || []), W.fairNonce];
+      if (a === 'split') { // two cards of the same value become two hands, each with the original bet; split aces take one card each
+        if (h.hands) fail('You can only split once per round.'); const cv = c => c.v > 10 ? 10 : c.v;
+        if (h.p.length !== 2 || cv(h.p[0]) !== cv(h.p[1])) fail('You can only split your first two cards when they have the same value.');
+        if (n.cash < h.bet) fail('You do not have enough money to split.'); n.cash -= h.bet;
+        h.hands = [{ p: [h.p[0], cardOf(R)], bet: h.bet, dbl: 0 }, { p: [h.p[1], cardOf(R)], bet: h.bet, dbl: 0 }]; h.cur = 0; h.aces = h.p[0].v === 1; h.p = h.hands[0].p;
+        if (h.aces) return bjEnd(W, u, R); if (bjVal(h.p) === 21) return bjNext(W, u, R);
+        touch(W, u); return { msg: 'Split into two hands. Playing hand 1.', casino: { g: 'bj', bj: h, pv: bjVal(h.p) } }; }
+      if (h.hands) { const hd = h.hands[h.cur]; h.p = hd.p; // a split round: play the current hand
+        if (a === 'hit') { h.p.push(cardOf(R)); if (bjVal(h.p) >= 21) return bjNext(W, u, R); touch(W, u); return { msg: 'Hit.', casino: { g: 'bj', bj: h, pv: bjVal(h.p) } }; }
+        if (a === 'double') { if (h.p.length !== 2) fail('You can only double down on your first two cards.'); if (n.cash < hd.bet) fail('You do not have enough money to double.'); n.cash -= hd.bet; hd.bet *= 2; hd.dbl = 1; h.p.push(cardOf(R)); return bjNext(W, u, R); }
+        if (a === 'stand') return bjNext(W, u, R);
+        fail('Unknown move.'); }
       if (a === 'hit') { h.p.push(cardOf(R)); if (bjVal(h.p) > 21) return bjEnd(W, u, R); if (bjVal(h.p) === 21) return bjEnd(W, u, R); touch(W, u); return { msg: 'Hit.', casino: { g: 'bj', bj: h, pv: bjVal(h.p) } }; }
       if (a === 'double') { if (h.p.length !== 2) fail('You can only double down on your first two cards.'); if (n.cash < h.bet) fail('You do not have enough money to double.'); n.cash -= h.bet; h.bet *= 2; h.dbl = 1; h.p.push(cardOf(R)); return bjEnd(W, u, R); }
       if (a === 'stand') return bjEnd(W, u, R);
@@ -1795,7 +1816,18 @@ function Core(PD, CARDS) {
     }
     fail('Unknown game.');
   }
+  function bjNext(W, u, R) { const h = W.A[u].bj; h.cur++; if (h.cur >= h.hands.length) return bjEnd(W, u, R); h.p = h.hands[h.cur].p; if (bjVal(h.p) === 21) return bjNext(W, u, R); touch(W, u); return { msg: `Playing hand ${h.cur + 1}.`, casino: { g: 'bj', bj: h, pv: bjVal(h.p) } }; }
+  function bjEndSplit(W, u, R) { // settle both hands of a split round against one dealer hand
+    const n = W.A[u], h = n.bj; delete n.bj; h.d.push(cardOf(R)); const dNat = bjVal(h.d) === 21;
+    if (h.hands.some(x => bjVal(x.p) <= 21)) while (bjVal(h.d) < 17) h.d.push(cardOf(R)); const dv = bjVal(h.d); let net = 0; const out = [];
+    h.hands.forEach((x, i) => { const pv = bjVal(x.p); let res, pay = 0;
+      if (pv > 21) res = 'bust'; else if (dNat && h.d.length === 2) res = 'lose'; else if (dv > 21 || pv > dv) { res = 'win'; pay = x.bet * 2; } else if (pv === dv) { res = 'push'; pay = x.bet; } else res = 'lose';
+      n.cash += x.bet; net += casinoSettle(W, u, 'bj', x.bet, pay, `${pv} vs ${dv}`, h.nz); x.res = res; out.push(`hand ${i + 1} ${({ win: 'wins', push: 'pushes', bust: 'busts', lose: 'loses' })[res]}`); });
+    const res = net > 0 ? 'win' : net < 0 ? (h.hands.every(x => x.res === 'bust') ? 'bust' : 'lose') : 'push';
+    return { msg: `${out.join(', ').replace(/^./, c => c.toUpperCase())}. Dealer ${dv > 21 ? 'busts' : 'has ' + dv}. ${net > 0 ? 'You win ' + moneyS(net) : net < 0 ? 'You lose ' + moneyS(-net) : 'You break even'}.`, casino: { g: 'bj', bj: { ...h, done: 1 }, pv: bjVal(h.hands[0].p), dv, res, net } };
+  }
   function bjEnd(W, u, R, natural) {
+    if (W.A[u].bj && W.A[u].bj.hands) return bjEndSplit(W, u, R);
     const n = W.A[u], h = n.bj; delete n.bj; const pv = bjVal(h.p); h.d.push(cardOf(R)); // the dealer's hole card is only drawn now
     const dNat = h.d.length === 2 && bjVal(h.d) === 21; let res, pay = 0;
     if (pv > 21) res = 'bust';
@@ -2697,7 +2729,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { covertCheck, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
