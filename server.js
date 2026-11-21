@@ -1297,15 +1297,16 @@ const CIPHER_HINTS = 4;
 const snipePos = (q, t) => ({ x: 150 + 105 * Math.sin(t * q.w1 + q.p1), y: 118 + 34 * Math.sin(t * q.w2 + q.p2) });
 const MEMO = { easy: { pairs: 4, show: 4, time: 45, f: .78 }, medium: { pairs: 6, show: 5, time: 60, f: .9 }, hard: { pairs: 8, show: 6, time: 75, f: 1 } };
 const MEMO_ICONS = ['tank', 'jet', 'ship', 'missile', 'radar', 'sub', 'heli', 'sat', 'shield', 'flag', 'map', 'key'];
-function spyPuzzle(op, W, v, lvl) {
+const MG_MSGS = ['THE NORTHERN FLEET SAILS AT DAWN AND RETURNS BEFORE THE STORM', 'MEET THE COURIER AT THE OLD BRIDGE WHEN THE CLOCK STRIKES NINE', 'THE HARVEST WAS GOOD AND THE GRAIN SHIPS LEAVE PORT TOMORROW', 'KEEP THE RESERVES HIDDEN IN THE HILLS UNTIL THE SIGNAL IS GIVEN', 'THE AMBASSADOR ARRIVES BY TRAIN AND EXPECTS A QUIET WELCOME', 'MOVE THE GOLD TO THE MOUNTAIN VAULT BEFORE THE FIRST SNOW FALLS', 'THE ENGINEERS FINISH THE TUNNEL NEXT WEEK IF THE WEATHER HOLDS', 'SEND THREE SQUADRONS SOUTH AND HOLD THE REST AT THE CAPITAL'];
+function spyPuzzle(op, W, v, lvl, neutral) {
   if (op === 'warplans') { const L = MEMO[lvl] ? lvl : 'medium', M = MEMO[L], ic = MEMO_ICONS.slice(); for (let i = ic.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [ic[i], ic[j]] = [ic[j], ic[i]]; }
     const cards = []; for (const x of ic.slice(0, M.pairs)) cards.push(x, x); for (let i = cards.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [cards[i], cards[j]] = [cards[j], cards[i]]; }
     return { secret: { cards, lvl: L }, pub: { kind: 'memory', cards, lvl: L, pairs: M.pairs, show: M.show, time: M.time } }; }
-  if (op === 'assassinate') { const r = () => crypto.randomInt(0, 1e6) / 1e6, q = { w1: .45 + r() * .35, w2: .9 + r() * .6, p1: r() * 6.28, p2: r() * 6.28 }; const g = (W.A[v].gens || []).reduce((b, x) => !b || x.stars > b.stars ? x : b, null);
+  if (op === 'assassinate') { const r = () => crypto.randomInt(0, 1e6) / 1e6, q = { w1: .45 + r() * .35, w2: .9 + r() * .6, p1: r() * 6.28, p2: r() * 6.28 }; const g = neutral ? { name: 'Range target', stars: 0 } : (W.A[v].gens || []).reduce((b, x) => !b || x.stars > b.stars ? x : b, null);
     return { secret: q, pub: { kind: 'sniper', ...q, time: 30, bullets: 3, r: 10, gen: g ? { name: g.name, stars: g.stars } : null } }; }
   if (op === 'heist') { const combo = [], dirs = ['right', 'left', 'right']; while (combo.length < 3) { const x = crypto.randomInt(4, 96); if (combo.every(c => Math.abs(c - x) > 8)) combo.push(x); } return { secret: combo, pub: { kind: 'safe', combo, dirs, time: 50 } }; }
   // a substitution cipher: every letter is swapped for another; a few letters are given away to get started
-  const plain = core.cipherIntel(W, v), A_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), sh = A_.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [sh[i], sh[j]] = [sh[j], sh[i]]; } if (sh.some((c, i) => c === A_[i])) { for (let i = 0; i < 26; i++) if (sh[i] === A_[i]) { const j = (i + 1) % 26; [sh[i], sh[j]] = [sh[j], sh[i]]; } }
+  const plain = neutral ? MG_MSGS[crypto.randomInt(0, MG_MSGS.length)] : core.cipherIntel(W, v), A_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), sh = A_.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [sh[i], sh[j]] = [sh[j], sh[i]]; } if (sh.some((c, i) => c === A_[i])) { for (let i = 0; i < 26; i++) if (sh[i] === A_[i]) { const j = (i + 1) % 26; [sh[i], sh[j]] = [sh[j], sh[i]]; } }
   const enc = {}; A_.forEach((c, i) => enc[c] = sh[i]); const cipher = plain.split('').map(c => enc[c] || c).join('');
   const used = [...new Set(plain.replace(/[^A-Z]/g, '').split(''))]; const freq = {}; for (const c of plain) if (enc[c]) freq[c] = (freq[c] || 0) + 1;
   const hints = used.sort((a, b) => freq[b] - freq[a]).slice(0, 2).concat(used.filter(c => 'AEIOU'.indexOf(c) < 0).sort(() => .5 - Math.random()).slice(0, CIPHER_HINTS - 2)); const give = {}; for (const c of [...new Set(hints)].slice(0, CIPHER_HINTS)) give[enc[c]] = c;
@@ -1332,31 +1333,37 @@ function spyScore(g, b, t0) {
   const acc = tot ? ok_ / tot : 0; if (acc >= .98 && secs < 6) return { skill: 0, why: 'too fast to be real' };
   const t = Math.max(0, Math.min(1, 1 - (secs - 25) / 125)); return { skill: Math.max(0, Math.min(1, acc * acc * (.55 + .45 * t))), why: `${Math.round(acc * 100)}% decoded in ${Math.round(secs)} s` };
 }
-function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r; try { r = core.covert(W, uid, g.op, g.v, rng, { paid: true, skill: sc.skill, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : null, force, caught }); } catch (e) { r = { msg: e.message, ok: false }; } commit(W); return r; }
+function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r;
+  if (core.MGAME.k[g.op]) { const nm_ = u => (S.docs['nations/' + u] || {}).name || 'They', N = WP.COVERT[g.op].n, M_ = v => '$' + Math.round(v).toLocaleString('en-US');
+    if (force === undefined || force === null) { const p_ = core.mgPay(W, uid, g.op, g.prize || 0, sc.skill); r = { ok: p_.won > 0, won: p_.won, xp: p_.xp, msg: p_.won ? `${nm_(g.v)} did not take up the challenge, so you played for the prize alone and won ${M_(p_.won)}${p_.xp ? ` and ${p_.xp} experience` : ''}.` : `${nm_(g.v)} did not take up the challenge, so you played alone. You needed a score of 30 or more to win a prize.` }; }
+    else if (force) { const p_ = core.mgPay(W, uid, g.op, g.prize || 0, sc.skill, sc.skill >= core.MGAME.need ? .5 : 0); r = { ok: p_.won > 0, won: p_.won, xp: p_.xp, msg: p_.won ? `You beat ${nm_(g.v)} and won ${M_(p_.won)}${p_.xp ? ` and ${p_.xp} experience` : ''}.` : `You beat ${nm_(g.v)}, but a score of 30 or more is needed to win a prize.` }; }
+    else { const dsk = (g.duel && g.duel.score && g.duel.score.skill) || 0, tie = dsk <= sc.skill, dp = W.A[g.v] && !tie && dsk >= core.MGAME.need ? core.mgPay(W, g.v, g.op, core.mgPrize(W, g.v, g.op, g.lvl || 'medium'), dsk, .5) : { won: 0, xp: 0 }; g.defWon = dp; g.tie = tie; r = { ok: false, won: 0, xp: 0, msg: tie ? `You and ${nm_(g.v)} tied, so nobody wins the prize.` : `${nm_(g.v)} beat your score. You win nothing this time.` }; }
+    commit(W); return r; } try { r = core.covert(W, uid, g.op, g.v, rng, { paid: true, skill: sc.skill, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : null, force, caught }); } catch (e) { r = { msg: e.message, ok: false }; } commit(W); return r; }
 // SPY DUELS: if the target is online when a mini-game operation starts, they are warned and may defend by playing the same puzzle at the
 // same time. The better score wins: if the defender wins, the operation fails and the agents are identified. A defender who does not
 // answer within 20 seconds is simply not there, and the operation is rolled as usual.
-const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map(); const SPYPR = new Map(), SPYPL = new Map(); // practice rounds and prize rounds, one per player
+const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map(); const SPYPR = new Map(); // practice rounds, one per player
 // a duel against a player who is online waits for them to accept: 30 seconds, then it is called off (and costs the challenger nothing)
 const DUEL_WAIT = 30e3, SPYP = new Map(); // invite id -> { by, v, op, at }
 const spyPubOf = g => g.pub || null;
 const spyOnline = v => [...clients].some(c => c.uid === v) && S.users[v] && !BOTS.isBot(v);
 function spyCallOff(id, why) { const P = SPYP.get(id); if (!P) return; SPYP.delete(id); sendTo(P.by, 'spyno', { id, msg: why }); sendTo(P.v, 'spyduelgone', { id }); }
 setInterval(() => { const now = Date.now(); for (const [id, P] of SPYP) if (now - P.at > DUEL_WAIT) spyCallOff(id, `${(S.docs['nations/' + P.v] || {}).name || 'They'} did not accept within 30 seconds. The operation was called off and cost you nothing.`); }, 2000).unref();
-const duelNames = { warplans: 'steal your war plans', heist: 'crack your central bank vault', cipher: 'read your government\'s secret messages', assassinate: 'assassinate one of your generals' };
+const duelNames = { warplans: 'a memory duel', heist: 'a vault-cracking duel', cipher: 'a code-breaking duel', assassinate: 'a shooting duel' };
 function duelOpen(uid, g, pub) { const online = [...clients].some(c => c.uid === g.v) && S.users[g.v] && !BOTS.isBot(g.v); if (!online) return; g.duel = { state: 'invited', at: Date.now() }; DUELBY.set(g.id, uid);
   sendTo(g.v, 'spyduel', { id: g.id, op: g.op, what: duelNames[g.op], game: pub, answer: DUEL_ANSWER }); }
 function duelSettle(uid, g) { // both scores are in (or the defender never showed up): decide and tell both sides
   const att = g.attScore, def = g.duel && g.duel.score; let r;
   if (def && g.duel.state === 'done') { const won = att.skill > def.skill; r = spyResolve(uid, g, att, won, won ? undefined : true);
-    sendTo(g.v, 'spyduelres', { win: !won, msg: won ? `🕵 The enemy agents beat your counter-intelligence (their score ${Math.round(att.skill * 100)}, yours ${Math.round(def.skill * 100)}) and got away.` : `🛡 You stopped them! Your score ${Math.round(def.skill * 100)} beat theirs (${Math.round(att.skill * 100)}). The agents were from ${(S.docs['nations/' + uid] || {}).name || 'a foreign nation'}.` });
+    { const cn = (S.docs['nations/' + uid] || {}).name || 'The challenger', a100 = Math.round(att.skill * 100), d100 = Math.round(def.skill * 100), prizeGame = !!core.MGAME.k[g.op], dw = g.defWon || { won: 0, xp: 0 };
+      sendTo(g.v, 'spyduelres', { win: !won && !g.tie, own: S.docs['nations/' + g.v], msg: prizeGame ? (won ? `${cn} won the duel (their score ${a100}, yours ${d100}). It cost you nothing.` : g.tie ? `You tied with ${cn} (${d100} each), so nobody wins the prize.` : dw.won ? `You won the duel against ${cn}! Your score ${d100} beat theirs (${a100}). Prize: $${Math.round(dw.won).toLocaleString('en-US')}${dw.xp ? ` and ${dw.xp} experience` : ''}.` : `You beat ${cn} (${d100} to ${a100}), but a score of 30 or more is needed to win a prize.`) : won ? `🕵 The enemy agents beat your counter-intelligence (their score ${a100}, yours ${d100}) and got away.` : `🛡 You stopped them! Your score ${d100} beat theirs (${a100}). The agents were from ${cn}.` }); }
     r.duel = { you: Math.round(att.skill * 100), them: Math.round(def.skill * 100), won }; }
   else r = spyResolve(uid, g, att);
   DUELBY.delete(g.id); SPYG.delete(uid); SPYR.set(uid, { id: g.id, at: Date.now(), out: { ok: true, success: !!r.ok, msg: r.msg, score: Math.round(att.skill * 100), why: att.why, plain: g.op === 'cipher' && att.skill > .3 ? g.secret : undefined, duel: r.duel || null, own: S.docs['nations/' + uid] } }); }
 setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) { if (!g.attScore) continue; const d = g.duel; if (!d) continue;
     if (d.state === 'invited' && now - d.at > DUEL_ANSWER) { d.state = 'gone'; duelSettle(uid, g); } else if (d.state === 'playing' && now - d.t0 > (g.pubTime + 8) * 1000) { d.state = 'gone'; duelSettle(uid, g); } }
   for (const [u, x] of SPYR) if (now - x.at > 10 * 60e3) SPYR.delete(u); }, 1000).unref();
-setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) if (now - g.t0 > SPY_TTL) { SPYG.delete(uid); try { spyResolve(uid, g, { skill: 0 }); addNote(uid, 'covert', 'Your agents waited too long for orders and the operation fell apart.'); } catch (e) {} } }, 15000).unref();
+setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) if (now - g.t0 > SPY_TTL) { SPYG.delete(uid); try { spyResolve(uid, g, { skill: 0 }); addNote(uid, 'covert', core.MGAME.k[g.op] ? 'Your duel timed out before you finished, so it ended with no prize.' : 'Your agents waited too long for orders and the operation fell apart.'); } catch (e) {} } }, 15000).unref();
 async function spyRoute(p, req, res, me) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST.' });
   if (finaleLock()) return send(res, 423, FINALE_LOCK_MSG); { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
@@ -1365,35 +1372,27 @@ async function spyRoute(p, req, res, me) {
   if (p === '/api/spy/practice') { if (limited('spyp:' + me.id, 12, 60e3)) return send(res, 429, { error: 'Take a short break, then practice again.' });
     const op = String(b.op || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
     if (!S.docs['nations/' + me.id]) return send(res, 400, { error: 'Found a nation first.' });
-    const pz = spyPuzzle(op, mkWorld(), me.id, lvl), id = rid(); if (pz.pub.kind === 'sniper') pz.pub.gen = { name: 'Training target', stars: 0 };
+    const pz = spyPuzzle(op, mkWorld(), me.id, lvl, true), id = rid();
     SPYPR.set(me.id, { id, op, secret: pz.secret, t0: Date.now() }); return send(res, 200, { ok: true, id, game: pz.pub, practice: true }); }
   if (p === '/api/spy/practicedone') { const g = SPYPR.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That practice round is over.' }); SPYPR.delete(me.id);
     const sc = spyScore(g, b, g.t0); return send(res, 200, { ok: true, practice: true, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' ? g.secret : undefined }); }
-  // PRIZE ROUND: the same puzzles, played alone. A small entry fee, a prize by score, and a cooldown per game. Nobody else is involved.
-  if (p === '/api/spy/play') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
-    const op = String(b.op || ''); if (!core.MGAME.k[op]) return send(res, 400, { error: 'Unknown game.' }); const lvl = op === 'warplans' && ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
-    { const g = hcGate(me.id, false); if (g) return send(res, g.jail ? 423 : 428, g); }
-    const old = SPYPL.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the game you already started first.' });
-    const W = mkWorld(); let st; try { st = core.mgBegin(W, me.id, op, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
-    const pz = spyPuzzle(op, W, me.id, lvl); if (pz.pub.kind === 'sniper') pz.pub.gen = { name: 'Range target', stars: 0 }; commit(W); const id = rid();
-    SPYPL.set(me.id, { id, op, lvl, secret: pz.secret, t0: Date.now(), prize: st.prize, fee: st.fee }); return send(res, 200, { ok: true, id, game: pz.pub, play: true, prize: st.prize, fee: st.fee, own: S.docs['nations/' + me.id] }); }
-  if (p === '/api/spy/playdone') { const g = SPYPL.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That game is over.' }); SPYPL.delete(me.id);
-    const sc = spyScore(g, b, g.t0); const W = mkWorld(); const r = core.mgPay(W, me.id, g.op, g.prize, sc.skill); commit(W); try { actLog(me.id, W, { c: 'minigame', op: g.op, skill: Math.round(sc.skill * 100) }, true, r.won ? 'won ' + r.won : 'no prize'); } catch (e) {}
-    return send(res, 200, { ok: true, play: true, score: Math.round(sc.skill * 100), why: sc.why, won: r.won, xp: r.xp, fee: g.fee, prize: g.prize, plain: g.op === 'cipher' ? g.secret : undefined, own: S.docs['nations/' + me.id] }); }
-  if (p === '/api/spy/start') { if (core.MGAME.k[String(b.op || '')]) return send(res, 400, { error: 'That is now a prize game you play on your own. Reload the page to see it.' }); if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
+  if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
     const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
     const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
-    if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy mini-games. Turn them back on from your Intelligence page to use this operation.' });
-    if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That nation'} has opted out of spy mini-games, so this operation cannot be used on them.` });
+    if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy duels. Turn them back on from your Intelligence page to challenge anyone.' });
+    if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That nation'} has opted out of spy duels, so you cannot challenge them.` });
+    if (v === me.id || !S.docs['nations/' + v]) return send(res, 400, { error: 'Choose another nation to challenge.' });
+    if (sharesNetwork(me.id, v)) return send(res, 400, { error: 'You can\'t challenge an account on the same network as yours.' });
+    { const g_ = hcGate(me.id, false); if (g_) return send(res, g_.jail ? 423 : 428, g_); }
     if (v !== me.id && spyOnline(v)) { // they are online: ask them first
       for (const [id, P] of SPYP) if (P.by === me.id) return send(res, 400, { error: `You are already waiting for ${(S.docs['nations/' + P.v] || {}).name || 'another nation'} to accept.` });
       if (limited('spyinv:' + me.id + ':' + v, 3, 5 * 60e3)) return send(res, 429, { error: 'You have challenged that nation several times just now. Try again in a few minutes.' });
-      try { core.covertCheck(mkWorld(), me.id, op, v, false); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+      let W0 = mkWorld(); try { core.mgCheck(W0, me.id, op, v, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
       const id = crypto.randomBytes(6).toString('hex'); SPYP.set(id, { by: me.id, v, op, lvl, at: Date.now() });
-      sendTo(v, 'spyduel', { id, op, what: duelNames[op], pending: true, answer: DUEL_WAIT });
+      sendTo(v, 'spyduel', { id, op, what: duelNames[op], by: (S.docs['nations/' + me.id] || {}).name, prize: core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
       return send(res, 200, { ok: true, pending: true, id, wait: DUEL_WAIT, name: (S.docs['nations/' + v] || {}).name || 'They' }); }
-    const W = mkWorld(); try { core.covertBegin(W, me.id, op, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
-    const pz = spyPuzzle(op, W, v, lvl); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
+    const W = mkWorld(); let st; try { st = core.mgBegin(W, me.id, op, lvl, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+    const pz = spyPuzzle(op, W, v, lvl, true); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, lvl, prize: st.prize, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
     try { duelOpen(me.id, g, pz.pub); } catch (e) {}
     return send(res, 200, { ok: true, id, game: pz.pub, duel: !!g.duel, own: S.docs['nations/' + me.id] }); }
   if (p === '/api/spy/finish') { const g = SPYG.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That operation is over.' });
@@ -1409,9 +1408,9 @@ async function spyRoute(p, req, res, me) {
     if (!P || P.v !== me.id || Date.now() - P.at > DUEL_WAIT) return send(res, 400, { error: 'Too late: that challenge is over.' });
     if (p === '/api/spy/decline') { spyCallOff(id, `${(S.docs['nations/' + me.id] || {}).name || 'They'} declined. The operation was called off and cost you nothing.`); return send(res, 200, { ok: true }); }
     SPYP.delete(id); sendTo(P.v, 'spyduelgone', { id });
-    const W = mkWorld(); try { core.covertBegin(W, P.by, P.op, P.v); } catch (e) { const why = e && e.user ? e.message : 'Something went wrong.'; sendTo(P.by, 'spyno', { id, msg: 'Your operation could not start: ' + why }); return send(res, 400, { error: 'The operation was called off.' }); }
-    const pz = spyPuzzle(P.op, W, P.v, P.lvl); commit(W); const now = Date.now();
-    const g = { id, op: P.op, v: P.v, t0: now, secret: pz.secret, pubTime: pz.pub.time, pub: pz.pub, duel: { state: 'playing', at: now, t0: now } }; SPYG.set(P.by, g); SPYR.delete(P.by); DUELBY.set(id, P.by);
+    const W = mkWorld(); let st; try { st = core.mgBegin(W, P.by, P.op, P.lvl, P.v); } catch (e) { const why = e && e.user ? e.message : 'Something went wrong.'; sendTo(P.by, 'spyno', { id, msg: 'Your operation could not start: ' + why }); return send(res, 400, { error: 'The operation was called off.' }); }
+    const pz = spyPuzzle(P.op, W, P.v, P.lvl, true); commit(W); const now = Date.now();
+    const g = { id, op: P.op, v: P.v, lvl: P.lvl, prize: st.prize, t0: now, secret: pz.secret, pubTime: pz.pub.time, pub: pz.pub, duel: { state: 'playing', at: now, t0: now } }; SPYG.set(P.by, g); SPYR.delete(P.by); DUELBY.set(id, P.by);
     sendTo(P.by, 'spygo', { id, game: pz.pub, own: S.docs['nations/' + P.by] });
     return send(res, 200, { ok: true, id, game: pz.pub, op: P.op }); }
   // the defender's side of a duel
