@@ -17,7 +17,7 @@ let A, B, now, t0Gen, ctl, base, gen = (workerData.prev && workerData.prev.gen) 
 const prev = workerData.prev || {};
 const stats = Object.assign({ rounds: 0, cmds: 0, ok: 0, refused: 0, crashes: 0, simHours: 0, gens: 0, invariant: 0, startedAt: Date.now() }, prev.stats || {}, { startedAt: (prev.stats && prev.stats.startedAt) || Date.now() });
 const findings = new Map((prev.findings || []).filter(f => !(f.key === 'gamblerrich' && /far richer/.test(f.title)) && !(/^outrun:/.test(f.key) && /outgrew everyone/.test(f.title))).map(f => [f.key, f])); // two old checks gave false alarms: they are dropped
-const coverage = Object.assign({}, prev.coverage || {});
+const coverage = Object.fromEntries(Object.entries(prev.coverage || {}).map(([k, v]) => [k, { tries: v.tries || 0, ok: v.ok || 0, why: Array.isArray(v.why) ? Object.fromEntries(v.why.filter(w => Array.isArray(w))) : { ...(v.why || {}) } }])); // saved results may hold the reasons as a list or an object
 const casinoAll = Object.assign({}, prev.casino || {});
 let history = (prev.history || []).slice(-20), strat = {}, stepMs = 0, lastReport = 0, recent = [];
 

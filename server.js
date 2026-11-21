@@ -1702,7 +1702,7 @@ const labView = () => ({ on: !!S.testLab.on, paused: !!S.testLab.paused, speed: 
 const { Worker } = require('worker_threads');
 const TEST_ID = 'admin-test';
 S.testLab = S.testLab && typeof S.testLab === 'object' ? S.testLab : { on: true, speed: 'normal', paused: false };
-let LAB = S.testLab.state || null, labW = null, labRestart = 0, labSaveT = 0;
+let LAB = (st => st && st.coverage ? { ...st, coverage: Object.fromEntries(Object.entries(st.coverage).map(([k, v]) => [k, { ...v, why: Array.isArray(v.why) ? v.why : Object.entries(v.why || {}).sort((a, b) => b[1] - a[1]).slice(0, 3) }])) } : st)(S.testLab.state) || null, labW = null, labRestart = 0, labSaveT = 0;
 function ensureTestAccount() { const u = S.users[TEST_ID]; if (!u || u.name !== 'Test' || !u.test) { S.users[TEST_ID] = { id: TEST_ID, name: 'Test', test: true, created: (u && u.created) || Date.now() }; persist(); } } // no email or password: nobody can sign in as it
 const labSnap = () => { const nations = {}; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/') && d && !d.ai) nations[k.slice(8)] = d; return { nations, cfg: S.config, fresh: !!S.fresh }; };
 function labStart() {
