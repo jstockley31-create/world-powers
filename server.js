@@ -57,7 +57,7 @@ for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) 
 const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
 const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
-const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games', m1: 'MMORPG 100' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
+const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games', m1: 'MMORPG 100', mp: 'MPOG 100' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(2e6, Math.round((n.gdp || 0) * .02 / 1e5) * 1e5)); // at least $2M per vote (2% of GDP for bigger nations, up to $25M)
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
@@ -3134,7 +3134,7 @@ async function handle(req, res) {
     if (p === '/api/prefs' && req.method === 'POST') {
       const b = await readBody(req, 2048); const pr = prefsOf(me.id); for (const k of NOTE_KINDS) if (typeof b[k] === 'boolean') pr[k] = b[k];
       // spy mini-games: a player may opt out (nobody can use the vault, cipher or sniper on them, and they cannot use them either). Once a day, so it cannot be flipped to dodge an attack.
-      if (typeof b.spygames === 'boolean' && b.spygames !== pr.spygames) { const m = meta(me.id), left = (m.spyOptT || 0) + 24 * HOUR - Date.now(); if (left > 0) return send(res, 400, { error: `You can change this again in ${Math.ceil(left / HOUR)} hour${Math.ceil(left / HOUR) === 1 ? '' : 's'}.`, prefs: pr }); if (SPYG.has(me.id)) return send(res, 400, { error: 'Finish your spy operation first.', prefs: pr }); pr.spygames = b.spygames; m.spyOptT = Date.now(); setTimeout(() => broadcast('spyopt', spyOptList()), 0); }
+      if (typeof b.spygames === 'boolean' && b.spygames !== pr.spygames) { const m = meta(me.id); if (limited('spyopt:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down a little.', prefs: pr }); if (SPYG.has(me.id)) return send(res, 400, { error: 'Finish your spy operation first.', prefs: pr }); pr.spygames = b.spygames; m.spyOptT = Date.now(); setTimeout(() => broadcast('spyopt', spyOptList()), 0); }
       meta(me.id).prefs = pr; persist(); return send(res, 200, { ok: true, prefs: pr });
     }
     if (p === '/api/push/subscribe' && req.method === 'POST') {
