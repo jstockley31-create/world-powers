@@ -272,7 +272,7 @@ function audit(by, action, target, detail) { S.audit.unshift({ t: Date.now(), by
 const buckets = new Map();
 function limited(key, max, windowMs) { const now = Date.now(); let b = buckets.get(key); if (!b || now > b.reset) { b = { n: 0, reset: now + windowMs }; buckets.set(key, b); } return ++b.n > max; }
 setInterval(() => { const now = Date.now(); for (const [k, b] of buckets) if (now > b.reset) buckets.delete(k); const cut = Math.floor(now / 60000) - 60; for (const k of health.reqs.keys()) if (k < cut) health.reqs.delete(k); }, 60000).unref();
-function flag(uid, r) { if (S.flags.some(f => f.uid === uid && f.r === r && Date.now() - f.t < 10 * 60e3)) return; S.flags.unshift({ t: Date.now(), uid, r }); S.flags = S.flags.slice(0, 2000); persist(); }
+function flag(uid, r) { if (S.chaos && S.chaos.on) return; /* the chaos copy is meant to be wild: nothing in it is real */ if (S.flags.some(f => f.uid === uid && f.r === r && Date.now() - f.t < 10 * 60e3)) return; S.flags.unshift({ t: Date.now(), uid, r }); S.flags = S.flags.slice(0, 2000); persist(); }
 // ---------- Dev corner: a forum and a chat room for ideas and talk about the game (signed-in players only) ----------
 S.dev = S.dev || { threads: [], chat: [] };
 const DEV_CATS = ['Ideas', 'Balance', 'Bugs', 'General'];
@@ -569,6 +569,7 @@ function effCfg() {
   const c = { ...S.config }, now = Date.now(); const on = S.schedule.filter(x => BOOSTS[x.type] && x.start <= now && now < x.end);
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
+  if (S.chaos && S.chaos.on) { const o = S.chaos.o || {}; c.chaos = { end: S.chaos.end, speed: o.speed || 10 }; c.tm = 1 / (o.speed || 10); c.income *= 3; c.protectH = o.noShield ? 0 : c.protectH; c.boost = { label: `💥 Chaos world: weapons unlocked, timers ${o.speed || 10}× faster. Everything resets when it ends`, end: S.chaos.end }; }
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
   c.noAdmin = !!S.fresh; // no province limit inside a fresh-start season world
@@ -1466,6 +1467,118 @@ function freshRestore(by, why) {
   setTimeout(() => broadcast('reload', { t: Date.now() }), 200);
   return snap;
 }
+// ---------- CHAOS WORLD ----------
+// The admin can switch the game into a temporary "chaos" copy of the world at any time, even mid-season: the real world is saved to a
+// file first (and read back to prove it's good), then everyone keeps playing their own nation with every weapon unlocked, a huge war
+// chest and timers 90% faster. When the time runs out the saved real world comes back exactly as it was, and its timers are moved on
+// by the length of the event so nothing ran out while it was set aside. Accounts, chat, mail, Helpdesk, donations, moderation and
+// Cheat watch are never touched. The top 3 get a badge in the real world.
+const CHAOS_FILE = path.join(DATA_DIR, 'chaos-realworld.json');
+const CHAOS_KEYS = [...FRESH_KEYS, 'scoreHist', 'casino'];
+const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10], chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
+const CHAOS_XP = 12000; // the highest rank any weapon needs (Sovereign)
+const chaosOn = () => !!(S.chaos && S.chaos.on);
+const CHAOS_LOCK = { error: 'Chaos world is running. Anything changed in the world now would be lost when the real world comes back. End Chaos world first (Admin → Chaos world).' };
+function chaosMaxEnd() { const se = S.seasons && S.seasons.cur; return se && se.status === 'live' && se.end ? se.end - 15 * 60e3 : Infinity; } // must be over well before a season's finale
+// timers in the saved world are moved on by the length of the event, so a shield or a cooldown has the same time left afterwards
+const CHAOS_TKEY = /^(t|until|end|ready|next|exp|at|go|since)$|T$|At$|Until$|^next|shield|regroup|blockade|Ban$|rogue|Warn$|Hit$|winter|fallout|nuked|nukeTax|iaea/;
+function chaosShift(o, from, to, d, all, depth = 0) {
+  if (!o || typeof o !== 'object' || depth > 6) return;
+  for (const k of Object.keys(o)) { const v = o[k];
+    if (typeof v === 'number') { if (v > from && v < to && (all || CHAOS_TKEY.test(k))) o[k] = v + d; }
+    else if (v && typeof v === 'object') chaosShift(v, from, to, d, all || k === 'cd' || k === 'unrest' || k === 'gpfail' || k === 'cb', depth + 1);
+  }
+}
+function chaosSave() {
+  const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
+  const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
+  const snap = { v: 1, t: Date.now(), nations, keys: Object.fromEntries(CHAOS_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH, fresh: S.fresh || null };
+  const txt = JSON.stringify(snap), tmp = CHAOS_FILE + '.tmp';
+  fs.writeFileSync(tmp, txt); fs.renameSync(tmp, CHAOS_FILE);
+  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `chaos-realworld-${snap.t}.json`), txt); } catch (e) { logErr('Could not write the second copy of the world before Chaos world: ' + e.message); }
+  const back = JSON.parse(fs.readFileSync(CHAOS_FILE, 'utf8'));
+  if (!back || back.t !== snap.t || Object.keys(back.nations || {}).length !== Object.keys(nations).length) throw new Error('The saved copy of the world did not read back correctly. Chaos world was not started.');
+  return { t: snap.t, n: Object.keys(nations).length, file: path.join(BACKUP_DIR, `chaos-realworld-${snap.t}.json`) };
+}
+function chaosArm(n, o) { // what every nation gets in the chaos copy
+  if (o.unlock) { n.tech = Math.max(n.tech || 0, 400); n.xp = Math.max(n.xp || 0, CHAOS_XP); }
+  n.cash = Math.max(n.cash || 0, CHAOS_OPT.chest[o.chest]); n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods']) n.res[r] = Math.max(n.res[r] || 0, CHAOS_OPT.res[o.chest]);
+  n.spies = Math.max(n.spies || 0, 200); n.cd = {}; n.regroup = 0; n.debt = 0;
+  if (o.noShield) n.shield = 0;
+}
+function chaosBegin(W, by, o) {
+  if (chaosOn()) throw Object.assign(new Error('Chaos world is already running.'), { status: 400 });
+  const se = S.seasons && S.seasons.cur; if (se && se.status !== 'live' && se.start && se.start < Date.now() + o.mins * 60e3 + 10 * 60e3) throw Object.assign(new Error('A season is about to start. Run Chaos world after it has started.'), { status: 400 });
+  const end = Date.now() + o.mins * 60e3; if (end > chaosMaxEnd()) throw Object.assign(new Error(`The season ends at ${new Date(se.end).toLocaleString('en-US', { timeZone: 'America/Denver' })} Mountain. Chaos world must finish at least 15 minutes before that: choose a shorter time.`), { status: 400 });
+  try { pkCashAll('Chaos world is starting'); } catch (e) {}
+  const sv = chaosSave(); freshDropW(W);
+  const start = {}; const W0 = mkWorld();
+  for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue; const u = k.slice(8); start[u] = { provs: core.hexesOf(W0, u).length, name: n.name }; chaosArm(n, o); }
+  S.chaos = { on: true, t: sv.t, end, by, o, start, nations: sv.n, lastDrop: Date.now(), drops: 0 };
+  if (S.testLab && S.testLab.on) { S.chaos.lab = true; S.testLab.on = false; try { labStop(); } catch (e) {} }
+  SW = null; publicCache = null; S.moneyLog = []; persist(true);
+  audit(by, 'Chaos world started', `${o.mins} min, timers ×${o.speed} faster, ${o.chest} war chest. Real world (${sv.n} nations) saved to ${path.basename(sv.file)}`);
+  systemMessage(`💥 CHAOS WORLD for ${o.mins >= 60 ? (o.mins / 60) + ' hour' + (o.mins > 60 ? 's' : '') : o.mins + ' minutes'}! Every weapon is unlocked, everyone has a huge war chest and timers run ${o.speed}× faster. Nothing here is permanent: when it ends the real world comes back exactly as it was. The top 3 conquerors win a badge.`);
+  broadcast('config', effCfg()); setTimeout(() => broadcast('reload', { t: Date.now() }), 300);
+}
+function chaosStandings(W) {
+  const st = S.chaos.start || {}; return Object.keys(W.A).filter(u => !W.A[u].ai && S.users[u] && !S.users[u].test).map(u => { const p = core.hexesOf(W, u).length, s = st[u]; return { u, name: W.A[u].name, color: W.A[u].color, provs: p, gain: p - (s ? s.provs : 0), power: Math.round(core.power(W, u)), joined: !s }; })
+    .sort((a, b) => b.gain - a.gain || b.power - a.power);
+}
+function chaosEnd(by, why) {
+  if (!S.chaos || !S.chaos.on) return null;
+  let snap = null; try { snap = JSON.parse(fs.readFileSync(CHAOS_FILE, 'utf8')); } catch (e) {}
+  if (!snap || snap.v !== 1 || !snap.nations || snap.t !== S.chaos.t) { const alt = path.join(BACKUP_DIR, `chaos-realworld-${S.chaos.t}.json`); try { snap = JSON.parse(fs.readFileSync(alt, 'utf8')); } catch (e) { snap = null; } }
+  if (!snap || !snap.nations) { logErr('Chaos world: the saved real world could not be read'); throw Object.assign(new Error('The saved real world could not be read. Nothing was changed; Chaos world keeps running. Check the backups folder.'), { status: 500 }); }
+  let rank = []; try { rank = chaosStandings(mkWorld()).slice(0, 10); } catch (e) {}
+  try { pkCashAll(null); } catch (e) {}
+  const now = Date.now(), d = now - snap.t, t0 = snap.t;
+  for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
+  const gone = Object.keys(snap.nations).filter(id => !S.users[id] && !BOTS.isBot(id));
+  for (const [id, n] of Object.entries(snap.nations)) { if (gone.includes(id)) continue; chaosShift(n, t0, t0 + 400 * 864e5, d, false); n.lastTick = now; if (gone.length && n.rel) for (const g of gone) delete n.rel[g]; S.docs['nations/' + id] = n; }
+  for (const k of CHAOS_KEYS) { const v = snap.keys[k]; S[k] = v === null || v === undefined ? (k === 'blocs' ? Object.create(null) : S[k]) : v; }
+  for (const k of ['council', 'crisis', 'games', 'dis', 'event', 'nukes', 'strikes', 'ntests', 'ntestPending', 'bm']) chaosShift(S[k], t0, t0 + 400 * 864e5, d, false);
+  for (const k of ['nextGames', 'nextDis', 'nextCrisis', 'nextEvent', 'overPause']) if (typeof S[k] === 'number' && S[k] > t0) S[k] += d;
+  S.blocs = Object.assign(Object.create(null), S.blocs || {}); chaosShift(S.blocs, t0, t0 + 400 * 864e5, d, false);
+  if (gone.length) for (const [bid, b] of Object.entries(S.blocs)) { b.members = (b.members || []).filter(m => !gone.includes(m)); if (!b.members.length) { delete S.blocs[bid]; continue; } b.co = (b.co || []).filter(m => !gone.includes(m) && b.members.includes(m)); if (gone.includes(b.leader)) { b.leader = b.co[0] || b.members[0]; b.co = b.co.filter(m => m !== b.leader); } }
+  if (!S.council) S.council = { props: [], active: {} }; if (!S.bm || !Array.isArray(S.bm.list)) S.bm = { list: [] }; if (!S.burn) S.burn = {};
+  for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
+  for (const [u, m] of Object.entries(S.meta)) if (m && !(snap.meta || {})[u]) { m.fallen = null; m.rem = {}; }
+  RH = Array.isArray(snap.rh) ? snap.rh : RH; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
+  // the chaos notifications go too: the bell shows the real world again
+  for (const u of Object.keys(S.notes)) S.notes[u] = (S.notes[u] || []).filter(x => !(x.t >= t0 && x.t <= now));
+  const lab = S.chaos.lab, o = S.chaos.o, mins = Math.round(d / 60e3);
+  const top = rank.filter(r => S.docs['nations/' + r.u] && r.gain > 0).slice(0, 3), day = new Date(t0).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' });
+  top.forEach((r, i) => applyGrant(S.docs['nations/' + r.u], { badges: [{ s: 'chaos-' + t0, k: 'chaos' + (i + 1), ic: ['💥', '🔥', '⚡'][i], t: `Chaos World ${['champion', '2nd place', '3rd place'][i]} (${day})` }], log: `💥 You finished ${['1st', '2nd', '3rd'][i]} in Chaos World (+${r.gain} provinces).` }));
+  S.chaosLast = { t: t0, end: now, by: S.chaos.by, endBy: by || 'System', why: why || '', mins, o, rank, top: top.map(r => r.name) };
+  S.chaos = null; if (lab && S.testLab) S.testLab.on = true;
+  SW = null; publicCache = null; S.moneyLog = []; persist(true);
+  try { blocRepair(); } catch (e) {} try { ntestSweep(); } catch (e) {}
+  try { fs.renameSync(CHAOS_FILE, path.join(DATA_DIR, `chaos-realworld-restored-${t0}.json`)); } catch (e) {}
+  for (const r of rank) if (S.users[r.u]) addNote(r.u, 'event', `💥 Chaos world is over and the real world is back. You ${r.gain > 0 ? 'gained ' + r.gain + ' province' + (r.gain === 1 ? '' : 's') : 'held on'} and finished #${rank.indexOf(r) + 1}.${top.includes(r) ? ' Your badge is on your profile.' : ''}`);
+  audit(by || 'System', 'Chaos world ended', `${mins} min${why ? ' (' + why + ')' : ''}. Real world restored: ${Object.keys(snap.nations).length - gone.length} nations. Winners: ${top.map(r => r.name).join(', ') || 'none'}`);
+  systemMessage(`🌍 Chaos world is over and the real world is back exactly as it was.${top.length ? ` Winners: ${top.map((r, i) => ['🥇', '🥈', '🥉'][i] + ' ' + r.name + ' (+' + r.gain + ')').join(', ')}.` : ''}`);
+  broadcast('config', effCfg()); setTimeout(() => broadcast('reload', { t: Date.now() }), 300);
+  return S.chaosLast;
+}
+// every 10 minutes during Chaos world: an airdrop for every nation (and the war chest is topped up if the admin chose unlimited money)
+const CHAOS_DROPS = [['💰', 'a war chest', n => { n.cash = (n.cash || 0) + CHAOS_OPT.chest[S.chaos.o.chest] * .25; }], ['⏱', 'an instant reset: every cooldown is ready now', n => { n.cd = {}; n.regroup = 0; }], ['🕵️', '100 extra agents', n => { n.spies = (n.spies || 0) + 100; }], ['🪖', '250,000 extra troops', n => { n.troops = (n.troops || 0) + 250000; }], ['✈', '2,000 extra aircraft', n => { n.air = (n.air || 0) + 2000; }], ['🚢', '300 extra warships', n => { n.ships = (n.ships || 0) + 300; }]];
+function chaosLoop() {
+  if (!S.chaos || !S.chaos.on) return;
+  const now = Date.now();
+  if (now >= S.chaos.end || now >= chaosMaxEnd()) { try { chaosEnd('System', now >= S.chaos.end ? 'time ran out' : 'season ending'); } catch (e) { logErr('Chaos world could not end: ' + (e.stack || e)); } return; }
+  S.chaos.armed = S.chaos.armed || {}; for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue; const u = k.slice(8); if (S.chaos.start[u] || S.chaos.armed[u]) continue; S.chaos.armed[u] = 1; chaosArm(n, S.chaos.o); sendNation(u); persist(); } // nations founded during the event get armed too
+  if (now - S.chaos.lastDrop < 10 * 60e3) return;
+  S.chaos.lastDrop = now; S.chaos.drops++; const o = S.chaos.o;
+  for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue; const u = k.slice(8);
+    if (o.refill) n.cash = Math.max(n.cash || 0, CHAOS_OPT.chest[o.chest]);
+    if (o.drops) { const D = CHAOS_DROPS[Math.floor(rng() * CHAOS_DROPS.length)]; D[2](n); if (S.users[u]) addNote(u, 'event', `${D[0]} Chaos airdrop: you got ${D[1]}!`); }
+    sendNation(u); }
+  persist();
+}
+setInterval(chaosLoop, 5000).unref();
+const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now() }; };
+
 // a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
 function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
 function applyGrant(n, g) { if (g.cash) n.cash = (n.cash || 0) + g.cash; if (g.xp) n.xp = (n.xp || 0) + g.xp; for (const t of g.titles || []) n.titles = [...(n.titles || []), t].slice(-30);
@@ -1533,13 +1646,13 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
-    try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
+    if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);
     // world events
     if (S.event && now >= S.event.end) endEvent();
     if (!S.event && S.config.eventsOn && now >= S.nextEvent && Object.keys(W.A).length >= 2) { const keys = Object.keys(WP.EVENTS).filter(k => k !== S.lastEventKey); startEvent(keys[Math.floor(rng() * keys.length)]); }
     readyReminders(W); smartReminders(W); runSchedule();
-    nightlyBackup(); if (now - lastSnap >= 10 * 60e3) takeSnap();
+    if (!chaosOn()) { nightlyBackup(); if (now - lastSnap >= 10 * 60e3) takeSnap(); }
   } catch (e) { logErr('World update failed: ' + (e.stack || e)); }
   health.loopMs = Number(process.hrtime.bigint() - t0) / 1e6;
 }
@@ -2071,6 +2184,18 @@ async function adminRoute(p, req, res, me) {
       return send(res, 200, { lite: true, id: b0.id, name: u.name, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[b0.id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }); }
   }
   if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner', hd: Object.values(S.helpdesk).filter(T => T.open && T.unread).length });
+  if (p === '/api/admin/chaos') { // owner only: start or end Chaos world
+    if (req.method === 'GET') return send(res, 200, chaosView());
+    const b = req._body || await readBody(req, 4096);
+    if (b.op === 'start') {
+      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
+      if (b.confirm !== 'CHAOS') return send(res, 400, { error: 'Type CHAOS to confirm.' });
+      try { chaosBegin(mkWorld(), me.name, o); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
+      return send(res, 200, { ok: true, view: chaosView() });
+    }
+    if (b.op === 'end') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); try { chaosEnd(me.name, 'ended early by the admin'); } catch (e) { return send(res, e.status || 500, { error: e.message }); } return send(res, 200, { ok: true, view: chaosView() }); }
+    return send(res, 400, { error: 'Unknown action.' });
+  }
   if (p === '/api/admin/testlab') { // owner only: the Test lab's results and controls
     if (req.method === 'POST') { const b = await readBody(req, 2048), op = String(b.op || ''); let msg = 'Done.';
       if (op === 'on') { S.testLab.on = !!b.on; if (S.testLab.on) { labRestart = 0; labStart(); msg = 'The Test lab is running.'; } else { labStop(); setDoc('online', TEST_ID, null); msg = 'The Test lab is stopped. The Test account is offline.'; } }
@@ -2160,6 +2285,7 @@ async function adminRoute(p, req, res, me) {
     const W = mkWorld(), players = Object.entries(W.A).filter(([u, n]) => n.casino && n.casino.played).map(([u, n]) => ({ name: n.name, leader: (S.users[u] || {}).name || '', ai: !!n.ai, played: n.casino.played, wagered: n.casino.wagered, net: n.casino.net, best: n.casino.best || 0, cash: Math.round(n.cash || 0) }));
     return send(res, 200, { ...S.casino, players, limits: { min: WP.CASINO ? WP.CASINO.min : 1e4, max: WP.CASINO ? WP.CASINO.maxAbs : 1e9 } });
   }
+  if (p === '/api/admin/season' && req.method === 'POST' && chaosOn()) return send(res, 423, CHAOS_LOCK);
   if (p === '/api/admin/season' && req.method === 'POST') { // Admin page → Seasons. The Hall of Fame itself has no edit or delete operation.
     const b = (req._body || await readBody(req, 16384)), op = String(b.op || ''), W = mkWorld(), clean = x => String(x == null ? '' : x).replace(/[\u0000-\u001f<>]/g, ' ').trim();
     if (op === 'list') return send(res, 200, { countdown: S.countdown, cur: seasonView(W, S.seasons.cur, null), curRaw: S.seasons.cur ? { ...S.seasons.cur, base: undefined, played: undefined } : null, next: S.seasons.n + 1, hof: HOF, metrics: Object.fromEntries(Object.entries(SEASON_METRICS).map(([k, v]) => [k, { n: v.n, title: v.title, fresh: !!v.fresh }])), awards: { fresh: FRESH_AWARDS, normal: NORMAL_AWARDS }, freshActive: S.fresh || null, freshFile: fs.existsSync(FRESH_FILE) });
@@ -2426,7 +2552,7 @@ async function adminRoute(p, req, res, me) {
       if (!u) return send(res, 404, { error: 'Unknown player.' });
       return send(res, 200, { id: b.id, name: u.name, email: me.admin ? u.email : undefined, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, meta: S.meta[b.id] || {}, nation: S.docs['nations/' + b.id] || null, flags: S.flags.filter(f => f.uid === b.id).slice(0, 100), reports: S.reports.filter(r => r.about === b.id).slice(0, 50) });
     }
-    case '/api/admin/nation': {
+    case '/api/admin/nation': { if (chaosOn() && req.method === 'POST') return send(res, 423, CHAOS_LOCK);
       const n = S.docs['nations/' + b.id]; if (!u || !n) return send(res, 404, { error: 'That player has no nation.' });
       const changes = [], pt = b.patch || {};
       for (const k of NUM_FIELDS) if (pt[k] != null && pt[k] !== '' && isFinite(+pt[k])) { const v = +pt[k]; if (v !== n[k]) { changes.push(`${k}: ${Math.round((n[k] || 0) * 100) / 100} → ${v}`); n[k] = v; } }
@@ -2437,7 +2563,7 @@ async function adminRoute(p, req, res, me) {
       setDoc('nations', b.id, n); audit(me.name, 'Edited nation', target, changes.join('; ') || 'no changes');
       return send(res, 200, { ok: true });
     }
-    case '/api/admin/reset-nation': { try { pkStandUser(b.id, null); } catch (e) {} if (!u) return send(res, 404, { error: 'Unknown player.' }); setDoc('nations', b.id, null); audit(me.name, 'Reset nation', target); return send(res, 200, { ok: true }); }
+    case '/api/admin/reset-nation': { if (chaosOn() && req.method === 'POST') return send(res, 423, CHAOS_LOCK); try { pkStandUser(b.id, null); } catch (e) {} if (!u) return send(res, 404, { error: 'Unknown player.' }); setDoc('nations', b.id, null); audit(me.name, 'Reset nation', target); return send(res, 200, { ok: true }); }
     case '/api/admin/ipbans': { // the block list, and (with an id) one player's networks with who else uses each
       const others = ip => Object.entries(S.meta).filter(([k, m]) => m && (m.ips || []).some(x => ipNorm(x) === ipNorm(ip)) && S.users[k]).map(([k]) => ({ id: k, name: S.users[k].name, banned: !!S.users[k].banned }));
       const list = S.ipBans.map(x => ({ ...x, accounts: x.ip.endsWith('*') ? Object.entries(S.meta).filter(([k, m]) => m && S.users[k] && (m.ips || []).some(y => ipMatch(y, x.ip))).map(([k]) => S.users[k].name) : others(x.ip).map(o => o.name) }));
@@ -2543,17 +2669,17 @@ async function adminRoute(p, req, res, me) {
       audit(me.name, 'Cheat review', target, d ? { cheat: 'Cheating', clean: 'Not cheating', watch: 'Keep watching' }[d] : 'Cleared'); persist(); return send(res, 200, { ok: true, rows: scriptCheck(), t: Date.now() });
     }
     case '/api/admin/timeline': { if (!u) return send(res, 404, { error: 'Unknown player.' }); return send(res, 200, timeline(b.id)); }
-    case '/api/admin/restore-nation': {
+    case '/api/admin/restore-nation': { if (chaosOn() && req.method === 'POST') return send(res, 423, CHAOS_LOCK);
       if (!u) return send(res, 404, { error: 'Unknown player.' }); if (b.confirm !== 'RESTORE') return send(res, 400, { error: 'Type RESTORE to confirm.' });
       try { return send(res, 200, { ok: true, ...restoreNation(b.id, String(b.snap || ''), me.name) }); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
     }
-    case '/api/admin/rollback': {
+    case '/api/admin/rollback': { if (chaosOn() && req.method === 'POST') return send(res, 423, CHAOS_LOCK);
       if (b.confirm !== 'ROLLBACK') return send(res, 400, { error: 'Type ROLLBACK to confirm.' });
       let name = String(b.snap || ''); const snaps = listSnaps();
       if (!name && b.minutes) { const target = Date.now() - Math.max(1, +b.minutes) * 60e3; const sn = snaps.find(x => x.t <= target && x.tag !== 'undo'); if (!sn) return send(res, 400, { error: 'No snapshot that old yet — they are kept for 26 hours, starting from when this update went live.' }); name = sn.name; }
       try { const sn = rollback(name, me.name); return send(res, 200, { ok: true, t: sn.t }); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
     }
-    case '/api/admin/wipe-world': {
+    case '/api/admin/wipe-world': { if (chaosOn() && req.method === 'POST') return send(res, 423, CHAOS_LOCK);
       if (b.confirm === 'WIPE') try { pkCashAll(null); } catch (e) {}
       if (b.confirm !== 'WIPE') return send(res, 400, { error: 'Type WIPE to confirm.' });
       const backup = path.join(BACKUP_DIR, `backup-before-wipe-${Date.now()}.json`); fs.writeFileSync(backup, JSON.stringify(S)); S.burn = {}; S.strikes = [];
@@ -2687,6 +2813,7 @@ async function handle(req, res) {
     const me = auth(req);
     if (!me) return send(res, 401, { error: 'Not signed in.' });
     if (p === '/api/dev' || p.startsWith('/api/dev/')) { try { const b = req.method === 'POST' ? await readBody(req, 6 * 1024) : null; if (b) touch(me.id, req); return send(res, 200, devHandle(me, p, req.method, b || {}, new URL(req.url, 'http://x').searchParams)); } catch (e) { return send(res, e.status || 400, { error: e.message || 'Something went wrong.' }); } }
+    if (chaosOn() && ['/api/supporter/chest', '/api/supporter/rush', '/api/supporter/instant'].includes(p) && req.method === 'POST') return send(res, 423, { error: 'Supporter perks are paused during Chaos world so you don\'t lose them when the real world comes back. Claim them as soon as it ends.' });
     if (p === '/api/supporter' || p.startsWith('/api/supporter/')) { if (p !== '/api/supporter' && limited('sup:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); touch(me.id, req); if (await SUPP.handle(req, res, p, me)) return; }
     if (p === '/api/casino/fair') { const f = fairOf(me.id);
       if (req.method === 'GET') return send(res, 200, fairView(f));
