@@ -749,7 +749,7 @@ function Core(PD, CARDS) {
     if (rankOf(me.xp) < 2) return `You must reach the rank of Mayor (300 XP) to wage war. You have ${num(me.xp)} XP.`;
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, n); if (cf) return cf; }
-    const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
+    const mob = tq(W, W.m.mobilize * MIN); if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     const theyHitMe = hitRecently(W, u, v);
     // AI nations get none of the protections meant for real players
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
@@ -1078,7 +1078,7 @@ function Core(PD, CARDS) {
     if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, n); if (cf) return cf; }
-    const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
+    const mob = tq(W, W.m.mobilize * MIN); if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     const theyHitMe = hitRecently(W, u, v);
     if (!theyHitMe && !n.ai && W.now - n.created < W.cfg.protectH * HOUR && !(n.out || []).some(e => e.type === 'battle')) return `${n.name} is under new-nation protection.`;
     if (shieldOn(W, n)) return `${n.name} is rebuilding under international protection for another ${fmtT(n.shield - W.now)}.`;
@@ -1294,7 +1294,7 @@ function Core(PD, CARDS) {
     return null;
   }
   // MUNITIONS: each order is limited by what the factories can turn out in an hour, and the depots only hold so much
-  const munLeft = (W, n) => { const q = n.munQ && W.now - n.munQ.t < HOUR ? n.munQ.q : 0; return Math.max(0, MUN.batch(n) - q); };
+  const munLeft = (W, n) => { const q = n.munQ && W.now - n.munQ.t < tq(W, HOUR) ? n.munQ.q : 0; return Math.max(0, MUN.batch(n) - q); };
   const munRoom = n => Math.max(0, MUN.cap(n) - Math.floor((n.res && n.res.mun) || 0));
   function makeMun(W, u, q) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); q = Math.floor(Number(q)); if (!(q > 0)) fail('Enter how many munitions to make.');
@@ -1306,7 +1306,7 @@ function Core(PD, CARDS) {
     const c = { cash: q * MUN.cash, steel: q * MUN.steel, oil: q * MUN.oil };
     if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.oil || 0) < c.oil) fail(`${num(q)} munitions need ${money(c.cash)}, ${num(c.steel)} steel and ${num(c.oil)} oil.`);
     n.cash -= c.cash; n.res.steel -= c.steel; n.res.oil -= c.oil; n.res.mun = (n.res.mun || 0) + q;
-    if (!(n.munQ && W.now - n.munQ.t < HOUR)) n.munQ = { t: W.now, q: 0 }; n.munQ.q += q;
+    if (!(n.munQ && W.now - n.munQ.t < tq(W, HOUR))) n.munQ = { t: W.now, q: 0 }; n.munQ.q += q;
     log(n, `Your factories made ${num(q)} munitions.`, W); touch(W, u);
     return { msg: `🎖 ${num(q)} munitions made. Stockpile: ${num(Math.floor(n.res.mun))} of ${num(MUN.cap(n))}.` };
   }
@@ -1385,14 +1385,14 @@ function Core(PD, CARDS) {
     gainXP(W, u, 50); touch(W, u); return { msg: 'Your nuclear deterrent is operational.' };
   }
   // admin "nuke test mode": no 24h wait, warheads arm in 1 minute, no 7-day lockout
-  const nkT = W => W.cfg.nukeTest ? { holdH: 0, buildH: 1 / 60, cdD: 0 } : WARHEAD;
+  const nkT = W => W.cfg.nukeTest ? { holdH: 0, buildH: 1 / 60, cdD: 0, warH: 0 } : W.cfg.chaos ? { ...WARHEAD, holdH: 0, buildH: 1, cdD: 1 / 24, warH: 1 } : WARHEAD; // Chaos world: an hour of war, an hour to build, an hour between launches (all then sped up)
   function canWarhead(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
     if (!n.nuke) return 'You need an operational nuclear deterrent first.';
     if (W.m.npt && !n.warhead) return 'The Non-proliferation Treaty is in force. No warheads may be assembled until it expires.';
     if (measure(W, n, 'inspected') && !n.warhead) return `World Council inspectors are monitoring your program. No new warhead for ${fmtT(n.inspected - W.now)}.`;
     if (n.warhead) return n.warhead.ready > W.now ? `A warhead is already being assembled: ready in ${fmtT(n.warhead.ready - W.now)}.` : 'You already have an armed warhead.';
-    if (W.now - n.nuke < nkT(W).holdH * HOUR) return `Your deterrent must be operational for ${nkT(W).holdH} hours first: ${fmtT(nkT(W).holdH * HOUR - (W.now - n.nuke))} left.`;
+    if (W.now - n.nuke < tq(W, nkT(W).holdH * HOUR)) return `Your deterrent must be operational for ${fmtT(tq(W, nkT(W).holdH * HOUR))} first: ${fmtT(tq(W, nkT(W).holdH * HOUR) - (W.now - n.nuke))} left.`;
     if (left(W, n, 'warhead') && !W.cfg.nukeTest) return `After a launch, a new warhead takes time to approve: ${fmtT(left(W, n, 'warhead'))} left.`;
     if ((n.tech || 0) < WARHEAD.tech) return `A launchable warhead requires tech level ${WARHEAD.tech}.`;
     if (!W.cfg.nukeTest && rankOf(n.xp) < WARHEAD.rank) return `A launchable warhead requires the rank of ${RANKS[WARHEAD.rank][1]}.`;
@@ -1404,10 +1404,11 @@ function Core(PD, CARDS) {
     n.cash -= WARHEAD.cash; n.res.steel -= WARHEAD.steel; n.res.oil -= WARHEAD.oil; n.res.goods -= WARHEAD.goods;
     n.warhead = { t: W.now, ready: W.now + tq(W, nkT(W).buildH * HOUR) }; n.aggr = Math.min(100, (n.aggr || 0) + 20); rogueCheck(W, u);
     news(W, u, `☢ Intelligence agencies report that ${n.name} is assembling a launchable nuclear warhead.`);
-    log(n, `Warhead assembly has begun. It will be armed in ${fmtT(nkT(W).buildH * HOUR)}.`, W);
-    for (const v of Object.keys(W.A)) if (v !== u && !W.A[v].ai) note(W, v, 'war', `☢ ${n.name} is assembling a launchable nuclear warhead. It will be armed in ${fmtT(nkT(W).buildH * HOUR)}.`);
-    touch(W, u); return { msg: `Warhead assembly begun — armed in ${fmtT(nkT(W).buildH * HOUR)}.` };
+    log(n, `Warhead assembly has begun. It will be armed in ${fmtT(tq(W, nkT(W).buildH * HOUR))}.`, W);
+    for (const v of Object.keys(W.A)) if (v !== u && !W.A[v].ai) note(W, v, 'war', `☢ ${n.name} is assembling a launchable nuclear warhead. It will be armed in ${fmtT(tq(W, nkT(W).buildH * HOUR))}.`);
+    touch(W, u); return { msg: `Warhead assembly begun — armed in ${fmtT(tq(W, nkT(W).buildH * HOUR))}.` };
   }
+  function spendWarhead(W, me) { if ((me.whStock || 0) > 0) { me.whStock--; me.warhead = { t: W.now, ready: W.now }; return; } me.whStock = 0; me.warhead = null; me.cd.warhead = W.now + tq(W, nkT(W).cdD * 24 * HOUR); } // a spare from the stockpile is armed at once
   const warheadReady = (W, n) => !!(n && n.warhead && (n.warhead === 2 || n.warhead.ready <= W.now || (W.cfg.nukeTest && n.warhead.t + 60e3 <= W.now)));
   // was this nation nuked by v in the last 72 hours? (any of its attackers, not only the latest)
   const struckBy = (W, me, v) => !!(me && ((me.nuked && me.nuked.by === v && W.now - me.nuked.t < 72 * HOUR) || ((me.nukedBy || {})[v] && W.now - me.nukedBy[v] < 72 * HOUR)));
@@ -1418,11 +1419,11 @@ function Core(PD, CARDS) {
     if (!warheadReady(W, me)) return me.warhead ? `Your warhead is not armed yet: ${fmtT(me.warhead.ready - W.now)} left.` : 'You have no armed warhead.';
     if (!atWar(W, u, v)) return `You are not at war with ${d.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, d); if (cf) return cf; }
-    const mob = W.m.mobilize * MIN; if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
+    const mob = tq(W, W.m.mobilize * MIN); if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     if (!d.ai && W.now - d.created < W.cfg.protectH * HOUR) return `${d.name} is under new-nation protection.`;
     if (shieldOn(W, d)) return `${d.name} is rebuilding under international protection for another ${fmtT(d.shield - W.now)}.`;
     // a last resort: only after a full day of war, unless they have already nuked you
-    if (!W.cfg.nukeTest && !struckBy(W, me, v) && W.now - warSince(W, u, v) < WARHEAD.warH * HOUR) return `A nuclear strike is a last resort: you must be at war with ${d.name} for ${WARHEAD.warH} hours first (${fmtT(WARHEAD.warH * HOUR - (W.now - warSince(W, u, v)))} left).`;
+    if (!W.cfg.nukeTest && !struckBy(W, me, v) && W.now - warSince(W, u, v) < tq(W, nkT(W).warH * HOUR)) return `A nuclear strike is a last resort: you must be at war with ${d.name} for ${fmtT(tq(W, nkT(W).warH * HOUR))} first (${fmtT(tq(W, nkT(W).warH * HOUR) - (W.now - warSince(W, u, v)))} left).`;
     // several nations may strike the same country, one after another (each strike adds its own damage)
     return null;
   }
@@ -1449,7 +1450,7 @@ function Core(PD, CARDS) {
     }
     // the attacker becomes a pariah. A second strike (automatic retaliation, or answering a nation that nuked you in the last 72 hours) is defense, not aggression.
     const secondStrike = retaliation || struckBy(W, me, v);
-    me.warhead = null; me.cd.warhead = W.now + tq(W, nkT(W).cdD * 24 * HOUR);
+    spendWarhead(W, me);
     // AI nations poisoned by the fallout may declare war on the launcher (unless they are its allies)
     if (!secondStrike) for (const x of hit) { const n = W.A[x]; if (x === u || !n || !n.ai || n.ai.boss || atWar(W, x, u) || allies(W, u).includes(x) || Math.random() >= WARHEAD.aiWar) continue;
       setRel(n, u, 'war', W.now); setRel(n, u, 'unally', W.now); setRel(n, u, 'untrade', W.now); n.rel[u].fair = 1; n.rel[u].def = 1;
@@ -1471,7 +1472,7 @@ function Core(PD, CARDS) {
   // a Golden Dome destroyed the nuclear missile in flight: no detonation, but the warhead is spent and the launch still counts
   function interceptNuke(W, u, v, h, retaliation) {
     const me = W.A[u], d = W.A[v], secondStrike = retaliation || struckBy(W, me, v);
-    me.warhead = null; me.cd.warhead = W.now + tq(W, nkT(W).cdD * 24 * HOUR);
+    spendWarhead(W, me);
     if (!secondStrike) { me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + tq(W, WARHEAD.rogueH * HOUR)); me.nukeRogue = W.now; for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after it launched a nuclear missile.`); touch(W, a); } }
     me.approval = clamp(me.approval - (secondStrike ? 3 : 12), 0, 100); d.approval = clamp(d.approval + 8, 0, 100); d.stability = clamp(d.stability + 5, 0, 100);
     news(W, u, `☢ ${me.name} launched a nuclear missile at ${d.name}, but ${d.name}'s Golden Dome intercepted it high above ${pname(h)}.`);
@@ -1506,7 +1507,7 @@ function Core(PD, CARDS) {
       if (rankOf(me.xp) < 2) fail('You must reach the rank of Mayor to declare war.');
       if (atWar(W, u, v)) fail('You are already at war.');
       if (W.m.truce) fail('A World Council truce is in force: no new wars may be declared until it ends.');
-      { const pt = peaceSince(W, u, v); if (pt && W.now - pt < PEACE_H * HOUR) fail(`You signed a peace treaty with ${them.name} ${fmtT(W.now - pt)} ago. Neither side can declare war on the other for ${PEACE_H} hours after peace: you can in ${fmtT(pt + PEACE_H * HOUR - W.now)}.`); }
+      { const pt = peaceSince(W, u, v); if (pt && W.now - pt < tq(W, PEACE_H * HOUR)) fail(`You signed a peace treaty with ${them.name} ${fmtT(W.now - pt)} ago. Neither side can declare war on the other for ${fmtT(tq(W, PEACE_H * HOUR))} after peace: you can in ${fmtT(pt + tq(W, PEACE_H * HOUR) - W.now)}.`); }
       if (sameBloc(W, u, v)) fail(`${them.name} is in your alliance. Leave the alliance or remove them before declaring war.`);
       breakRoute(W, u, v, 'war'); setRel(me, v, 'war', t); setRel(me, v, 'unally', t); setRel(me, v, 'untrade', t); me.rel[v].fair = score(W, v) >= score(W, u) * .4 ? 1 : 0;
       news(W, u, `${me.name} has declared war on ${them.name}.`); log(them, `${me.name} has declared war on you.`, W); note(W, v, 'war', `${me.name} has declared war on you!`);
@@ -2303,7 +2304,7 @@ function Core(PD, CARDS) {
   function decommission(W, u) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!n.nuke) fail('You have no nuclear weapons to decommission.');
     const hadWar = !!n.warhead, back = Math.round((n.nukePaid || 150e6) * DISARM.refund);
-    n.nuke = 0; n.warhead = null; n.iaeaAt = 0; n.nukeBan = W.now + tq(W, DISARM.banD * 864e5); n.cash += back;
+    n.nuke = 0; n.warhead = null; n.whStock = 0; n.iaeaAt = 0; n.nukeBan = W.now + tq(W, DISARM.banD * 864e5); n.cash += back;
     n.approval = clamp(n.approval + DISARM.ap + (hadWar ? DISARM.warheadAp : 0), 0, 100); n.stability = clamp(n.stability + DISARM.st, 0, 100); n.aggr = Math.max(0, (n.aggr || 0) - DISARM.aggr);
     W._src = 'disarm'; applyEff(W, u, { boost: { ...DISARM.boost } }); W._src = ''; gainXP(W, u, DISARM.xp); achGrant(W, u, 'peacemaker');
     for (const [v, x] of Object.entries(W.A)) if (v !== u) { x.approval = clamp(x.approval + DISARM.worldAp, 0, 100); touch(W, v); }

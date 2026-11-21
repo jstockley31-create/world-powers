@@ -1472,10 +1472,10 @@ function freshRestore(by, why) {
 // file first (and read back to prove it's good), then everyone keeps playing their own nation with every weapon unlocked, a huge war
 // chest and timers 90% faster. When the time runs out the saved real world comes back exactly as it was, and its timers are moved on
 // by the length of the event so nothing ran out while it was set aside. Accounts, chat, mail, Helpdesk, donations, moderation and
-// Cheat watch are never touched. The top 3 get a badge in the real world.
+// Cheat watch are never touched.
 const CHAOS_FILE = path.join(DATA_DIR, 'chaos-realworld.json');
 const CHAOS_KEYS = [...FRESH_KEYS, 'scoreHist', 'casino'];
-const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10], chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
+const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [0, 1, 3, 5, 10], chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
 const CHAOS_XP = 12000; // the highest rank any weapon needs (Sovereign)
 const chaosOn = () => !!(S.chaos && S.chaos.on);
 const CHAOS_LOCK = { error: 'Chaos world is running. Anything changed in the world now would be lost when the real world comes back. End Chaos world first (Admin → Chaos world).' };
@@ -1500,10 +1500,12 @@ function chaosSave() {
   if (!back || back.t !== snap.t || Object.keys(back.nations || {}).length !== Object.keys(nations).length) throw new Error('The saved copy of the world did not read back correctly. Chaos world was not started.');
   return { t: snap.t, n: Object.keys(nations).length, file: path.join(BACKUP_DIR, `chaos-realworld-${snap.t}.json`) };
 }
+function chaosNukes(n, k) { const now = Date.now(); if (!n.nuke) n.nuke = now - 30 * 864e5; const armed = n.warhead && (n.warhead === 2 || n.warhead.ready <= now); if (!armed) { n.warhead = { t: now, ready: now }; k--; } n.whStock = (n.whStock || 0) + Math.max(0, k); n.nukeBan = 0; } // k more launchable warheads: one armed, the rest in the stockpile
 function chaosArm(n, o) { // what every nation gets in the chaos copy
   if (o.unlock) { n.tech = Math.max(n.tech || 0, 400); n.xp = Math.max(n.xp || 0, CHAOS_XP); }
   n.cash = Math.max(n.cash || 0, CHAOS_OPT.chest[o.chest]); n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods']) n.res[r] = Math.max(n.res[r] || 0, CHAOS_OPT.res[o.chest]);
   n.spies = Math.max(n.spies || 0, 200); n.cd = {}; n.regroup = 0; n.debt = 0;
+  if (o.nukes > 0) chaosNukes(n, o.nukes);
   if (o.noShield) n.shield = 0;
 }
 function chaosBegin(W, by, o) {
@@ -1518,7 +1520,7 @@ function chaosBegin(W, by, o) {
   if (S.testLab && S.testLab.on) { S.chaos.lab = true; S.testLab.on = false; try { labStop(); } catch (e) {} }
   SW = null; publicCache = null; S.moneyLog = []; persist(true);
   audit(by, 'Chaos world started', `${o.mins} min, timers ×${o.speed} faster, ${o.chest} war chest. Real world (${sv.n} nations) saved to ${path.basename(sv.file)}`);
-  systemMessage(`💥 CHAOS WORLD for ${o.mins >= 60 ? (o.mins / 60) + ' hour' + (o.mins > 60 ? 's' : '') : o.mins + ' minutes'}! Every weapon is unlocked, everyone has a huge war chest and timers run ${o.speed}× faster. Nothing here is permanent: when it ends the real world comes back exactly as it was. The top 3 conquerors win a badge.`);
+  systemMessage(`💥 CHAOS WORLD for ${o.mins >= 60 ? (o.mins / 60) + ' hour' + (o.mins > 60 ? 's' : '') : o.mins + ' minutes'}! Every weapon is unlocked, everyone has a huge war chest and timers run ${o.speed}× faster. Nothing here is permanent: when it ends the real world comes back exactly as it was.${o.nukes ? ` Every nation starts with ${o.nukes} nuclear warhead${o.nukes > 1 ? 's' : ''}.` : ''}`);
   broadcast('config', effCfg()); setTimeout(() => broadcast('reload', { t: Date.now() }), 300);
 }
 function chaosStandings(W) {
@@ -1549,13 +1551,12 @@ function chaosEnd(by, why) {
   for (const u of Object.keys(S.notes)) S.notes[u] = (S.notes[u] || []).filter(x => !(x.t >= t0 && x.t <= now));
   const lab = S.chaos.lab, o = S.chaos.o, mins = Math.round(d / 60e3);
   const top = rank.filter(r => S.docs['nations/' + r.u] && r.gain > 0).slice(0, 3), day = new Date(t0).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' });
-  top.forEach((r, i) => applyGrant(S.docs['nations/' + r.u], { badges: [{ s: 'chaos-' + t0, k: 'chaos' + (i + 1), ic: ['💥', '🔥', '⚡'][i], t: `Chaos World ${['champion', '2nd place', '3rd place'][i]} (${day})` }], log: `💥 You finished ${['1st', '2nd', '3rd'][i]} in Chaos World (+${r.gain} provinces).` }));
   S.chaosLast = { t: t0, end: now, by: S.chaos.by, endBy: by || 'System', why: why || '', mins, o, rank, top: top.map(r => r.name) };
   S.chaos = null; if (lab && S.testLab) S.testLab.on = true;
   SW = null; publicCache = null; S.moneyLog = []; persist(true);
   try { blocRepair(); } catch (e) {} try { ntestSweep(); } catch (e) {}
   try { fs.renameSync(CHAOS_FILE, path.join(DATA_DIR, `chaos-realworld-restored-${t0}.json`)); } catch (e) {}
-  for (const r of rank) if (S.users[r.u]) addNote(r.u, 'event', `💥 Chaos world is over and the real world is back. You ${r.gain > 0 ? 'gained ' + r.gain + ' province' + (r.gain === 1 ? '' : 's') : 'held on'} and finished #${rank.indexOf(r) + 1}.${top.includes(r) ? ' Your badge is on your profile.' : ''}`);
+  for (const r of rank) if (S.users[r.u]) addNote(r.u, 'event', `💥 Chaos world is over and the real world is back. You ${r.gain > 0 ? 'gained ' + r.gain + ' province' + (r.gain === 1 ? '' : 's') : 'held on'} and finished #${rank.indexOf(r) + 1}.`);
   audit(by || 'System', 'Chaos world ended', `${mins} min${why ? ' (' + why + ')' : ''}. Real world restored: ${Object.keys(snap.nations).length - gone.length} nations. Winners: ${top.map(r => r.name).join(', ') || 'none'}`);
   systemMessage(`🌍 Chaos world is over and the real world is back exactly as it was.${top.length ? ` Winners: ${top.map((r, i) => ['🥇', '🥈', '🥉'][i] + ' ' + r.name + ' (+' + r.gain + ')').join(', ')}.` : ''}`);
   broadcast('config', effCfg()); setTimeout(() => broadcast('reload', { t: Date.now() }), 300);
@@ -1577,7 +1578,12 @@ function chaosLoop() {
   persist();
 }
 setInterval(chaosLoop, 5000).unref();
-const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now() }; };
+function chaosRetime(oldS, newS) { const now = Date.now(), f = oldS / newS, fix = v => typeof v === 'number' && v > now ? Math.round(now + (v - now) * f) : v;
+  for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue;
+    for (const c of Object.keys(n.cd || {})) n.cd[c] = fix(n.cd[c]); n.regroup = fix(n.regroup);
+    if (n.warhead && typeof n.warhead === 'object') n.warhead.ready = fix(n.warhead.ready); if (n.dome && typeof n.dome === 'object') { n.dome.ready = fix(n.dome.ready); if (n.dome.up) n.dome.up.ready = fix(n.dome.up.ready); }
+    if (n.proj) n.proj.next = fix(n.proj.next); if (n.exped) n.exped.end = fix(n.exped.end); sendNation(k.slice(8)); } }
+const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now() }; };
 
 // a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
 function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
@@ -2188,11 +2194,18 @@ async function adminRoute(p, req, res, me) {
     if (req.method === 'GET') return send(res, 200, chaosView());
     const b = req._body || await readBody(req, 4096);
     if (b.op === 'start') {
-      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
+      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 0, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
       if (b.confirm !== 'CHAOS') return send(res, 400, { error: 'Type CHAOS to confirm.' });
       try { chaosBegin(mkWorld(), me.name, o); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
       return send(res, 200, { ok: true, view: chaosView() });
     }
+    if (b.op === 'speed') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const sp = +b.speed; if (!CHAOS_OPT.speed.includes(sp)) return send(res, 400, { error: 'Choose 4, 10, 20 or 30.' });
+      const old = S.chaos.o.speed || 10; if (sp !== old) { chaosRetime(old, sp); S.chaos.o.speed = sp; persist(); broadcast('config', effCfg()); systemMessage(`💥 Chaos world is now ${sp}× faster!`); audit(me.name, 'Chaos world speed', `${old}× → ${sp}×`); }
+      return send(res, 200, { ok: true, view: chaosView() }); }
+    if (b.op === 'nukes') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const k = Math.max(1, Math.min(10, Math.floor(+b.n) || 1));
+      for (const [key, n] of Object.entries(S.docs)) { if (!key.startsWith('nations/') || !n) continue; chaosNukes(n, k); sendNation(key.slice(8)); }
+      S.chaos.o.nukes = (S.chaos.o.nukes || 0) + k; S.chaos.nukesGiven = (S.chaos.nukesGiven || 0) + k; persist(); systemMessage(`☢ Chaos world: every nation just got ${k} more nuclear warhead${k > 1 ? 's' : ''}!`); audit(me.name, 'Chaos world nukes', `+${k} for every nation`);
+      return send(res, 200, { ok: true, view: chaosView() }); }
     if (b.op === 'end') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); try { chaosEnd(me.name, 'ended early by the admin'); } catch (e) { return send(res, e.status || 500, { error: e.message }); } return send(res, 200, { ok: true, view: chaosView() }); }
     return send(res, 400, { error: 'Unknown action.' });
   }
