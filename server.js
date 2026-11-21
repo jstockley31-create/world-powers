@@ -32,6 +32,14 @@ const MAP_VERSION = 4;
 const START = Date.now();
 // World Council votes: players only (AI nations don't vote), 3 hours, a majority of the votes cast wins (at least 2 yes), and a vote closes early once the result is certain
 const COUNCIL_H = 3, COUNCIL_MIN_YES = 3; // a resolution needs at least 3 yes votes and more yes than no
+// heavier penalties need more: sanctions two thirds of the vote and at least 5 yes, the other penalties at least 4 yes
+const PENALTY_TYPES = ['sanction', 'embargo', 'armsEmb', 'freeze', 'condemn', 'inspect'];
+const minYes = t => t === 'sanction' ? 5 : PENALTY_TYPES.includes(t) ? 4 : COUNCIL_MIN_YES;
+const passes = (t, ys, ns) => ys >= minYes(t) && ys > ns && (t !== 'sanction' || ys * 3 >= (ys + ns) * 2);
+const PENALTY_FEE = .01; // the proposer of a penalty pays 1% of its treasury, refunded if the vote passes
+// bonus laws can pass at most once every 3 days (counted from when the last one ended for the 72-hour free market week)
+const BONUS_LAWS = ['climate', 'arms', 'freetrade', 'peacekeeping', 'health', 'science', 'food', 'tariffs', 'freemarket'];
+const bonusWait = k => { if (!BONUS_LAWS.includes(k)) return 0; const t = ((S.council && S.council.passed) || {})[k] || 0; if (!t) return 0; const R = WP.RESOLUTIONS[k]; return Math.max(72, (R.h || 24) + 48) * HOUR - (Date.now() - t); };
 const HOUR = 36e5;
 const ACTIVE_WINDOW = 2 * HOUR; // nations keep producing for 2 hours after their leader was last seen
 const NOTE_KINDS = ['ready', 'attack', 'war', 'diplo', 'mail', 'election', 'event', 'council', 'covert', 'economy', 'rank', 'mention', 'admin'];
@@ -803,7 +811,7 @@ setTimeout(() => { if (!S.cbkRevert1) { const cut = Date.UTC(2026, 10, 17, 18, 2
 function councilDaily(W) {
   if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
-  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(lawWait(k) > 0)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = now;
+  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(lawWait(k) > 0) && !(bonusWait(k) > 0)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = now;
   S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
   systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); councilCast();
 }
@@ -922,7 +930,7 @@ function councilBribe(uid) {
 const PUNISH = ['sanction', 'embargo', 'armsEmb', 'freeze', 'condemn'];
 const PUNISH_DAILY = [...PUNISH, 'inspect']; // penalty votes a target can face at most once a day (inspections only need a nuclear program, so they skip the aggression check)
 function punishEvidence(W, v) {
-  const n = W.A[v], now = Date.now(); if (!n) return null; if (n.ai) return 'ai';
+  const n = W.A[v], now = Date.now(); if (!n || n.ai) return null; // AI nations are never penalised by the Council
   if ((n.aggr || 0) >= 35) return 'aggression';
   if ((n.out || []).some(e => e.type === 'battle' && e.to && e.to !== v && S.users[e.to] && !BOTS.isBot(e.to) && W.A[e.to] && now - e.t < 48 * HOUR && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === v && x.t < e.t && e.t - x.t < 24 * HOUR)))) return 'attacked a player'; // striking back at someone who hit you first doesn't count
   if ((n.dirtyAt && now - n.dirtyAt < 48 * HOUR) || (typeof n.nuke === 'number' && now - n.nuke < 48 * HOUR) || (S.nukes || []).some(x => x.by === v && !x.retaliation && now - (x.t || 0) < 48 * HOUR) || (S.strikeLog || []).some(x => x.by === v && S.users[x.to] && now - (x.t || 0) < 48 * HOUR)) return 'weapons';
@@ -935,12 +943,13 @@ function councilPropose(uid, b) {
   const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
   const plea = type === 'lift' && b.target === uid; // a nation under sanctions petitioning for its own sanctions to be lifted
   if (!plea && core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
-  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 6 * HOUR) { const h = Math.ceil((6 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 6 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
+  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 12 * HOUR) { const h = Math.ceil((12 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 12 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   const R = WP.RESOLUTIONS[type]; let target = null;
   if (isTargeted(type)) {
     target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || (target === uid && !plea)) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
     const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
     // the Council only punishes nations that did something: a group of players can't vote penalties onto a peaceful nation
+    if (PENALTY_TYPES.includes(type) && (W.A[target].ai || BOTS.isBot(target))) throw Object.assign(new Error('The World Council does not vote penalties on AI nations.'), { status: 400 });
     if (PUNISH.includes(type)) { const ev = punishEvidence(W, target); if (!ev) throw Object.assign(new Error(`${W.A[target].name} hasn't attacked another player, used nuclear weapons or been caught spying recently. The Council only punishes aggression.`), { status: 400 }); }
     // a nation can face a player-proposed penalty vote at most once a day, so a group can't keep piling on the same target
     if (PUNISH_DAILY.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH_DAILY.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; const gap = last && last.status === 'failed' ? 48 : 24; if (last && Date.now() - last.t < gap * HOUR) { const h = Math.ceil((gap * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} ${gap === 48 ? 'just survived a penalty vote, so it is protected from new ones for 2 days' : 'already faced a penalty vote today'}. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
@@ -952,6 +961,7 @@ function councilPropose(uid, b) {
   if (type !== 'custom' && open.some(p => p.type === type && p.target === target && (type !== 'pact' || p.scope === b.scope))) throw Object.assign(new Error('That resolution is already being voted on.'), { status: 400 });
   if (type === 'debt' && core.debtRatio(n) >= WP.DEBT_PROPOSE_MAX) throw Object.assign(new Error(`Only nations with debt under ${Math.round(WP.DEBT_PROPOSE_MAX * 100)}% of GDP can propose debt relief. Yours is ${Math.round(core.debtRatio(n) * 100)}%.`), { status: 400 }); // no voting yourself out of your own debt
   if (type === 'debt' && Date.now() - ((S.council.passed || {}).debt || 0) < 72 * HOUR) throw Object.assign(new Error(`Debt relief can only pass once every 72 hours. It can be proposed again in ${Math.ceil((72 * HOUR - (Date.now() - S.council.passed.debt)) / HOUR)} hours.`), { status: 400 });
+  { const bw = bonusWait(type); if (bw > 0) { const tH = Math.ceil(bw / HOUR), d = Math.floor(tH / 24), h = tH % 24; throw Object.assign(new Error(`“${R.n}” can pass at most once every ${Math.max(72, (R.h || 24) + 48) / 24} days. It can be proposed again in ${[d ? `${d} day${d > 1 ? 's' : ''}` : '', h ? `${h} hour${h > 1 ? 's' : ''}` : ''].filter(Boolean).join(' ')}.`), { status: 400 }); } }
   if (WP.RESOLUTIONS[type].kind === 'global' && (S.council.active[type] || 0) > Date.now()) { const h = Math.ceil((S.council.active[type] - Date.now()) / HOUR); throw Object.assign(new Error(`“${R.n}” is already in force for another ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   let scope = null, text = null, hours = null;
   if (type === 'pact') { scope = b.scope === 'all' ? 'all' : b.scope === 'ai' ? 'ai' : null; if (!scope) throw Object.assign(new Error('Choose who the pact defends against.'), { status: 400 }); }
@@ -962,9 +972,10 @@ function councilPropose(uid, b) {
     if (MOD.isProfane(text)) throw Object.assign(new Error('Please reword your resolution.'), { status: 400 });
     hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
   }
-  if (!plea) { const cost = b.anon ? 1e7 : 1e6; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
+  let fee = 0;
+  if (!plea) { const cost = b.anon ? 1e7 : 1e6; fee = PENALTY_TYPES.includes(type) ? Math.max(0, Math.round((n.cash - cost) * PENALTY_FEE)) : 0; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost + fee; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
-  const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' };
+  const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' }; if (fee) p.fee = fee;
   if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = p.t; // starts that law's cooldown
   if (b.anon && !plea) p.anon = true; // proposer stays secret: never sent to players (kept only in the saved game data)
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
@@ -987,7 +998,8 @@ function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of
 function decideEarly(W, p) {
   if (p.status !== 'open' || Date.now() >= p.end) return false;
   const pv = netVotes(p), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length, left = canStillVote(W, p);
-  if ((ys >= COUNCIL_MIN_YES && ys > ns + left) || ys + left <= ns || ys + left < COUNCIL_MIN_YES) { p.end = Date.now(); p.early = true; return true; }
+  const need = minYes(p.type), sure = p.type === 'sanction' ? ys >= need && ys * 3 >= (ys + ns + left) * 2 : ys >= need && ys > ns + left, lost = p.type === 'sanction' ? (ys + left) * 3 < (ys + left + ns) * 2 || ys + left < need : ys + left <= ns || ys + left < need;
+  if (sure || lost) { p.end = Date.now(); p.early = true; return true; }
   return false;
 }
 // players on the same network count as one voter: only the first of them to vote counts
@@ -1000,11 +1012,12 @@ function councilResolve(W) {
     const pv = netVotes(p), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length;
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
-    p.status = ys > ns && ys >= COUNCIL_MIN_YES ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
+    p.status = passes(p.type, ys, ns) ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
     const label = resLabel(p.type, tn && tn.name, p);
     if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
       const until = now + (p.hours || R.h) * HOUR, extra = enactResolution(W, p, tn, until); (S.council.passed = S.council.passed || {})[p.type] = now;
+      if (p.fee && p.by && W.A[p.by]) { W.A[p.by].cash += p.fee; W.changed.add(p.by); if (S.users[p.by]) addNote(p.by, 'council', `Your ${WP.moneyS(p.fee)} penalty deposit was refunded because the vote passed.`); }
       systemMessage(`World Council resolution PASSED (${p.result}): ${label}.${extra ? ' ' + extra : ''}`);
       if (p.target && S.users[p.target]) addNote(p.target, 'council', R.kind === 'protect' ? `The World Council passed a resolution in your favor: ${R.n}.${extra ? ' ' + extra : ''}` : `The World Council passed a resolution against you: ${R.n}.${extra ? ' ' + extra : ''}`);
     } else systemMessage(`World Council resolution failed (${p.result}): ${label}.`);
@@ -1088,7 +1101,7 @@ function councilWatch(W) {
   const open = () => S.council.props.filter(p => p.status === 'open');
   if (open().filter(p => p.auto).length >= 3) return;
   for (const [u, n] of Object.entries(W.A)) {
-    if (open().some(p => p.target === u)) continue;
+    if (open().some(p => p.target === u)) continue; if (n.ai || BOTS.isBot(u)) continue; // AI nations are never put to a penalty vote
     const battles = (n.out || []).filter(e => e.type === 'battle' && e.to && e.to !== u && W.A[e.to] && !BOTS.isBot(e.to) /* only attacks on real players count: fighting AI nations is part of the game */ && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === u && x.t < e.t && e.t - x.t < 24 * HOUR)) && !core.defending(W, u, e.to));
     const atk = { n: battles.filter(e => now - e.t < 6 * HOUR).length, victims: new Set(battles.filter(e => now - e.t < 12 * HOUR).map(e => e.to)).size };
     for (const [type, test] of AUTO_RULES) {
@@ -2750,7 +2763,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/clear-chat': { for (const k of Object.keys(S.docs)) if (k.startsWith('chat/')) setDoc('chat', k.slice(5), null); audit(me.name, 'Cleared chat'); return send(res, 200, { ok: true }); }
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
-    case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; if (pr.fee && pr.by && S.docs['nations/' + pr.by]) { S.docs['nations/' + pr.by].cash += pr.fee; sendNation(pr.by); addNote(pr.by, 'council', `An admin cancelled your vote, so your ${WP.moneyS(pr.fee)} penalty deposit was refunded.`); } persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
     case '/api/admin/setrogue': { // make a nation a rogue state until a set time (e.g. to restore status that ended early because of a bug)
       const id = String(b.id || ''), W = mkWorld(), n = W.A[id], now = Date.now(), until = Math.round(+b.until); if (!n) return send(res, 404, { error: 'That nation was not found.' });
       if (!isFinite(until) || until < now + 60e3 || until > now + 7 * 864e5) return send(res, 400, { error: 'Pick an end time between now and 7 days from now.' });
