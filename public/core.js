@@ -513,9 +513,19 @@ function Core(PD, CARDS) {
   const maxHex = n => !n ? 0 : (n.ai && n.ai.boss) ? Infinity : adminCap(n); // kept for older callers: now the administration capacity
   // fresh-start season worlds have no province limit (the server sets cfg.noAdmin while one runs); the real world always has one
   let NOADM = false;
+  // THE BIGGER MAP (v2): big provinces were split in two or more. A nation keeps every piece of a province it held; the extra pieces it
+  // received ("legacy pieces", n.split) cost no administration and add no score while it still holds them from that day, so nothing changed for it.
+  const legacy = (n, h) => !!(n && n.split && n.split[h] != null && n.hexes && n.hexes[h] === n.split[h]);
+  const legacyCount = (W, u) => { const n = W.A[u]; if (!n || !n.split) return 0; let k = 0; for (const h in n.split) if (legacy(n, h) && W.OWN[h] && W.OWN[h].u === u) k++; return k; };
+  const landCount = (W, u) => hexesOf(W, u).length - legacyCount(W, u);
+  // BUILDING TALL: a nation whose provinces are well developed on average earns more from each of them, so a small, built-up nation can
+  // rival a sprawling one. The average development level (0 to 4) gives up to +32% GDP, +24% production, and doubles the score for development.
+  // It reaches full strength at 12 provinces, so a two-province nation cannot max it out.
+  const TALL = { gdp: .08, prod: .06, score: .25, full: 12 };
+  const tallLvl = (W, u) => { if (!(W.cfg && W.cfg.tall)) return 0; const c = landCount(W, u); if (c < 1) return 0; return Math.min(DEV.max, devTotal(W, u) / c) * Math.min(1, c / TALL.full); };
   const adminCap = n => !n ? 0 : (n.ai && n.ai.boss) || NOADM ? Infinity : ADMIN.base + ADMIN.per * rankOf(n.xp || 0) + (n.ai ? ADMIN.ai : 0) + ADMIN.office.cap * (n.office || 0);
   // what one province costs to administer
-  function provAdmin(W, u, h) { { const n0 = W.A[u]; if (n0 && n0.outposts && n0.outposts[h] && h != n0.cap) return 1; } const n = W.A[u], o = W.OWN[h]; if (!n || !o || o.u !== u || o.cap || +h === +n.cap) return 0; const core = (W.now - o.ts) / 864e5 >= ADMIN.coreD; return (core ? 1 : ADMIN.colony) + (P[n.cap] && kmBetween(+h, +n.cap) > ADMIN.farKm ? ADMIN.far : 0); }
+  function provAdmin(W, u, h) { { const n0 = W.A[u]; if (legacy(n0, h)) return 0; if (n0 && n0.outposts && n0.outposts[h] && h != n0.cap) return 1; } const n = W.A[u], o = W.OWN[h]; if (!n || !o || o.u !== u || o.cap || +h === +n.cap) return 0; const core = (W.now - o.ts) / 864e5 >= ADMIN.coreD; return (core ? 1 : ADMIN.colony) + (P[n.cap] && kmBetween(+h, +n.cap) > ADMIN.farKm ? ADMIN.far : 0); }
   function adminState(W, u) { const n = W.A[u]; if (!n) return { cap: 0, used: 0, over: 0, prodF: 1 }; const cap = adminCap(n);
     if (!isFinite(cap)) return { cap, used: 0, over: 0, prodF: 1, core: 0, colony: 0, far: 0, severe: false };
     let used = 0, core = 0, colony = 0, far = 0; for (const h of hexesOf(W, u)) { const c = provAdmin(W, u, h); if (!c) continue; used += c; const o = W.OWN[h]; if ((W.now - o.ts) / 864e5 >= ADMIN.coreD) core++; else colony++; if (P[n.cap] && kmBetween(+h, +n.cap) > ADMIN.farKm) far++; }
@@ -578,7 +588,7 @@ function Core(PD, CARDS) {
   const keptAllies = (W, u) => { const n = W.A[u]; if (!n) return 0; const now = W.now || Date.now(), set = new Set(others(W, u).filter(v => W.A[v] && !W.A[v].ai && pact(W, u, v, 'ally') && ((n.rel || {})[v] || {}).ally <= now - 24 * HOUR));
     /* bloc-mates count too, once this nation has been in its bloc for a day (n.blocT is noted by the server when it joins) */ const b = n.bloc && W.blocs && W.blocs[n.bloc]; if (b && n.blocT && now - n.blocT >= 24 * HOUR) for (const v of b.members || []) if (v !== u && W.A[v] && !W.A[v].ai) set.add(v);
     return set.size; };
-  const fairScore = (W, u) => { const n = W.A[u], t = n.tally || {}; return Math.round(hexesOf(W, u).length * FAIR.prov + devTotal(W, u) * FAIR.dev + soft((n.gdp || 0) / 5e5, FAIR.gdpS) + soft((n.troops || 0) * .4, FAIR.armyS)
+  const fairScore = (W, u) => { const n = W.A[u], t = n.tally || {}; return Math.round(landCount(W, u) * FAIR.prov + devTotal(W, u) * FAIR.dev * (1 + TALL.score * tallLvl(W, u)) + soft((n.gdp || 0) / 5e5, FAIR.gdpS) + soft((n.troops || 0) * .4, FAIR.armyS)
     + soft((n.ships || 0) * 8 + (n.air || 0) * 6, FAIR.fleetS) + soft(n.tech, 10) * 60 + (n.xp || 0) * .1 + soft((n.pop || 0) / 2000, FAIR.popS) + (n.prestige || 0) * 50 + Object.keys(n.uwon || {}).length * UW.score
     + soft((t.pwins || 0) * FAIR.win, FAIR.winS) + soft((t.aidV || 0) / 1e5, FAIR.aidS) + Math.min(FAIR.allyMax, keptAllies(W, u)) * FAIR.ally); };
   const liveScore = (W, u) => fairOn(W) ? fairScore(W, u) : oldScore(W, u);
@@ -614,7 +624,7 @@ function Core(PD, CARDS) {
     const n = W.A[u], b = budget(n);
     const pc = 187.5 * (1 + soft(n.tech, 10) * .04) * (1 + soft(n.infra, 10) * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
       * (1 + tradeVal(W, u) * .03) * (1 + soft(devTotal(W, u), 20) * DEV.gdp) * fxMul(n, 'gdp') * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
-      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * CREDIT.gdp[rating(W, n)] * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * taxDrag(n) * W.m.gdp;
+      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * CREDIT.gdp[rating(W, n)] * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * taxDrag(n) * (1 + TALL.gdp * tallLvl(W, u)) * W.m.gdp;
     return n.pop * pc;
   }
   // development aid: nations far behind the world leader earn up to +50% tax revenue, shrinking as they catch up
@@ -650,7 +660,7 @@ function Core(PD, CARDS) {
       if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) dk *= .3; // a disaster zone produces little until it recovers
       for (const k in q) p[k] += q[k] * dk;
     }
-    const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income * adminF(W, u);
+    const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income * adminF(W, u) * (1 + TALL.prod * tallLvl(W, u));
     const pf = fxMul(n, 'prod'); for (const k in p) p[k] = Math.round(p[k] * m * pf * (k === 'food' ? W.m.food * (radOn(W, n) && n.rad.acc ? NUKEACC.crops : 1) : k === 'oil' ? W.m.oil : 1));
     return p;
   }
@@ -2470,7 +2480,7 @@ function Core(PD, CARDS) {
   const unrestF = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 1; return 1 + Math.min(3, wars(W, u).length) * .25 + Math.min(100, Math.max(0, n.aggr || 0)) / 100; };
   function farLands(W, u, rng) {
     const n = W.A[u]; if (!n || (n.ai && n.ai.boss) || !P[n.cap]) return false; if (overPaused(W)) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; } const held = hexesOf(W, u); if (held.length < OVER.farMin) return false;
-    const far = held.filter(h => h != n.cap && !(n.outposts && n.outposts[h]) && kmBetween(h, n.cap) > OVER.farKm); if (!far.length) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; }
+    const far = held.filter(h => h != n.cap && !(n.outposts && n.outposts[h]) && !legacy(n, h) && kmBetween(h, n.cap) > OVER.farKm); if (!far.length) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; }
     // a 24-hour warning first, like overstretch
     if (!n.farWarn) { n.farWarn = W.now; touch(W, u); note(W, u, 'attack', `⚠ ${far.length} of your provinces lie more than ${num(OVER.farKm)} km from your capital. In ${OVER.graceH} hours they may start to declare independence now and then, more often when stability is low, while you are at war, or when your aggression is high. Release them, or keep stability high.`); return true; }
     if (W.now - n.farWarn < OVER.graceH * HOUR) return false;
@@ -2731,7 +2741,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { covertCheck, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, covertCheck, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

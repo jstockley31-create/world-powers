@@ -9,9 +9,12 @@ const zlib = require('zlib');
 const os = require('os');
 const WP = require('./public/core.js');
 const SCENARIOS = require('./public/scenarios.js');
-const PROV = require('./prov-lite.json');
-const core = WP.Core(PROV, SCENARIOS);
-{ const landT = require('./geo-land.js')(); if (landT) core.setLandTest(landT); } // real coastlines, so nuclear tests happen in open water
+// Two maps ship with the game: v1 (961 provinces) and v2 (the bigger map: the same world with its big provinces split, 1,711 provinces).
+// Every v1 province keeps its number in v2, so nothing saved needs renumbering. The game runs on v1 until the real world is back
+// from the season, then switches to v2 for good (see map2Switch below).
+const PROV1 = require('./prov-lite.json'), PROV2 = require('./prov2-lite.json');
+function mkCore(prov) { const c = WP.Core(prov, SCENARIOS); try { const landT = require('./geo-land.js')(); if (landT) c.setLandTest(landT); } catch (e) {} return c; }
+let PROV = PROV1, core = mkCore(PROV1);
 const makeBots = require('./bots.js');
 const PUSH = require('./push.js');
 const MOD = require('./moderation.js');
@@ -79,7 +82,7 @@ if (!S.vapid) S.vapid = PUSH.makeVapid();
 if (!S.nextEvent) S.nextEvent = Date.now() + 6 * HOUR;
 // ---------- fair play: a fingerprint of the exact game code running, its release history, and a public log of admin game actions ----------
 const FAIR_ACTIONS = new Set(['Changed game settings', 'Edited nation', 'Set rogue status', 'Reset nation', 'Rolled back the world', 'Wiped the world', 'Started world event', 'Ended world event', 'Scheduled', 'Cancelled scheduled event', 'Cancelled council vote', 'Added AI nation', 'Removed AI nation', 'Restored nation from snapshot', 'Started the World Games', 'Ended the World Games', 'Triggered a disaster', 'Triggered a nuclear accident', 'Started world crisis', 'Ended world crisis', 'Disbanded alliance']);
-const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'supporters.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/prov.js', 'public/admin.html'];
+const CODE_FILES = ['server.js', 'bots.js', 'moderation.js', 'push.js', 'supporters.js', 'public/core.js', 'public/scenarios.js', 'public/index.html', 'public/index2.html', 'public/prov.js', 'public/prov2.js', 'prov2-lite.json', 'public/admin.html'];
 const CODE = CODE_FILES.filter(f => fs.existsSync(path.join(__dirname, f))).map(f => ({ name: f, sha: crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, f))).digest('hex') }));
 const FINGERPRINT = crypto.createHash('sha256').update(CODE.map(c => c.name + ':' + c.sha).join('\n')).digest('hex');
 S.releases = S.releases || [];
@@ -103,7 +106,24 @@ function logErr(msg) {
 process.on('uncaughtException', e => logErr('Crash avoided: ' + (e.stack || e)));
 process.on('unhandledRejection', e => logErr('Async error: ' + (e && e.stack || e)));
 const rng = () => crypto.randomInt(0, 2 ** 32) / 2 ** 32;
-const BOTS = makeBots(core, WP, rng);
+if (S.map2) { PROV = PROV2; core = mkCore(PROV2); } // the bigger map is already in use
+let BOTS = makeBots(core, WP, rng);
+// the pieces each v1 province was split into: { old number: [new numbers] }
+const MAP2_PIECES = (() => { const m = {}; PROV2.p.forEach((p, i) => { if (p.of != null) (m[p.of] = m[p.of] || []).push(i); }); return m; })();
+// a nation saved on the old map keeps every piece of each split province it held: the extra pieces are "legacy pieces" (no administration, no score)
+function map2Grant(n) { if (!n || !n.hexes) return 0; let k = 0; for (const [h, ts] of Object.entries(n.hexes)) { const ps = MAP2_PIECES[h]; if (!ps) continue; for (const q of ps) if (n.hexes[q] == null) { n.hexes[q] = ts; (n.split = n.split || {})[q] = ts; k++; } } return k; }
+function map2GrantAll() { let k = 0, c = 0; for (const [key, n] of Object.entries(S.docs)) if (key.startsWith('nations/')) { const g = map2Grant(n); if (g) { k += g; c++; } } return { pieces: k, nations: c }; }
+// switch the running game to the bigger map: only ever called with the real world loaded and no Chaos world running
+function map2Switch(why) {
+  if (S.map2) return false; if (S.fresh || (S.chaos && S.chaos.on)) return false;
+  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `before-bigger-map-${Date.now()}.json.gz`), zlib.gzipSync(JSON.stringify(S))); } catch (e) { logErr('Could not write the backup before the bigger map: ' + e.message); return false; } // no backup, no switch
+  PROV = PROV2; core = mkCore(PROV2); BOTS = makeBots(core, WP, rng); S.map2 = Date.now(); const g = map2GrantAll();
+  try { SW = null; publicCache = null; } catch (e) {} try { labStop(); } catch (e) {} persist(true);
+  try { audit('System', 'The bigger map is live', `${PROV1.p.length} → ${PROV2.p.length} provinces (${why}). ${g.nations} nations kept ${g.pieces} extra pieces of their split provinces. Building tall now pays.`); } catch (e) {}
+  try { systemMessage(`🗺 The world just got bigger: ${PROV2.p.length.toLocaleString('en-US')} provinces instead of ${PROV1.p.length}, with more detail in Europe. You kept every piece of your land, and the extra pieces don't count against your province limit. Well-developed nations now earn a bonus. See Updates for details.`); } catch (e) {}
+  setTimeout(() => { try { broadcast('config', effCfg()); broadcast('reload', { t: Date.now() }); } catch (e) {} }, 400);
+  return true;
+}
 const rid = () => Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
 
 // ---------- passwords ----------
@@ -146,7 +166,7 @@ STATIC['/vendor/d3.min.js'] = loadFile('vendor/d3.min.js', JS, 'public, max-age=
 STATIC['/core.js'] = loadFile('core.js', JS, 'no-cache'); STATIC['/scenarios.js'] = loadFile('scenarios.js', JS, 'no-cache');
 STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
 STATIC['/landing-land.js'] = loadFile('landing-land.js', JS, 'public, max-age=604800');
-STATIC['/prov.js'] = loadFile('prov.js', JS, 'public, max-age=31536000, immutable'); // the URL carries a version number, so browsers keep it until the map changes
+STATIC['/prov.js'] = loadFile('prov.js', JS, 'public, max-age=31536000, immutable'); STATIC['/prov2.js'] = loadFile('prov2.js', JS, 'public, max-age=31536000, immutable'); const GAME2 = loadFile('index2.html', HTML, 'no-cache'), gameFile = () => S.map2 ? GAME2 : GAME; // index2.html is index.html loading the bigger map // the URL carries a version number, so browsers keep it until the map changes
 STATIC['/og.jpg'] = loadFile('og.jpg', 'image/jpeg', 'public, max-age=604800');
 for (const f of ['banner-240x100.png', 'banner-468x60.png', 'banner-728x90.png']) STATIC['/' + f] = loadFile(f, 'image/png', 'public, max-age=86400'); // banners for voting and link sites
 for (const f of ['inter-latin.woff2', 'inter-latin-ext.woff2', 'cinzel-700.woff2', 'jbmono-500.woff2']) STATIC['/fonts/' + f] = loadFile('fonts/' + f, 'font/woff2', 'public, max-age=31536000, immutable');
@@ -541,7 +561,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: GAME.etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -569,6 +589,7 @@ function effCfg() {
   const c = { ...S.config }, now = Date.now(); const on = S.schedule.filter(x => BOOSTS[x.type] && x.start <= now && now < x.end);
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
+  if (S.map2) { c.map2 = 1; c.tall = 1; } // the bigger map, and the build-tall bonus that came with it
   if (S.chaos && S.chaos.on) { const o = S.chaos.o || {}; c.chaos = { end: S.chaos.end, speed: o.speed || 10 }; c.tm = 1 / (o.speed || 10); c.income *= 3; c.protectH = o.noShield ? 0 : c.protectH; c.boost = { label: `💥 Chaos world: weapons unlocked, timers ${o.speed || 10}× faster. Everything resets when it ends`, end: S.chaos.end }; }
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
@@ -1425,7 +1446,7 @@ const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesH
 function freshSave(se) {
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m && (m.fallen || m.rem)) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
-  const snap = { v: 1, t: Date.now(), season: se.id, name: se.name, nations, keys: Object.fromEntries(FRESH_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH };
+  const snap = { v: 1, map2: !!S.map2, t: Date.now(), season: se.id, name: se.name, nations, keys: Object.fromEntries(FRESH_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH };
   const txt = JSON.stringify(snap), tmp = FRESH_FILE + '.tmp';
   fs.writeFileSync(tmp, txt); fs.renameSync(tmp, FRESH_FILE);
   try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `season-realworld-${se.id}.json`), txt); } catch (e) { logErr('Could not write the second copy of the real world: ' + e.message); }
@@ -1468,6 +1489,7 @@ function freshRestore(by, why) {
   for (const [u, x] of Object.entries(snap.meta || {})) { const m = meta(u); m.fallen = x.fallen || null; m.rem = x.rem || {}; }
   RH = Array.isArray(snap.rh) ? snap.rh : []; rhGz = null; try { fs.writeFileSync(RANK_FILE, JSON.stringify(RH)); } catch (e) {}
   S.fresh = null; SW = null; publicCache = null; S.moneyLog = []; persist(true); // the restored world is on disk before the save file is retired
+  try { if (!S.map2) map2Switch('the real world came back'); else if (!snap.map2) { map2GrantAll(); persist(true); } } catch (e) { logErr('Bigger map switch failed: ' + (e.stack || e)); }
   try { blocRepair(); } catch (e) {}
   try { ntestSweep(); } catch (e) {}
   try { fs.renameSync(src, path.join(DATA_DIR, `season-realworld-restored-${snap.season}-${now}.json`)); } catch (e) {}
@@ -1500,7 +1522,7 @@ function chaosShift(o, from, to, d, all, depth = 0) {
 function chaosSave() {
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
-  const snap = { v: 1, t: Date.now(), nations, keys: Object.fromEntries(CHAOS_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH, fresh: S.fresh || null };
+  const snap = { v: 1, map2: !!S.map2, t: Date.now(), nations, keys: Object.fromEntries(CHAOS_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH, fresh: S.fresh || null };
   const txt = JSON.stringify(snap), tmp = CHAOS_FILE + '.tmp';
   fs.writeFileSync(tmp, txt); fs.renameSync(tmp, CHAOS_FILE);
   try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); fs.writeFileSync(path.join(BACKUP_DIR, `chaos-realworld-${snap.t}.json`), txt); } catch (e) { logErr('Could not write the second copy of the world before Chaos world: ' + e.message); }
@@ -1561,6 +1583,7 @@ function chaosEnd(by, why) {
   const top = rank.filter(r => S.docs['nations/' + r.u] && r.gain > 0).slice(0, 3), day = new Date(t0).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' });
   S.chaosLast = { t: t0, end: now, by: S.chaos.by, endBy: by || 'System', why: why || '', mins, o, rank, top: top.map(r => r.name) };
   S.chaos = null; if (lab && S.testLab) S.testLab.on = true;
+  try { if (S.map2 && !snap.map2) map2GrantAll(); else if (!S.map2 && !S.fresh) map2Switch('after Chaos world'); } catch (e) { logErr('map2 after chaos: ' + e.message); }
   SW = null; publicCache = null; S.moneyLog = []; persist(true);
   try { blocRepair(); } catch (e) {} try { ntestSweep(); } catch (e) {}
   try { fs.renameSync(CHAOS_FILE, path.join(DATA_DIR, `chaos-realworld-restored-${t0}.json`)); } catch (e) {}
@@ -1586,6 +1609,8 @@ function chaosLoop() {
   persist();
 }
 setInterval(chaosLoop, 5000).unref();
+// the real world is loaded and still on the old map (an upload after the season ended): switch a few seconds after start
+setTimeout(() => { try { map2Switch('server start'); } catch (e) { logErr('Bigger map switch failed: ' + (e.stack || e)); } }, 4000);
 function chaosRetime(oldS, newS) { const now = Date.now(), f = oldS / newS, fix = v => typeof v === 'number' && v > now ? Math.round(now + (v - now) * f) : v;
   for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue;
     for (const c of Object.keys(n.cd || {})) n.cd[c] = fix(n.cd[c]); n.regroup = fix(n.regroup);
@@ -1708,7 +1733,7 @@ const labSnap = () => { const nations = {}; for (const [k, d] of Object.entries(
 function labStart() {
   if (labW || !S.testLab.on) return;
   try {
-    labW = new Worker(path.join(__dirname, 'testlab.js'), { workerData: { snap: labSnap(), speed: S.testLab.speed, paused: S.testLab.paused, prev: LAB }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    labW = new Worker(path.join(__dirname, 'testlab.js'), { workerData: { map2: !!S.map2, snap: labSnap(), speed: S.testLab.speed, paused: S.testLab.paused, prev: LAB }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
     labW.on('message', m => { if (m.type === 'report') { LAB = m.state; if (Date.now() - labSaveT > 120e3) { labSaveT = Date.now(); S.testLab.state = { gen: LAB.gen, stats: LAB.stats, findings: LAB.findings, coverage: Object.fromEntries(Object.entries(LAB.coverage || {}).map(([k, v]) => [k, { tries: v.tries, ok: v.ok, why: Object.fromEntries(v.why || []) }])), casino: LAB.casino, history: LAB.history }; persist(); } } else if (m.type === 'wantSnap' && labW) labW.postMessage({ type: 'snap', snap: labSnap() }); });
     labW.on('error', e => { logErr('test lab: ' + e.message); });
     labW.on('exit', code => { labW = null; if (S.testLab.on && code !== 0) { labRestart = Date.now() + 60e3; } });
@@ -1864,7 +1889,7 @@ function readyReminders(W) {
 { const lim = Date.now() + COUNCIL_H * HOUR; for (const p of (S.council && S.council.props) || []) if (p.status === 'open') { p.votes = playerVotes(p.votes); if (p.end > lim) p.end = lim; } }
 // ---------- rollback snapshots: the game world (nations, council, events) every 10 minutes, kept 26 hours ----------
 const SNAP_DIR = path.join(DATA_DIR, 'snaps'); let lastSnap = 0;
-function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), world: S.fresh ? S.fresh.id : 'real', nations, council: S.council, blocs: S.blocs, crisis: S.crisis, games: S.games, dis: S.dis, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
+function gameState() { const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v; return { t: Date.now(), map2: !!S.map2, world: S.fresh ? S.fresh.id : 'real', nations, council: S.council, blocs: S.blocs, crisis: S.crisis, games: S.games, dis: S.dis, event: S.event, nextEvent: S.nextEvent, lastEventKey: S.lastEventKey, fallen: S.fallen }; }
 function takeSnap(tag) {
   try {
     fs.mkdirSync(SNAP_DIR, { recursive: true }); const t = Date.now(); lastSnap = t;
@@ -1881,7 +1906,7 @@ function rollback(name, by) {
   if ((st.world || 'real') !== (S.fresh ? S.fresh.id : 'real')) throw Object.assign(new Error(S.fresh ? 'That snapshot is from the real world, and a fresh-start season is running. To bring the real world back, use Seasons → Restore the real world.' : 'That snapshot is from a fresh-start season world, not the real world, so it cannot be rolled back to.'), { status: 400 });
   takeSnap('undo'); const now = Date.now();
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
-  for (const [id, n] of Object.entries(st.nations)) { n.lastTick = now; S.docs['nations/' + id] = n; }
+  for (const [id, n] of Object.entries(st.nations)) { n.lastTick = now; if (S.map2 && !st.map2) map2Grant(n); S.docs['nations/' + id] = n; }
   S.council = st.council || { props: [], active: {} }; if (st.blocs) S.blocs = Object.assign(Object.create(null), st.blocs); if (st.crisis !== undefined) S.crisis = st.crisis; if (st.games !== undefined) S.games = st.games; if (Array.isArray(st.dis)) S.dis = st.dis; S.event = st.event || null; S.nextEvent = st.nextEvent || now + 6 * HOUR; S.lastEventKey = st.lastEventKey; S.fallen = st.fallen || [];
   persist(true); const when = new Date(sn.t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' });
   systemMessage(`⏪ The world has been rolled back to ${when} (Mountain time) by the administrators.`);
@@ -2775,8 +2800,9 @@ async function handle(req, res) {
     if (p.startsWith('/api/')) return send(res, 403, { error: 'Access from your network has been blocked by the administrators.' });
     res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(BLOCK_PAGE); } }
   try {
-    if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? GAME : LANDING);
+    if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? gameFile() : LANDING);
     if (req.method === 'GET' && p === '/donate/paypal') { const d = /^https:\/\/[^\s"'<>]+$/i.test(S.config.donateUrl || '') ? S.config.donateUrl : WP.DEFCFG.donateUrl; res.writeHead(302, { Location: d, 'Cache-Control': 'no-store' }); return res.end(); } // the plain donation link (paypal.me)
+    if (req.method === 'GET' && p === '/play') return serveStatic(req, res, gameFile());
     if (req.method === 'GET' && STATIC[p]) return serveStatic(req, res, STATIC[p]);
     if (req.method === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
     if (req.method === 'GET' && p === '/api/nukes') return send(res, 200, { nukes: S.nukes.slice(0, 50) });

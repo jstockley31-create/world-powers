@@ -7,7 +7,7 @@
 const { parentPort, workerData } = require('worker_threads');
 const path = require('path');
 const WP = require(path.join(__dirname, 'public', 'core.js'));
-const C = WP.Core(require(path.join(__dirname, 'prov-lite.json')), require(path.join(__dirname, 'public', 'scenarios.js')));
+const C = WP.Core(require(path.join(__dirname, workerData.map2 ? 'prov2-lite.json' : 'prov-lite.json')), require(path.join(__dirname, 'public', 'scenarios.js')));
 const MIN = 60e3, HOUR = 36e5, DAY = 24 * HOUR, STEP = 3 * MIN, GEN_DAYS = 7;
 const R = Math.random, pick = a => a[Math.floor(R() * a.length)], deep = o => JSON.parse(JSON.stringify(o));
 const SPEED = { slow: 1000, normal: 200, fast: 40 };
