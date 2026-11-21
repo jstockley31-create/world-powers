@@ -157,9 +157,9 @@ const NOTFOUND = loadFile('404.html', HTML, 'no-cache');
 STATIC['/manifest.webmanifest'] = loadFile('manifest.webmanifest', 'application/manifest+json', 'no-cache');
 STATIC['/icon.svg'] = loadFile('icon.svg', 'image/svg+xml', 'public, max-age=604800');
 const ADMIN_HTML = { ...loadFile('admin.html', HTML, 'no-store') };
-const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://media.giphy.com https://*.giphy.com https://media.tenor.com https://*.tenor.com https://i.imgur.com https://i.redd.it; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+const CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://media.giphy.com https://*.giphy.com https://media.tenor.com https://*.tenor.com https://i.imgur.com https://i.redd.it; connect-src 'self'; worker-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'";
 function secHeaders(req) {
-  const h = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'DENY', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' };
+  const h = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'SAMEORIGIN', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' };
   if (isHttps(req)) h['Strict-Transport-Security'] = 'max-age=31536000';
   return h;
 }
@@ -2000,6 +2000,27 @@ async function adminRoute(p, req, res, me) {
       return send(res, 200, { lite: true, id: b0.id, name: u.name, admin: !!u.admin, banned: !!u.banned, mutedUntil: u.mutedUntil || 0, created: u.created, lastSeen: (S.meta[b0.id] || {}).lastSeen || 0, nation: n ? { name: n.name, color: n.color } : null }); }
   }
   if (p === '/api/admin/overview' && req.method === 'GET') return send(res, 200, { ...overview(), role: 'owner', hd: Object.values(S.helpdesk).filter(T => T.open && T.unread).length });
+  if (p === '/api/admin/fullcheck' && req.method === 'GET') { // the Dashboard's "Run full check": everything the admin would want to look at, in one list (owner only; changes nothing)
+    const W = mkWorld(), now = Date.now(), out = [], add = (sev, cat, title, detail) => out.push({ sev, cat, title, detail: detail || '' }), nm = u => (W.A[u] || {}).name || (S.users[u] || {}).name || '?';
+    try { const rows = scriptCheck(), act = rows.filter(r => r.case.level === 'act'), watch = rows.filter(r => r.case.level === 'watch');
+      if (act.length) add('red', 'Cheat watch', `${act.length} player${act.length > 1 ? 's' : ''} to act on`, act.map(r => `${r.name} (${r.nation || 'no nation'}, score ${r.score})`).join(', '));
+      else add('ok', 'Cheat watch', 'Nobody needs action', watch.length ? `Keep watching: ${watch.map(r => r.name).join(', ')}` : 'Everyone active plays like a person.');
+    } catch (e) { add('amber', 'Cheat watch', 'Cheat watch could not run', e.message); }
+    const jailed = Object.entries(S.hc || {}).filter(([, h]) => h && h.jail).map(([u]) => nm(u)); if (jailed.length) add('amber', 'Cheat watch', `${jailed.length} account${jailed.length > 1 ? 's' : ''} locked in cheat jail`, jailed.join(', ') + '. Review and release them on the Cheat watch tab.');
+    const fl = (S.flags || []).filter(f => now - f.t < 864e5); if (fl.length) add('info', 'Cheat watch', `${fl.length} cheat flag${fl.length > 1 ? 's' : ''} in the last 24 hours`, '');
+    const hd = Object.entries(S.helpdesk || {}).filter(([, T]) => T.open && T.unread); add(hd.length ? 'amber' : 'ok', 'Helpdesk', hd.length ? `${hd.length} question${hd.length > 1 ? 's' : ''} waiting for your answer` : 'No Helpdesk questions waiting', hd.map(([u]) => nm(u)).join(', '));
+    const reps = (S.reports || []).filter(r => !r.done), bugs = (S.bugs || []).filter(b => !b.done && b.kind !== 'idea'), ideas = (S.bugs || []).filter(b => !b.done && b.kind === 'idea');
+    add(reps.length ? 'amber' : 'ok', 'Moderation', reps.length ? `${reps.length} player report${reps.length > 1 ? 's' : ''} waiting` : 'No player reports waiting', reps.slice(0, 5).map(r => `${r.byName} reported ${r.aboutName} (${r.kind})`).join('; '));
+    add(bugs.length ? 'amber' : 'ok', 'Moderation', bugs.length ? `${bugs.length} open bug report${bugs.length > 1 ? 's' : ''}` : 'No open bug reports', bugs.slice(0, 5).map(b => `${b.byName}: ${String(b.text).slice(0, 90)}`).join(' · '));
+    if (ideas.length) add('info', 'Moderation', `${ideas.length} new idea${ideas.length > 1 ? 's' : ''} from players`, ideas.slice(0, 5).map(b => `${b.byName}: ${String(b.text).slice(0, 90)}`).join(' · '));
+    const errs = health.errors.filter(e => now - e.t < 864e5); add(errs.length ? 'amber' : 'ok', 'Server', errs.length ? `${errs.length} server error${errs.length > 1 ? 's' : ''} in the last 24 hours` : 'No server errors in the last 24 hours', errs.slice(0, 5).map(e => String(e.msg || e.m || '').slice(0, 120)).join(' · '));
+    const ai = Object.keys(W.A).filter(u => BOTS.isBot(u)); if (S.config.noAI) add(ai.length ? 'red' : 'ok', 'AI', ai.length ? `${ai.length} AI nation${ai.length > 1 ? 's' : ''} exist although all AI is off` : 'All AI is off, and no AI nations exist', ai.length ? 'They should be removed within a minute. If they stay, run the check again in a minute.' : ''); else add('info', 'AI', `AI is allowed: ${ai.length} AI nation${ai.length === 1 ? '' : 's'}`, '');
+    const se = S.seasons && S.seasons.cur; if (se && se.end) { if (se.end < now - 10 * 60e3) add('red', 'Season', 'The season end time has passed but the season has not finished', new Date(se.end).toLocaleString('en-US', { timeZone: 'America/Denver' }) + ' Mountain'); else add('ok', 'Season', `${se.name || 'The season'} ends ${new Date(se.end).toLocaleString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} Mountain`, ''); }
+    if (S.crisis && !S.crisis.over && now > S.crisis.end + 15 * 60e3) add('red', 'World events', 'A world crisis is past its deadline but has not ended', 'End it from the World events tab.');
+    const bad = Object.keys(W.A).filter(u => ['cash', 'gdp', 'pop', 'troops', 'tech', 'xp'].some(k => W.A[u][k] != null && !Number.isFinite(+W.A[u][k]))); if (bad.length) add('red', 'Data', `${bad.length} nation${bad.length > 1 ? 's have' : ' has'} broken numbers`, bad.map(nm).join(', ') + '. Run Repair → Health check → Fix everything found.');
+    const lb = S.lastBackupT || 0; add(now - lb < 30 * HOUR ? 'ok' : 'amber', 'Server', now - lb < 30 * HOUR ? `Last nightly backup ${Math.round((now - lb) / HOUR)} hours ago` : 'No nightly backup in over 30 hours', '');
+    return send(res, 200, { items: out, emails: Object.values(S.users).map(u => String(u.email || '').toLowerCase()).filter(e => e.includes('@')), t: now });
+  }
   if (p === '/api/admin/helpdesk') { // owner only (not in COADMIN_OK); nothing here is audit-logged, so it never shows on /fair
     if (req.method === 'GET') return send(res, 200, { list: hdView() });
     const b = await readBody(req, 12 * 1024), id = String(b.id || ''), T = S.helpdesk[id];

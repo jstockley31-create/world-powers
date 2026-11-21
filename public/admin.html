@@ -209,6 +209,7 @@ const panel=(t,b,r='')=>`<section class="panel"><header><h2>${t}</h2><div>${r}</
 function dash(){const h=D.health;const saveOk=!h.saveError&&Date.now()-h.lastSave<10*60e3;const vol=h.onVolume;const recentFlags=D.flags.filter(f=>Date.now()-f.t<864e5);
  const issues=[];if(h.saveError)issues.push(['bad','Saving is failing: '+h.saveError]);if(vol===false)issues.push(['bad',`Data is NOT on the Railway volume (${esc(h.dataDir)}). Progress will be lost on restart. Set DATA_DIR to ${esc(h.volume)}.`]);if(vol===null)issues.push(['warn','No Railway volume detected. If this is running on Railway, add a volume mounted at /data.']);if(h.errors24)issues.push(['warn',`${h.errors24} server error(s) in the last 24 hours — see Activity log.`]);if(recentFlags.length)issues.push(['warn',`${recentFlags.length} suspicious activity flag(s) in the last 24 hours — see Cheat watch.`]);if(D.shared.length)issues.push(['warn',`${D.shared.length} network(s) shared by multiple accounts — possible duplicate accounts.`]);
  return`<h1>Dashboard</h1><p class="sub">Health of the game server and the world at a glance. Refreshes every 10 seconds.</p>
+ ${fcPanel()}
  ${issues.length?panel('Needs attention',issues.map(([c,t])=>`<div class="row" style="padding:5px 0"><span class="tag ${c==='bad'?'r':'y'}">${c==='bad'?'Problem':'Check'}</span><span>${t}</span></div>`).join('')):`<div class="card ok" style="margin-bottom:16px"><b style="font-size:15px">All systems healthy</b><div><small>Server running, saving normally${vol?', data stored on the persistent volume':''}.</small></div></div>`}
  <div class="grid">${card('Server','Online','ok','Up for '+dur(h.uptime))}${card('Last save',ago(h.lastSave),saveOk?'ok':'bad',h.saveError?esc(h.saveError):'Saves within seconds of changes')}${card('Storage',vol?'Volume':vol===false?'Not on volume':'Local disk',vol?'ok':vol===false?'bad':'warn',esc(h.dataDir))}${card('Data size',bytes(h.dataBytes),'')}
  ${card('Memory',h.memoryMB+' MB',h.memoryMB>400?'warn':'ok','Heap '+h.heapMB+' MB')}${card('Requests (5 min)',num(h.reqs5))}${card('Errors (24 h)',h.errors24,h.errors24?'warn':'ok')}${card('Node.js',h.node,'','Load '+h.load.toFixed(2))}</div>
@@ -310,6 +311,43 @@ function hdTab(){if(!HDD||Date.now()-hdT>15000)hdLoad();if(!HDD)return'<h1>🛟 
  return`<h1>🛟 Helpdesk</h1><p class="sub">Questions players send to “🛟 Helpdesk” from the Leaders online list, the chat sidebar or Mail. Your answers arrive in their Mail inbox. Only you can see this tab; nothing here is shown on the public activity log.</p>
  <div class="row" style="margin-bottom:12px">${chips}</div>
  <div class="hdwrap"><div class="panel hdl">${list.length?list.map(item).join(''):`<div class="bd mu">${hdF==='need'?'All caught up: no questions waiting for an answer.':'Nothing here.'}</div>`}</div><div>${thread}</div></div>`}
+// ---- Run full check: server checks + every game page loaded in a hidden frame + public pages scanned for private data. Changes nothing. ----
+let FC=null,fcBusy=false,fcStep='';
+function fcPanel(){const sevO={red:0,amber:1,info:2,ok:3},T={red:['r','Problem'],amber:['y','Check'],info:['b','Note'],ok:['g','OK']};
+ const head=`<div class="row" style="justify-content:space-between;gap:10px"><div><b style="font-size:15px">🩺 Full check</b><div class="mu" style="font-size:13px">Checks the server, Cheat watch, Helpdesk, reports, broken data, the season, AI, every game page for errors and slowness, and the public pages for private data. Nothing is changed.</div></div><button class="btn pri" data-act="fcrun" ${fcBusy?'disabled':''}>${fcBusy?'Checking… '+esc(fcStep):FC?'Run again':'Run full check'}</button></div>`;
+ if(!FC)return panel('Full check',head);
+ const L=FC.items.slice().sort((a,b)=>sevO[a.sev]-sevO[b.sev]),c=k=>L.filter(x=>x.sev===k).length,ok=L.filter(x=>x.sev==='ok'),rest=L.filter(x=>x.sev!=='ok');
+ const row=x=>`<div style="display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--bd)"><span class="tag ${T[x.sev][0]}" style="flex:none;min-width:62px;text-align:center">${T[x.sev][1]}</span><div style="min-width:0"><b>${esc(x.cat)}</b> · ${esc(x.title)}${x.detail?`<div class="mu" style="font-size:12.5px;overflow-wrap:anywhere">${esc(x.detail)}</div>`:''}</div></div>`;
+ return panel('Full check',head+`<p style="margin:12px 0 4px">${c('red')?`<b class="rd">${c('red')} problem${c('red')>1?'s':''}</b> · `:''}${c('amber')?`<b class="yl">${c('amber')} to check</b> · `:''}${c('info')} note${c('info')===1?'':'s'} · <span class="gn">${c('ok')} OK</span> <span class="mu">· ${new Date(FC.t).toLocaleTimeString()} · took ${Math.round(FC.ms/1000)} s</span></p>${rest.length?rest.map(row).join(''):'<p class="gn" style="margin:6px 0">✓ Nothing needs your attention.</p>'}${ok.length?`<details style="margin-top:6px"><summary class="mu" style="cursor:pointer">${ok.length} things that are fine</summary>${ok.map(row).join('')}</details>`:''}`)}
+async function fcRun(){if(fcBusy)return;fcBusy=true;const t0=Date.now(),items=[],add=(sev,cat,title,detail)=>items.push({sev,cat,title,detail:detail||''}),step=t=>{fcStep=t;render()};
+ try{
+  step('server');let emails=[];
+  try{const [x,au,hc]=await Promise.all([api('GET','/api/admin/fullcheck'),api('POST','/api/admin/cleanup',{op:'audit'}).catch(e=>({err:e.message})),api('POST','/api/admin/cleanup',{op:'health'}).catch(e=>({err:e.message}))]);items.push(...x.items);emails=x.emails||[];
+   if(au&&au.audit)for(const a of (au.audit.items||au.audit||[]))if(a&&a.sev&&a.sev!=='ok'&&!/^(Moderation|Server)$/.test(a.cat))add(a.sev==='red'?'red':a.sev==='amber'?'amber':'info',a.cat,a.title,[a.detail,a.fix,(a.items||[]).slice(0,6).map(i=>i.name+(i.extra?' ('+i.extra+')':'')).join(', ')].filter(Boolean).join(' '));
+   if(hc&&hc.found)add(hc.found.length?'red':'ok','Data',hc.found.length?`${hc.found.length} broken data problem${hc.found.length>1?'s':''} found`:'No broken data in any nation or alliance',hc.found.slice(0,6).join(' · ')+(hc.found.length?' — fix them on Repair → Health check.':''));
+  }catch(e){add('red','Server','Server checks failed',e.message)}
+  // every game page, in a hidden frame signed in as you
+  step('game pages');const f=document.createElement('iframe');f.src='/play?fullcheck=1';f.setAttribute('aria-hidden','true');f.style.cssText='position:fixed;left:-3000px;top:0;width:1280px;height:800px;border:0;';document.body.appendChild(f);
+  try{const errs=[];let G=null;for(let i=0;i<60;i++){await new Promise(r=>setTimeout(r,500));try{G=f.contentWindow;if(G&&G.WP_CHECK&&G.WP_CHECK.ready())break;if(G&&G.WP_CHECK&&G.WP_CHECK.noNation()){G=null;break}}catch(e){}G=null}
+   if(!G){let why='The game did not finish loading in 30 seconds.';try{if(f.contentWindow.WP_CHECK&&f.contentWindow.WP_CHECK.noNation())why='The game loaded, but your account has no nation, so its pages could not be checked.'}catch(e){}add('amber','Game pages',why,'')}
+   else{G.addEventListener('error',e=>errs.push(e.message));G.addEventListener('unhandledrejection',e=>errs.push(String(e.reason&&e.reason.message||e.reason)));
+    const pages=['overview','ops','economy','gov','intel','diplo','council','projects','prestige','rank','mail','account','black','casino','chat','world'],slow=[],broken=[];
+    for(const pg of pages){const n0=errs.length,s0=performance.now();try{G.WP_CHECK.go(pg)}catch(e){errs.push(pg+': '+e.message)}const ms=performance.now()-s0;await new Promise(r=>setTimeout(r,250));const m=G.document.getElementById('main');if(!m||m.children.length===0)broken.push(pg);if(ms>300)slow.push(`${pg} ${Math.round(ms)} ms`);if(errs.length>n0)broken.push(pg+' (error)')}
+    if(!G.WP_CHECK.globe())broken.push('world globe did not draw');
+    add(errs.length||broken.length?'red':'ok','Game pages',errs.length||broken.length?`${errs.length} error${errs.length===1?'':'s'} while opening game pages`:`All ${pages.length} game pages opened with no errors`,[...broken.map(b=>'Problem on: '+b),...errs.slice(0,5)].join(' · '));
+    add(slow.length?'amber':'ok','Game pages',slow.length?`${slow.length} page${slow.length>1?'s are':' is'} slow to open`:'Every page opens quickly',slow.join(', '));
+    }
+  }finally{f.remove()}
+  // public pages: up, fast, and no private data
+  step('public pages');const pub=['/fair','/faq','/updates','/dev','/play','/healthz'],leak=[],down=[],slowP=[];
+  for(const u of pub){const s0=performance.now();try{const r=await fetch(u,{cache:'no-store',credentials:'omit'});const tx=await r.text();const ms=performance.now()-s0;if(!r.ok)down.push(`${u} (${r.status})`);if(ms>1500)slowP.push(`${u} ${Math.round(ms)} ms`);
+   const low=tx.toLowerCase();const hit=emails.find(e=>e.length>5&&low.includes(e));if(hit)leak.push(`${u} shows a player's email address`);if(u==='/fair'&&/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(tx))leak.push('/fair shows a network address');}catch(e){down.push(u+' ('+e.message+')')}}
+  add(down.length?'red':'ok','Public pages',down.length?`${down.length} public page${down.length>1?'s':''} not loading`:'All public pages load',down.join(', '));
+  add(leak.length?'red':'ok','Privacy',leak.length?'Private data visible on a public page':'No emails or network addresses on public pages',leak.join(' · '));
+  if(slowP.length)add('amber','Public pages','Some public pages are slow',slowP.join(', '));
+  FC={items,t:Date.now(),ms:Date.now()-t0};
+ }catch(e){toast('The full check failed: '+e.message)}
+ fcBusy=false;fcStep='';render()}
 let SUPD=null,supBusy=false;function supLoad(){if(supBusy)return;supBusy=true;api('GET','/api/admin/supporters').then(r=>{SUPD=r;supBusy=false;render()}).catch(e=>{supBusy=false;toast(e.message)})}
 setTimeout(()=>{try{if(D&&D.role==='owner')supLoad()}catch(e){}},2500);
 function supTab(){if(!SUPD){supLoad();return'<h1>Supporters</h1><p class="mu">Loading…</p>'}const S_=SUPD,TN=['','⭐ Supporter','🌟 Patron','👑 Benefactor'],usd=v=>'$'+(+v||0).toFixed(2);
@@ -536,6 +574,7 @@ document.addEventListener('click',e=>{const t=e.target.closest('[data-tab]');if(
  const pr=e.target.closest('[data-p]');if(pr&&!e.target.closest('[data-act]')){e.preventDefault();drawer(pr.dataset.p);return}
  const b=e.target.closest('[data-act]');if(!b)return;const id=b.dataset.id;const name=D.players.find(p=>p.id===id)?.name||'';
  switch(b.dataset.act){
+ case'fcrun':fcRun();break;
  case'noai':{const on=b.dataset.on==='1';if(on&&!confirm('Turn ALL AI off?\n\nEvery AI nation is removed right now and its land becomes free to settle. No new AI will appear (including breakaway free states and the Rising Power) until you turn AI back on.'))break;api('POST','/api/admin/noai',{on}).then(r=>{toast(r.msg);load()}).catch(e=>toast(e.message));break}
  case'hdf':hdF=b.dataset.r;hdSel=null;render();break;
  case'hdsel':hdSel=b.dataset.r;render();{const t_=document.querySelector('.hdth');if(t_)t_.scrollTop=t_.scrollHeight;if(innerWidth<=900){const th=document.querySelector('.hdwrap>div:last-child');if(th)th.scrollIntoView({behavior:'smooth'})}}break;

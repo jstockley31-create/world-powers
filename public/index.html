@@ -4215,6 +4215,8 @@ refreshW();
  db.collection('online').onSnapshot(s=>{ON={};s.docs.forEach(d=>{if(d.exists)ON[d.id]=d.data()});loadNames();renderOnline()},()=>{});
 })();
 let nameKey='';async function loadNames(){if(!U)return;const ids=[...new Set([...Object.keys(A),...Object.keys(ON),uid].filter(Boolean))];const k=ids.sort().join(',');if(k===nameKey)return;nameKey=k;try{const ps=await U.profiles(ids);for(const id of ids)names[id]=(ps&&ps[id]&&ps[id].name)||'';render();renderOnline()}catch(e){}}
+// read-only hook for the admin page's "Run full check" (same site only): is the game ready, and open a page
+window.WP_CHECK={ready:()=>!!(loaded&&me),noNation:()=>!!(loaded&&!me),go:p=>{page=p;render()},globe:()=>{const c=document.querySelector('.gwrap canvas');return !!(c&&c.width>0)}};
 
 </script>
 </body></html>
