@@ -1543,7 +1543,7 @@ function freshRestore(by, why) {
 // Cheat watch are never touched.
 const CHAOS_FILE = path.join(DATA_DIR, 'chaos-realworld.json');
 const CHAOS_KEYS = [...FRESH_KEYS, 'scoreHist', 'casino'];
-const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [1, 2], nukeMax: 2, chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
+const CHAOS_OPT = { army: { troops: 5e5, air: 2000, ships: 300 }, mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [1, 2], nukeMax: 2, chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
 const CHAOS_XP = 12000; // the highest rank any weapon needs (Sovereign)
 const chaosOn = () => !!(S.chaos && S.chaos.on);
 const CHAOS_LOCK = { error: 'Chaos world is running. Anything changed in the world now would be lost when the real world comes back. End Chaos world first (Admin → Chaos world).' };
@@ -1573,6 +1573,7 @@ function chaosArm(n, o) { // what every nation gets in the chaos copy
   if (o.unlock) { n.tech = Math.max(n.tech || 0, 400); n.xp = Math.max(n.xp || 0, CHAOS_XP); }
   n.cash = Math.max(n.cash || 0, CHAOS_OPT.chest[o.chest]); n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods']) n.res[r] = Math.max(n.res[r] || 0, CHAOS_OPT.res[o.chest]);
   n.spies = Math.max(n.spies || 0, 200); n.cd = {}; n.regroup = 0; n.debt = 0;
+  const A = CHAOS_OPT.army; n.troops = Math.max(n.troops || 0, A.troops); n.air = Math.max(n.air || 0, A.air); n.ships = Math.max(n.ships || 0, A.ships); // a minimum army, so a new nation is not left with nothing (bigger armies are kept as they are)
   if (o.nukes > 0) chaosNukes(n, o.nukes);
   if (o.noShield) n.shield = 0;
 }
