@@ -1475,7 +1475,7 @@ function freshRestore(by, why) {
 // Cheat watch are never touched.
 const CHAOS_FILE = path.join(DATA_DIR, 'chaos-realworld.json');
 const CHAOS_KEYS = [...FRESH_KEYS, 'scoreHist', 'casino'];
-const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [0, 1, 3, 5, 10], chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
+const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [1, 2], nukeMax: 2, chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
 const CHAOS_XP = 12000; // the highest rank any weapon needs (Sovereign)
 const chaosOn = () => !!(S.chaos && S.chaos.on);
 const CHAOS_LOCK = { error: 'Chaos world is running. Anything changed in the world now would be lost when the real world comes back. End Chaos world first (Admin → Chaos world).' };
@@ -1500,7 +1500,7 @@ function chaosSave() {
   if (!back || back.t !== snap.t || Object.keys(back.nations || {}).length !== Object.keys(nations).length) throw new Error('The saved copy of the world did not read back correctly. Chaos world was not started.');
   return { t: snap.t, n: Object.keys(nations).length, file: path.join(BACKUP_DIR, `chaos-realworld-${snap.t}.json`) };
 }
-function chaosNukes(n, k) { const now = Date.now(); if (!n.nuke) n.nuke = now - 30 * 864e5; const armed = n.warhead && (n.warhead === 2 || n.warhead.ready <= now); if (!armed) { n.warhead = { t: now, ready: now }; k--; } n.whStock = (n.whStock || 0) + Math.max(0, k); n.nukeBan = 0; } // k more launchable warheads: one armed, the rest in the stockpile
+function chaosNukes(n, k) { const now = Date.now(); if (!n.nuke) n.nuke = now - 30 * 864e5; let armed = n.warhead && (n.warhead === 2 || n.warhead.ready <= now) ? 1 : 0; const room = Math.max(0, CHAOS_OPT.nukeMax - armed - (n.whStock || 0)); k = Math.min(k, room); if (k <= 0) return; if (!armed) { n.warhead = { t: now, ready: now }; k--; } n.whStock = (n.whStock || 0) + Math.max(0, k); n.nukeBan = 0; } // never more than 2 warheads per nation in Chaos world // k more launchable warheads: one armed, the rest in the stockpile
 function chaosArm(n, o) { // what every nation gets in the chaos copy
   if (o.unlock) { n.tech = Math.max(n.tech || 0, 400); n.xp = Math.max(n.xp || 0, CHAOS_XP); }
   n.cash = Math.max(n.cash || 0, CHAOS_OPT.chest[o.chest]); n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods']) n.res[r] = Math.max(n.res[r] || 0, CHAOS_OPT.res[o.chest]);
@@ -1583,7 +1583,22 @@ function chaosRetime(oldS, newS) { const now = Date.now(), f = oldS / newS, fix 
     for (const c of Object.keys(n.cd || {})) n.cd[c] = fix(n.cd[c]); n.regroup = fix(n.regroup);
     if (n.warhead && typeof n.warhead === 'object') n.warhead.ready = fix(n.warhead.ready); if (n.dome && typeof n.dome === 'object') { n.dome.ready = fix(n.dome.ready); if (n.dome.up) n.dome.up.ready = fix(n.dome.up.ready); }
     if (n.proj) n.proj.next = fix(n.proj.next); if (n.exped) n.exped.end = fix(n.exped.end); sendNation(k.slice(8)); } }
-const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now() }; };
+// a supporter can start one Chaos world per purchase: 15 or 30 minutes, with the same options as the admin. Starting it is all they can do:
+// they can't end it, change it or hand out anything, and the real world is saved first exactly as when the admin starts one.
+const CHAOS_GAP = 60 * 60e3; // at least an hour of the real world between Chaos worlds started by players
+function chaosInfo() { const c = S.chaos, l = S.chaosLast, now = Date.now(), maxEnd = chaosMaxEnd(); const next = l && l.end ? l.end + CHAOS_GAP : 0;
+  return { allowed: S.config.chaosBuy !== false, on: !!(c && c.on), end: c && c.on ? c.end : 0, by: c && c.on ? c.by : null, nextAt: next > now ? next : 0, maxMins: maxEnd === Infinity ? 30 : Math.max(0, Math.floor((maxEnd - now) / 60e3)) }; }
+function chaosBuy(uid, b) {
+  if (S.config.chaosBuy === false) return { error: 'Starting a Chaos world is switched off by the admins right now. Your purchase is kept: try again later.' };
+  if (chaosOn()) return { error: 'A Chaos world is already running. Your purchase is kept: start yours after it ends.' };
+  const inf = chaosInfo(); if (inf.nextAt) return { error: `The real world needs a break between Chaos worlds. You can start yours in ${Math.ceil((inf.nextAt - Date.now()) / 60e3)} minutes. Your purchase is kept.` };
+  const o = { mins: [15, 30].includes(+b.mins) ? +b.mins : 15, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 2, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
+  const who = (S.users[uid] || {}).name || 'A supporter';
+  try { chaosBegin(mkWorld(), who, o); } catch (e) { return { error: e.message.replace('choose a shorter time', 'choose 15 minutes, or start it after the season') + ' Your purchase is kept.' }; }
+  S.chaos.donor = uid; persist(); systemMessage(`💛 ${who} started this Chaos world with a donation. Thank you!`); audit(who, 'Chaos world started by a supporter', `${o.mins} min, ×${o.speed}, ${o.nukes} nukes, ${o.chest} war chest`);
+  return { ok: true, mins: o.mins, msg: `💥 Chaos world is on for ${o.mins} minutes! Everyone has been told. Thank you for supporting World Powers.` };
+}
+const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now(), donor: c && c.donor ? (S.users[c.donor] || {}).name || '?' : null, buyOn: S.config.chaosBuy !== false, gapLeft: chaosInfo().nextAt }; };
 
 // a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
 function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
@@ -1658,7 +1673,7 @@ function worldLoop() {
     if (S.event && now >= S.event.end) endEvent();
     if (!S.event && S.config.eventsOn && now >= S.nextEvent && Object.keys(W.A).length >= 2) { const keys = Object.keys(WP.EVENTS).filter(k => k !== S.lastEventKey); startEvent(keys[Math.floor(rng() * keys.length)]); }
     readyReminders(W); smartReminders(W); runSchedule();
-    if (!chaosOn()) { nightlyBackup(); if (now - lastSnap >= 10 * 60e3) takeSnap(); }
+    if (!chaosOn()) { nightlyBackup(); fullBackup(); if (now - lastSnap >= 10 * 60e3) takeSnap(); }
   } catch (e) { logErr('World update failed: ' + (e.stack || e)); }
   health.loopMs = Number(process.hrtime.bigint() - t0) / 1e6;
 }
@@ -1846,7 +1861,7 @@ function takeSnap(tag) {
   try {
     fs.mkdirSync(SNAP_DIR, { recursive: true }); const t = Date.now(); lastSnap = t;
     const name = `snap-${t}${tag ? '-' + tag : ''}.json.gz`; fs.writeFileSync(path.join(SNAP_DIR, name), zlib.gzipSync(JSON.stringify(gameState())));
-    for (const f of fs.readdirSync(SNAP_DIR)) { const m = f.match(/^snap-(\d+)/); if (m && t - +m[1] > 26 * HOUR) fs.unlinkSync(path.join(SNAP_DIR, f)); }
+    for (const f of fs.readdirSync(SNAP_DIR)) { const m = f.match(/^snap-(\d+)/); if (m && t - +m[1] > 50 * HOUR) fs.unlinkSync(path.join(SNAP_DIR, f)); }
     return name;
   } catch (e) { logErr('Snapshot failed: ' + e.message); return null; }
 }
@@ -1865,13 +1880,21 @@ function rollback(name, by) {
   broadcast('reload', { t: now }); audit(by, 'Rolled back the world', null, `to ${new Date(sn.t).toISOString()} (${Math.round((now - sn.t) / 60000)} min ago)`);
   return sn;
 }
+let lastFull = 0;
+function fullBackup() { // everything (accounts, mail, donations and the world), compressed, every 3 hours; the last 16 are kept (2 days)
+  const t = Date.now(); if (t - lastFull < 3 * HOUR) return; lastFull = t;
+  try { fs.mkdirSync(BACKUP_DIR, { recursive: true }); const tmp = path.join(BACKUP_DIR, `full-${t}.json.gz.tmp`); fs.writeFileSync(tmp, zlib.gzipSync(JSON.stringify(S))); fs.renameSync(tmp, path.join(BACKUP_DIR, `full-${t}.json.gz`)); S.lastFullT = t;
+    const files = fs.readdirSync(BACKUP_DIR).filter(f => /^full-\d+\.json\.gz$/.test(f)).sort(); for (const f of files.slice(0, Math.max(0, files.length - 16))) fs.unlinkSync(path.join(BACKUP_DIR, f));
+    const cz = fs.readdirSync(BACKUP_DIR).filter(f => /^chaos-realworld-\d+\.json$/.test(f)).sort(); for (const f of cz.slice(0, Math.max(0, cz.length - 10))) fs.unlinkSync(path.join(BACKUP_DIR, f)); // copies of the real world from before each Chaos world: the last 10
+  } catch (e) { logErr('Full backup failed: ' + e.message); }
+}
 function nightlyBackup() {
   const now = new Date(); if (now.getUTCHours() < 9) return; // after ~3 AM US Mountain time
   const day = today(); if (S.lastBackup === day) return;
   try {
     fs.writeFileSync(path.join(BACKUP_DIR, `world-${day}.json`), JSON.stringify(S)); S.lastBackup = day; S.lastBackupT = Date.now(); persist();
     const files = fs.readdirSync(BACKUP_DIR).filter(f => /^world-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
-    for (const f of files.slice(0, Math.max(0, files.length - 7))) fs.unlinkSync(path.join(BACKUP_DIR, f));
+    for (const f of files.slice(0, Math.max(0, files.length - 14))) fs.unlinkSync(path.join(BACKUP_DIR, f));
     // trim analytics to 60 days
     const keys = Object.keys(S.stats).sort(); for (const k of keys.slice(0, Math.max(0, keys.length - 60))) delete S.stats[k];
     for (const [id, u] of Object.entries(S.users)) if (u.guest && Date.now() - ((S.meta[id] || {}).lastSeen || u.created || 0) > 7 * 864e5) wipeUser(id); // guest accounts unused for a week
@@ -2194,7 +2217,7 @@ async function adminRoute(p, req, res, me) {
     if (req.method === 'GET') return send(res, 200, chaosView());
     const b = req._body || await readBody(req, 4096);
     if (b.op === 'start') {
-      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 0, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
+      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 2, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
       if (b.confirm !== 'CHAOS') return send(res, 400, { error: 'Type CHAOS to confirm.' });
       try { chaosBegin(mkWorld(), me.name, o); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
       return send(res, 200, { ok: true, view: chaosView() });
@@ -2202,10 +2225,11 @@ async function adminRoute(p, req, res, me) {
     if (b.op === 'speed') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const sp = +b.speed; if (!CHAOS_OPT.speed.includes(sp)) return send(res, 400, { error: 'Choose 4, 10, 20 or 30.' });
       const old = S.chaos.o.speed || 10; if (sp !== old) { chaosRetime(old, sp); S.chaos.o.speed = sp; persist(); broadcast('config', effCfg()); systemMessage(`💥 Chaos world is now ${sp}× faster!`); audit(me.name, 'Chaos world speed', `${old}× → ${sp}×`); }
       return send(res, 200, { ok: true, view: chaosView() }); }
-    if (b.op === 'nukes') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const k = Math.max(1, Math.min(10, Math.floor(+b.n) || 1));
+    if (b.op === 'nukes') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const k = Math.max(1, Math.min(CHAOS_OPT.nukeMax, Math.floor(+b.n) || 1));
       for (const [key, n] of Object.entries(S.docs)) { if (!key.startsWith('nations/') || !n) continue; chaosNukes(n, k); sendNation(key.slice(8)); }
-      S.chaos.o.nukes = (S.chaos.o.nukes || 0) + k; S.chaos.nukesGiven = (S.chaos.nukesGiven || 0) + k; persist(); systemMessage(`☢ Chaos world: every nation just got ${k} more nuclear warhead${k > 1 ? 's' : ''}!`); audit(me.name, 'Chaos world nukes', `+${k} for every nation`);
+      S.chaos.o.nukes = Math.min(CHAOS_OPT.nukeMax, (S.chaos.o.nukes || 0) + k); S.chaos.nukesGiven = (S.chaos.nukesGiven || 0) + k; persist(); systemMessage(`☢ Chaos world: nuclear warheads restocked (up to ${CHAOS_OPT.nukeMax} per nation)!`); audit(me.name, 'Chaos world nukes', `+${k} for every nation`);
       return send(res, 200, { ok: true, view: chaosView() }); }
+    if (b.op === 'buy') { S.config.chaosBuy = !!b.on; persist(); audit(me.name, 'Chaos world purchases', b.on ? 'players can start them' : 'switched off'); return send(res, 200, { ok: true, view: chaosView() }); }
     if (b.op === 'end') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); try { chaosEnd(me.name, 'ended early by the admin'); } catch (e) { return send(res, e.status || 500, { error: e.message }); } return send(res, 200, { ok: true, view: chaosView() }); }
     return send(res, 400, { error: 'Unknown action.' });
   }
@@ -2735,7 +2759,7 @@ function publicStats() {
 // ---------- routes ----------
 // supporter rewards (verified PayPal donations); the IPN address is built from this site's own address
 const siteUrl = req => process.env.SITE_URL ? String(process.env.SITE_URL).replace(/\/+$/, '') : ((isHttps(req) ? 'https' : 'http') + '://' + (/^[a-z0-9.-]+(:\d+)?$/i.test(req.headers.host || '') ? req.headers.host : 'worldpowersgame.com'));
-SUPP = makeSupporters({ S, send, readBody, persist, setDoc, sendTo, broadcast, addNote, flag, logErr, MOD, WP, siteUrl });
+SUPP = makeSupporters({ S, send, readBody, persist, setDoc, sendTo, broadcast, addNote, flag, logErr, MOD, WP, siteUrl, chaosBuy, chaosInfo });
 async function handle(req, res) {
   let p; try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return notFound(req, res); }
   const minute = Math.floor(Date.now() / 60000); health.reqs.set(minute, (health.reqs.get(minute) || 0) + 1);

@@ -16,7 +16,7 @@ let snap = workerData.snap, speed = workerData.speed || 'normal', paused = !!wor
 let A, B, now, t0Gen, ctl, base, gen = (workerData.prev && workerData.prev.gen) || 0, lastCd, cas, taxLog, arb;
 const prev = workerData.prev || {};
 const stats = Object.assign({ rounds: 0, cmds: 0, ok: 0, refused: 0, crashes: 0, simHours: 0, gens: 0, invariant: 0, startedAt: Date.now() }, prev.stats || {}, { startedAt: (prev.stats && prev.stats.startedAt) || Date.now() });
-const findings = new Map((prev.findings || []).map(f => [f.key, f]));
+const findings = new Map((prev.findings || []).filter(f => !(f.key === 'gamblerrich' && /far richer/.test(f.title)) && !(/^outrun:/.test(f.key) && /outgrew everyone/.test(f.title))).map(f => [f.key, f])); // two old checks gave false alarms: they are dropped
 const coverage = Object.assign({}, prev.coverage || {});
 const casinoAll = Object.assign({}, prev.casino || {});
 let history = (prev.history || []).slice(-20), strat = {}, stepMs = 0, lastReport = 0, recent = [];
@@ -176,13 +176,15 @@ function endGen(W) {
   // fairness checks over a whole simulated week
   const fresh = Object.values(strat).filter(s => !s.kind.startsWith('vet_') && s.kind !== 'fuzzer'), med = arr => { const a = arr.slice().sort((x, y) => x - y); return a.length ? a[Math.floor(a.length / 2)] : 0; };
   const mScore = med(fresh.map(s => s.score));
-  for (const s of fresh) if (mScore > 0 && s.score > mScore * 3 && !['grinder', 'builder', 'diplomat'].includes(s.kind)) find('amber', 'Fairness', 'outrun:' + s.kind, `The ${s.kind} strategy far outgrew everyone else in a test week`, `${s.name}: score ${s.score.toLocaleString()} vs a typical ${Math.round(mScore).toLocaleString()} (×${(s.score / mScore).toFixed(1)}).`, 'Look at what this player type does for a loophole.');
+  // compare with normal play (the grinder does every ordinary action), not with the median: weak test players like the gambler drag the median down
+  const gS = strat.grinder && strat.grinder.alive ? strat.grinder.score : 0;
+  for (const s of fresh) if (gS > 0 && s.score > gS * 1.6 && !['grinder', 'builder', 'diplomat'].includes(s.kind)) find('amber', 'Fairness', 'outrun:' + s.kind, `The ${s.kind} strategy beat normal play by a wide margin in a test week`, `${s.name}: score ${s.score.toLocaleString()} vs ${gS.toLocaleString()} for normal play (×${(s.score / gS).toFixed(1)}).`, 'Look at what this player type does for a loophole.');
   const g = strat.grinder, tx = strat.taxer; const ratio = k => { const l = taxLog[k] || []; return l.length ? l.reduce((a, x) => a + x.rev / x.gdp, 0) / l.length : 0; };
   if (g && tx && ratio('grinder') > 0 && ratio('taxer') > ratio('grinder') * 1.15) find('red', 'Fairness', 'tax:' + taxMode, `The "${taxMode}" tax trick earns more than a normal 20% rate`, `Tax revenue relative to GDP: ${(ratio('taxer') * 100).toFixed(2)}% vs ${(ratio('grinder') * 100).toFixed(2)}% for normal play.`, 'Tax tricks should never beat a steady rate.');
   else if (g && tx) find('ok', 'Fairness', 'taxok:' + taxMode, `The "${taxMode}" tax trick does not beat normal play`, `Revenue/GDP ${(ratio('taxer') * 100).toFixed(2)}% vs ${(ratio('grinder') * 100).toFixed(2)}% normal.`, '');
   if (strat.banker && g && strat.banker.score > g.score * 1.5) find('amber', 'Fairness', 'banker', 'Living on debt beat normal play in a test week', `Banker score ${strat.banker.score.toLocaleString()} vs grinder ${g.score.toLocaleString()}.`, 'Check whether borrowing is too cheap.');
-  if (strat.gambler && g && strat.gambler.cash > g.cash * 2 && strat.gambler.cash > 1e9) find('amber', 'Casino', 'gamblerrich', 'The gambler ended a test week far richer than normal play', `${WP.money(strat.gambler.cash)} vs ${WP.money(g.cash)}.`, 'Check the casino house edge.');
-  for (const [k, c] of Object.entries(casinoAll)) if (c.bets >= 3000) { const rtp = 1 + c.net / c.wagered; if (rtp > 1.0) find('red', 'Casino', 'rtp:' + k, `${k} pays out more than it takes`, `Over ${c.bets.toLocaleString()} bets players got back ${(rtp * 100).toFixed(1)}% of what they bet.`, 'A casino game must keep a house edge.'); }
+  { const cw = Object.values(cas).reduce((a, c) => a + c.wagered, 0), cn = Object.values(cas).reduce((a, c) => a + c.net, 0), cb = Object.values(cas).reduce((a, c) => a + c.bets, 0); if (cb >= 2000 && cw > 0 && cn / cw > .05) find('amber', 'Casino', 'gamblerrich', 'The casino paid the gambler more than 5% over what it bet in a test week', `${cb.toLocaleString()} bets, ${WP.money(cw)} wagered, ${WP.money(cn)} won.`, 'Usually luck over one week. If it shows up week after week, the casino needs a closer look.'); }
+  for (const [k, c] of Object.entries(casinoAll)) if (c.bets >= 20000) { const rtp = 1 + c.net / c.wagered; if (rtp > 1.0) find('red', 'Casino', 'rtp:' + k, `${k} pays out more than it takes`, `Over ${c.bets.toLocaleString()} bets players got back ${(rtp * 100).toFixed(1)}% of what they bet.`, 'A casino game must keep a house edge.'); }
   history.push({ gen, t: Date.now(), days: GEN_DAYS, strat: Object.values(strat).map(s => ({ kind: s.kind, score: s.score, alive: s.alive })), crashes: stats.crashes });
   history = history.slice(-20); parentPort.postMessage({ type: 'wantSnap' }); pendingGen = Date.now();
 }

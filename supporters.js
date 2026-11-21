@@ -28,9 +28,9 @@ const DAY = 864e5, WEEK = 7 * DAY;
 const dayKey = t => new Date(t).toISOString().slice(0, 10);
 
 module.exports = function makeSupporters(ctx) {
-  const { S, send, readBody, persist, setDoc, sendTo, broadcast, addNote, flag, logErr, MOD, WP, auditLog, siteUrl } = ctx;
+  const { S, send, readBody, persist, setDoc, sendTo, broadcast, addNote, flag, logErr, MOD, WP, auditLog, siteUrl, chaosBuy, chaosInfo } = ctx;
   // always read the live state (a backup restore can replace S.sup)
-  const sup = () => { const x = S.sup = S.sup || {}; x.cfg = x.cfg || { email: '', sandbox: false }; if (!(x.cfg.namePrice > 0)) x.cfg.namePrice = 10; x.users = x.users || {}; x.ipn = x.ipn || []; x.claims = x.claims || []; return x; };
+  const sup = () => { const x = S.sup = S.sup || {}; x.cfg = x.cfg || { email: '', sandbox: false }; if (!(x.cfg.namePrice > 0)) x.cfg.namePrice = 10; if (!(x.cfg.chaosPrice > 0)) x.cfg.chaosPrice = 15; x.users = x.users || {}; x.ipn = x.ipn || []; x.claims = x.claims || []; return x; };
   sup();
   const payEmail = () => String(process.env.PAYPAL_EMAIL || sup().cfg.email || '').trim().toLowerCase();
   const sandbox = () => process.env.PAYPAL_SANDBOX === '1' || !!sup().cfg.sandbox;
@@ -88,11 +88,15 @@ module.exports = function makeSupporters(ctx) {
     if (v !== 'VERIFIED') { log('rejected', { ...base, why: v === 'ERROR' ? 'Could not reach PayPal to verify. PayPal will retry.' : 'PayPal did not confirm this message (possible fake).' }); return; }
     if (!payEmail()) { log('held', { ...base, why: 'No PayPal address is set in Admin → Supporters, so this payment could not be checked.' }); return; }
     if (to !== payEmail()) { log('rejected', { ...base, why: `Paid to ${to || 'an unknown address'}, not your PayPal address.` }); return; }
-    const cust = String(f.custom || '').split('.'), uid = uidOfToken(cust[0]) || null, forName = cust[1] === 'name';
+    const cust = String(f.custom || '').split('.'), uid = uidOfToken(cust[0]) || null, forName = cust[1] === 'name', forChaos = cust[1] === 'chaos';
     // refunds and chargebacks point at the original payment
     if (/^(Refunded|Reversed|Canceled_Reversal)$/.test(st)) {
       const parent = String(f.parent_txn_id || '').slice(0, 40);
       { const nOwner = Object.keys(sup().users).find(u => sup().users[u].ntx && sup().users[u].ntx[parent]); if (nOwner) { const nu = sup().users[nOwner]; if (st === 'Canceled_Reversal') { nu.ntx[parent].st = 'ok'; if (!nu.forever) nu.nameCred = (nu.nameCred || 0) + 1; } else { nu.ntx[parent].st = st === 'Refunded' ? 'refunded' : 'reversed'; if (nu.forever) { log('removed', { ...base, u: nOwner, who: userName(nOwner), why: `${st}: the forever name “${nu.forever}” is no longer reserved.` }); delete nu.forever; } else nu.nameCred = Math.max(0, (nu.nameCred || 0) - 1); if (st === 'Reversed' && flag) flag(nOwner, `A PayPal name reservation was charged back (${parent}).`); } persist(); try { sendTo(nOwner, 'supme', view(nOwner)); } catch (e) {} return; } }
+      { const cOwner = Object.keys(sup().users).find(u => sup().users[u].ctx && sup().users[u].ctx[parent]); if (cOwner) { const cu = sup().users[cOwner], rec = cu.ctx[parent];
+        if (st === 'Canceled_Reversal') { if (rec.st !== 'ok') { rec.st = 'ok'; if (!rec.used) cu.chaosCred = (cu.chaosCred || 0) + 1; } }
+        else { const was = rec.st; rec.st = st === 'Refunded' ? 'refunded' : 'reversed'; if (was === 'ok' && !rec.used) cu.chaosCred = Math.max(0, (cu.chaosCred || 0) - 1); log('removed', { ...base, u: cOwner, who: userName(cOwner), why: `${st}: Chaos world purchase${rec.used ? ' (already used)' : ' (unused credit removed)'}.` }); if (st === 'Reversed' && flag) flag(cOwner, `A PayPal Chaos world purchase was charged back (${parent})${rec.used ? ' after it was used' : ''}.`); }
+        persist(); try { sendTo(cOwner, 'supme', view(cOwner)); } catch (e) {} return; } }
       const owner = Object.keys(sup().users).find(u => sup().users[u].tx && sup().users[u].tx[parent]);
       if (!owner) { log('noted', { ...base, why: `${st} for a payment we never credited (${parent || 'unknown'}).` }); return; }
       if (st === 'Canceled_Reversal') { record(owner, parent, { st: 'ok' }); log('restored', { ...base, u: owner, who: userName(owner), why: 'The chargeback was cancelled: the donation counts again.' }); return; }
@@ -101,11 +105,14 @@ module.exports = function makeSupporters(ctx) {
       if (st === 'Reversed' && flag) flag(owner, `A PayPal donation was charged back (${parent}). Their supporter perks were removed.`);
       return;
     }
-    if (txn && Object.values(sup().users).some(u => (u.tx && u.tx[txn] && u.tx[txn].st === 'ok') || (u.ntx && u.ntx[txn]))) { log('duplicate', { ...base, why: 'Already credited.' }); return; }
+    if (txn && Object.values(sup().users).some(u => (u.tx && u.tx[txn] && u.tx[txn].st === 'ok') || (u.ntx && u.ntx[txn]) || (u.ctx && u.ctx[txn]))) { log('duplicate', { ...base, why: 'Already credited.' }); return; }
     if (st !== 'Completed') { if (uid) U(uid).pend = { txn, amt, cur, st, t: Date.now() }; log('pending', { ...base, u: uid, who: uid ? userName(uid) : null, why: `Status is ${st || 'unknown'}. It will count once PayPal marks it Completed.` }); persist(); return; }
     if (!uid) { sup().claims.unshift({ id: crypto.randomBytes(6).toString('hex'), u: null, txn, amt, cur, payer: base.payer, name: base.name, t: Date.now(), st: 'wait', src: 'paypal', note: 'Verified by PayPal but not linked to a player (no token). Assign it to the right player.' }); log('unlinked', { ...base, why: 'Verified, but no player token: waiting in Claims for you to assign.' }); persist(); return; }
     if (cur !== 'USD') { sup().claims.unshift({ id: crypto.randomBytes(6).toString('hex'), u: uid, txn, amt, cur, payer: base.payer, name: base.name, t: Date.now(), st: 'wait', src: 'paypal', note: `Verified by PayPal, paid in ${cur}. Approve it with the US dollar value.` }); log('held', { ...base, u: uid, who: userName(uid), why: `Paid in ${cur}: waiting in Claims for you to approve in dollars.` }); persist(); return; }
     delete U(uid).pend;
+    if (forChaos && amt >= sup().cfg.chaosPrice) { const u = U(uid); u.ctx = u.ctx || {}; u.ctx[txn] = { usd: amt, t: Date.now(), st: 'ok' }; u.chaosCred = (u.chaosCred || 0) + 1; persist();
+      addNote(uid, 'rank', '💥 Thank you! Your Chaos world is ready: open the Donate page and press Start whenever you like.'); try { sendTo(uid, 'supme', view(uid)); } catch (e) {}
+      log('credited', { ...base, u: uid, who: userName(uid), why: 'Verified with PayPal: one Chaos world.' }); if (auditLog) try { auditLog('supporter', `${userName(uid)} bought a Chaos world ($${amt.toFixed(2)}, verified by PayPal).`); } catch (e) {} return; }
     if (forName && amt >= sup().cfg.namePrice) { const u = U(uid); u.ntx = u.ntx || {}; u.ntx[txn] = { usd: amt, t: Date.now(), st: 'ok' }; u.nameCred = (u.nameCred || 0) + 1; persist();
       addNote(uid, 'rank', '🔒 Thank you! Your forever name reservation is ready: open the Donate page to choose the name.'); try { sendTo(uid, 'supme', view(uid)); } catch (e) {}
       log('credited', { ...base, u: uid, who: userName(uid), why: 'Verified with PayPal: forever name reservation.' }); return; }
@@ -124,7 +131,7 @@ module.exports = function makeSupporters(ctx) {
       rush: { max: PERKS.rushDay[k], left: Math.max(0, PERKS.rushDay[k] - rushUsed) },
       instant: { max: PERKS.instantDay[k], left: Math.max(0, PERKS.instantDay[k] - instUsed) },
       chest: { amt: n ? chestAmt(k, n) : 0, next: k >= 2 ? Math.max(now, (u.chest || 0) + WEEK) : 0, ready: k >= 2 && now >= (u.chest || 0) + WEEK },
-      name: u.name || null, nameNext: u.nameT ? u.nameT + WEEK : 0, forever: u.forever || null, nameCred: u.nameCred || 0, namePrice: sup().cfg.namePrice,
+      name: u.name || null, nameNext: u.nameT ? u.nameT + WEEK : 0, forever: u.forever || null, nameCred: u.nameCred || 0, namePrice: sup().cfg.namePrice, chaosCred: u.chaosCred || 0, chaosPrice: sup().cfg.chaosPrice, chaosUsed: (u.chaosUsed || []).slice(-5), chaos: chaosInfo ? chaosInfo() : null,
       pending: u.pend || null,
       donations: Object.entries(u.tx || {}).map(([id, x]) => ({ id: id.slice(-6), usd: x.usd, t: x.t, st: x.st, src: x.src })).sort((a, b) => b.t - a.t),
       claims: sup().claims.filter(c => c.u === uid).map(c => ({ txn: c.txn && c.txn.slice(-6), amt: c.amt, cur: c.cur, t: c.t, st: c.st }))
@@ -145,6 +152,7 @@ module.exports = function makeSupporters(ctx) {
       const site = siteUrl(req), u = new URL(payUrl());
       const prm = { cmd: '_donations', business: payEmail(), item_name: 'World Powers supporter donation', currency_code: 'USD', custom: tokenOf(me.id), notify_url: site + '/api/paypal/ipn', return: site + '/donate?thanks=1', cancel_return: site + '/donate', no_shipping: '1', rm: '1' };
       if (q.get('item') === 'name') { prm.item_name = 'World Powers: reserve your nation name forever'; prm.custom = tokenOf(me.id) + '.name'; prm.amount = (+sup().cfg.namePrice).toFixed(2); prm.return = site + '/donate?named=1'; }
+      else if (q.get('item') === 'chaos') { prm.item_name = 'World Powers: start one Chaos world'; prm.custom = tokenOf(me.id) + '.chaos'; prm.amount = (+sup().cfg.chaosPrice).toFixed(2); prm.return = site + '/donate?chaos=1'; }
       else if (amt >= 1) prm.amount = amt.toFixed(2);
       for (const [k, v] of Object.entries(prm)) u.searchParams.set(k, v);
       res.writeHead(302, { Location: u.toString(), 'Cache-Control': 'no-store' }); res.end(); return true;
@@ -157,9 +165,17 @@ module.exports = function makeSupporters(ctx) {
       if (!(amt >= 1 && amt <= 10000)) return fail(res, 'Enter the amount you donated, in US dollars.'), true;
       if (sup().claims.filter(c => c.u === uid && c.st === 'wait').length >= 3) return fail(res, 'You already have 3 claims waiting. An admin will check them soon.'), true;
       if (sup().claims.some(c => c.txn === txn) || Object.values(sup().users).some(x => x.tx && x.tx[txn])) return fail(res, 'That transaction has already been submitted.'), true;
-      sup().claims.unshift({ id: crypto.randomBytes(6).toString('hex'), u: uid, txn, amt, cur: 'USD', t: now, st: 'wait', src: 'claim', kind: b.kind === 'name' ? 'name' : 'donation', note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 140) });
+      sup().claims.unshift({ id: crypto.randomBytes(6).toString('hex'), u: uid, txn, amt, cur: 'USD', t: now, st: 'wait', src: 'claim', kind: b.kind === 'name' ? 'name' : b.kind === 'chaos' ? 'chaos' : 'donation', note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 140) });
       sup().claims = sup().claims.slice(0, 500); persist();
       return send(res, 200, { ok: true, msg: 'Thanks! An admin will check your donation in PayPal and add your perks.', sup: view(uid) }), true;
+    }
+    if (p === '/api/supporter/chaos') { // start a Chaos world bought on this page: the only thing a player can do with it
+      if (!(u.chaosCred > 0)) return fail(res, 'Buy a Chaos world on the Donate page first.'), true;
+      if (!chaosBuy) return fail(res, 'Chaos world is not available right now.'), true;
+      const r = chaosBuy(uid, b); if (r.error) return fail(res, r.error), true;
+      u.chaosCred = Math.max(0, u.chaosCred - 1); u.chaosUsed = [...(u.chaosUsed || []), { t: now, mins: r.mins }].slice(-20);
+      { const open = Object.entries(u.ctx || {}).filter(([, x]) => x.st === 'ok' && !x.used).sort((a, b) => a[1].t - b[1].t)[0]; if (open) open[1].used = now; } persist();
+      return send(res, 200, { ok: true, msg: r.msg, sup: view(uid) }), true;
     }
     if (p === '/api/supporter/forever') { // choose the name bought with a forever reservation
       if (u.forever) return fail(res, `“${u.forever}” is already reserved for you forever. Ask an admin if you need it changed.`), true;
@@ -219,11 +235,14 @@ module.exports = function makeSupporters(ctx) {
 
   // ---- admin ----
   function adminView() {
-    const users = Object.entries(sup().users).filter(([, u]) => Object.keys(u.tx || {}).length || u.pend || u.forever || u.nameCred).map(([uid, u]) => ({ u: uid, who: userName(uid), nation: (nationOf(uid) || {}).name || null, total: total(uid), tier: tierOf(uid), name: u.name || null, forever: u.forever || null, nameCred: u.nameCred || 0, tx: Object.entries(u.tx || {}).map(([id, x]) => ({ id, ...x })).sort((a, b) => (b.t || 0) - (a.t || 0)), pend: u.pend || null })).sort((a, b) => b.total - a.total);
-    return { cfg: { email: payEmail(), fromEnv: !!process.env.PAYPAL_EMAIL, sandbox: sandbox(), namePrice: sup().cfg.namePrice }, ipnUrl: '/api/paypal/ipn', tiers: TIERS.slice(1), perks: PERKS, users, claims: sup().claims.slice(0, 200).map(c => ({ ...c, who: c.u ? userName(c.u) : null })), log: sup().ipn.slice(0, 200) };
+    const users = Object.entries(sup().users).filter(([, u]) => Object.keys(u.tx || {}).length || u.pend || u.forever || u.nameCred || u.chaosCred || (u.chaosUsed || []).length).map(([uid, u]) => ({ u: uid, who: userName(uid), nation: (nationOf(uid) || {}).name || null, total: total(uid), tier: tierOf(uid), name: u.name || null, forever: u.forever || null, nameCred: u.nameCred || 0, chaosCred: u.chaosCred || 0, chaosUsed: (u.chaosUsed || []).length, ctx: Object.entries(u.ctx || {}).map(([id, x]) => ({ id, ...x })), tx: Object.entries(u.tx || {}).map(([id, x]) => ({ id, ...x })).sort((a, b) => (b.t || 0) - (a.t || 0)), pend: u.pend || null })).sort((a, b) => b.total - a.total);
+    return { cfg: { email: payEmail(), fromEnv: !!process.env.PAYPAL_EMAIL, sandbox: sandbox(), namePrice: sup().cfg.namePrice, chaosPrice: sup().cfg.chaosPrice }, ipnUrl: '/api/paypal/ipn', tiers: TIERS.slice(1), perks: PERKS, users, claims: sup().claims.slice(0, 200).map(c => ({ ...c, who: c.u ? userName(c.u) : null })), log: sup().ipn.slice(0, 200) };
   }
+  const findU0 = s => { s = String(s || '').trim().toLowerCase(); if (S.users[s]) return s; for (const [id, x] of Object.entries(S.users)) if ((x.name || '').toLowerCase() === s || (x.email || '').toLowerCase() === s) return id; for (const [key, x] of Object.entries(S.docs)) if (key.startsWith('nations/') && x && (x.name || '').toLowerCase() === s) return key.slice(8); return null; };
   function adminAct(b, adminName) {
     if (b.op === 'price') { const v = Math.round((+b.namePrice || 0) * 100) / 100; if (!(v >= 1 && v <= 1000)) return { error: 'Enter a price between $1 and $1,000.' }; sup().cfg.namePrice = v; persist(); return { ok: true, msg: `Forever name reservations now cost $${v.toFixed(2)}.` }; }
+    if (b.op === 'chaosprice') { const v = Math.round((+b.price || 0) * 100) / 100; if (!(v >= 1 && v <= 1000)) return { error: 'Enter a price between $1 and $1,000.' }; sup().cfg.chaosPrice = v; persist(); return { ok: true, msg: `A Chaos world now costs $${v.toFixed(2)}.` }; }
+    if (b.op === 'chaoscred') { const uid = findU0(b.u); if (!uid) return { error: 'No player found with that leader name, nation name or email.' }; const u = U(uid), d = Math.round(+b.n || 0); if (!d || Math.abs(d) > 10) return { error: 'Enter how many to add (or a negative number to take away).' }; u.chaosCred = Math.max(0, (u.chaosCred || 0) + d); persist(); try { sendTo(uid, 'supme', view(uid)); } catch (e) {} if (d > 0) addNote(uid, 'rank', `💥 An admin gave you ${d} Chaos world${d > 1 ? 's' : ''}: open the Donate page to start ${d > 1 ? 'one' : 'it'}.`); return { ok: true, msg: `${userName(uid)} now has ${u.chaosCred} Chaos world${u.chaosCred === 1 ? '' : 's'} to start.` }; }
     if (b.op === 'cfg') { const e = String(b.email || '').trim().toLowerCase(); if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return { error: 'Enter the email address of your PayPal account.' }; sup().cfg.email = e; sup().cfg.sandbox = !!b.sandbox; persist(); return { ok: true, msg: e ? 'PayPal address saved. Donations will now be verified and linked automatically.' : 'PayPal address cleared. Donations go to your old donate link and must be added by hand.' }; }
     const findU = s => { s = String(s || '').trim().toLowerCase(); if (S.users[s]) return s; for (const [id, x] of Object.entries(S.users)) if ((x.name || '').toLowerCase() === s || (x.email || '').toLowerCase() === s) return id; for (const [key, x] of Object.entries(S.docs)) if (key.startsWith('nations/') && x && (x.name || '').toLowerCase() === s) return key.slice(8); return null; };
     if (b.op === 'grant') { const uid = findU(b.u); const amt = Math.round((+b.amt || 0) * 100) / 100; if (!uid) return { error: 'No player found with that leader name, nation name or email.' }; if (!(amt > 0 && amt <= 10000)) return { error: 'Enter the dollar amount.' }; const txn = 'MAN-' + crypto.randomBytes(5).toString('hex'); const r = record(uid, txn, { usd: amt, amt, cur: 'USD', t: Date.now(), st: 'ok', src: 'admin', by: adminName, note: String(b.note || '').slice(0, 140) }); log('credited', { txn, amt, cur: 'USD', u: uid, who: userName(uid), why: `Added by ${adminName}.` }); return { ok: true, msg: `Added $${amt.toFixed(2)} for ${userName(uid)}. They are now ${TIERS[r.after].n || 'not a supporter yet'}.` }; }
@@ -237,6 +256,7 @@ module.exports = function makeSupporters(ctx) {
       const uid = c.u || findU(b.u); if (!uid) return { error: 'Choose which player this donation belongs to (leader name, nation name or email).' };
       const usd = Math.round((+b.usd || (c.cur === 'USD' ? c.amt : 0)) * 100) / 100; if (!(usd > 0)) return { error: 'Enter the US dollar value.' };
       if (Object.values(sup().users).some(x => x.tx && x.tx[c.txn] && x.tx[c.txn].st === 'ok')) { c.st = 'dup'; persist(); return { error: 'That transaction was already credited.' }; }
+      if (c.kind === 'chaos') { if (Object.values(sup().users).some(x => x.ctx && x.ctx[c.txn])) { c.st = 'dup'; persist(); return { error: 'That transaction was already credited.' }; } c.st = 'ok'; c.by = adminName; c.u = uid; const cu = U(uid); cu.ctx = cu.ctx || {}; cu.ctx[c.txn] = { usd, t: Date.now(), st: 'ok', by: adminName }; cu.chaosCred = (cu.chaosCred || 0) + 1; persist(); addNote(uid, 'rank', '💥 Your Chaos world is ready: open the Donate page and press Start whenever you like.'); try { sendTo(uid, 'supme', view(uid)); } catch (e) {} log('credited', { txn: c.txn, amt: c.amt, cur: c.cur, u: uid, who: userName(uid), why: `Chaos world approved by ${adminName}.` }); return { ok: true, msg: `Approved: ${userName(uid)} can start one Chaos world.` }; }
       if (c.kind === 'name') { c.st = 'ok'; c.by = adminName; c.u = uid; const nu = U(uid); nu.ntx = nu.ntx || {}; nu.ntx[c.txn] = { usd, t: Date.now(), st: 'ok', by: adminName }; nu.nameCred = (nu.nameCred || 0) + 1; persist(); addNote(uid, 'rank', '🔒 Your forever name reservation is ready: open the Donate page to choose the name.'); try { sendTo(uid, 'supme', view(uid)); } catch (e) {} log('credited', { txn: c.txn, amt: c.amt, cur: c.cur, u: uid, who: userName(uid), why: `Name reservation approved by ${adminName}.` }); return { ok: true, msg: `Approved. ${userName(uid)} can now choose a forever name.` }; }
       c.st = 'ok'; c.by = adminName; c.u = uid; const r = record(uid, c.txn, { usd, amt: c.amt, cur: c.cur, t: Date.now(), st: 'ok', src: c.src, by: adminName });
       log('credited', { txn: c.txn, amt: c.amt, cur: c.cur, u: uid, who: userName(uid), why: `Claim approved by ${adminName}.` });
