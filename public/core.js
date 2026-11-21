@@ -454,6 +454,7 @@ function enhanceDecks(cards, chains) {
   return { cards: (cards || []).map(card), chains: ch };
 }
 function Core(PD, CARDS) {
+  const tq = (W, d) => d * ((W && W.cfg && W.cfg.tm > 0 && W.cfg.tm < 1) ? W.cfg.tm : 1); // Chaos world: every timer runs faster (tm 0.1 = 90% shorter); 1 in the real world
   const P = PD.p, CN = PD.countries;
   CARDS = CARDS || [];
   const land = h => (P[h] ? P[h].j : []);
@@ -934,7 +935,7 @@ function Core(PD, CARDS) {
     else if (k === 'rally') { const c = rallyCost(n); if (n.cash < c) fail(`Requires ${money(c)}.`); n.cash -= c; n.approval = clamp(n.approval + 6, 0, 100); msg = 'Your address was well received. Approval rose.'; }
     else if (k === 'campaign') { if (n.gov !== 'dem') fail('Only democracies hold elections.'); if (!n.nextElection || n.nextElection - W.now > 24 * HOUR) fail('Campaigning opens 24 hours before the election.'); if ((n.campaign || 0) >= 12) fail('Your campaign is already at full strength.'); const c = campaignCost(n); if (n.cash < c) fail(`Requires ${money(c)}.`); n.cash -= c; n.campaign = (n.campaign || 0) + 3; msg = `Campaign rallies held across the country. Projected vote +3% (total +${n.campaign}%).`; }
     else if (k === 'daily') { const st = n.streak && W.now - n.streak.t < 48 * HOUR ? n.streak.c + 1 : 1; n.streak = { c: st, t: W.now }; const sm = streakMult(st); const v = Math.round(dailyGrant(n) * sm); n.cash += v; if (st % 7 === 0) gainXP(W, u, 100); n.res.food += 100; n.res.oil += 60; n.res.steel += 60; n.res.goods += 30; msg = `Received a ${money(v)} grant and supplies.${st > 1 ? ` Day ${st} streak: ×${sm.toFixed(2)}${st % 7 === 0 ? ' — weekly bonus!' : '.'}` : ''}`; }
-    n.cd[k] = W.now + a.cd * MIN * W.cfg.cd; n.cnt[k] = (n.cnt[k] || 0) + 1; gainXP(W, u, a.xp); log(n, msg, W); touch(W, u);
+    n.cd[k] = W.now + tq(W, a.cd * MIN * W.cfg.cd); n.cnt[k] = (n.cnt[k] || 0) + 1; gainXP(W, u, a.xp); log(n, msg, W); touch(W, u);
     return { msg };
   }
 
@@ -957,7 +958,7 @@ function Core(PD, CARDS) {
       else if (k === 'infl') n.infl = clamp(n.infl + v, -2, 80);
       else if (k === 'health' || k === 'edu' || k === 'morale') n[k] = clamp(n[k] + v, 0, 100);
       else if (has(RES, k)) n.res[k] = Math.max(0, n.res[k] + v);
-      else if (k === 'boost' && v && v.h > 0) { const b = { t: W.now, until: W.now + v.h * HOUR, src: W._src || '' }; for (const x of BOOST_KEYS) if (v[x] != null) b[x] = v[x];
+      else if (k === 'boost' && v && v.h > 0) { const b = { t: W.now, until: W.now + tq(W, v.h * HOUR), src: W._src || '' }; for (const x of BOOST_KEYS) if (v[x] != null) b[x] = v[x];
         // one boost per kind at a time: a new one replaces the old
         n.boosts = (n.boosts || []).filter(o => o.until > W.now && !BOOST_KEYS.some(x => o[x] != null && b[x] != null)); n.boosts.push(b); n.boosts = n.boosts.slice(-8); }
     }
@@ -980,7 +981,7 @@ function Core(PD, CARDS) {
     W._src = card.t; const ok = applyEff(W, u, opt[1], rng); W._src = ''; n.cards = n.cards.filter(x => x.id !== id); n.cnt.decide = (n.cnt.decide || 0) + 1; gainXP(W, u, 20);
     let clear = '';
     if (!n.cards.length) { const bonus = Math.round(taxIncome(W, u)); n.cash += bonus; n.approval = clamp(n.approval + 1, 0, 100); gainXP(W, u, 15); clear = ` Desk cleared: +${money(bonus)}, +1 approval and 15 bonus XP.`; }
-    if (opt[2] && CHAINS[opt[2]]) n.chain = { k: opt[2], at: W.now + (30 + Math.floor(rng() * 30)) * MIN }; // the story continues later
+    if (opt[2] && CHAINS[opt[2]]) n.chain = { k: opt[2], at: W.now + tq(W, (30 + Math.floor(rng() * 30)) * MIN) }; // the story continues later
     const msg = `${card.t}: ${opt[0]}${opt[1].risk != null ? (ok ? ' — it succeeded.' : ' — it backfired.') : '.'}`; log(n, msg, W); touch(W, u);
     return { msg: msg + clear, ok, clear: !!clear };
   }
@@ -995,7 +996,7 @@ function Core(PD, CARDS) {
     if (shipsNeeded > me.ships) fail(`${OCEAN ? 'An overseas' : 'A sea'} invasion of ${num(X)} troops needs ${num(shipsNeeded)} warships to carry them (${num(perShip)} troops each). You have ${me.ships}.`);
     const c = atkCost(W, X), cx = routeCostX(RCH, me); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx); c.food = Math.ceil(c.food * cx); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${num(c.oil + AIR * 2)} oil and ${num(c.food)} food.`);
     const v = owner(W, h), d = W.A[v];
-    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + 15 * MIN; me.regroup = W.now + (OCEAN || AIRB ? 60 : MARCH ? 45 : 30) * MIN; const retal = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : retal ? 0 : Math.round((hitRecently(W, u, v) ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u);
+    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + tq(W, 15 * MIN); me.regroup = W.now + tq(W, (OCEAN || AIRB ? 60 : MARCH ? 45 : 30) * MIN); const retal = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : retal ? 0 : Math.round((hitRecently(W, u, v) ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : me.gov === 'dic' ? 1 : 2), 0, 100); me.stability = clamp(me.stability - 1.5, 0, 100);
     const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null };
     // 1) naval battle for sea invasions
@@ -1109,7 +1110,7 @@ function Core(PD, CARDS) {
     if (target === 'stock') { const f = Math.min(.3, P * .004); for (const r in RES) { dmg[r] = Math.floor((d.res[r] || 0) * f); d.res[r] -= dmg[r]; } }
     else if (target === 'infra') { const lv = P >= 40 ? 2 : P >= 15 ? 1 : 0; dmg.infra = Math.min(d.infra || 0, lv); d.infra -= dmg.infra; dmg.gdp = Math.min(.05, P * .0008); d.gdp = (d.gdp || 0) * (1 - dmg.gdp); }
     else { dmg.troops = Math.min(Math.floor((d.troops || 0) * .15), Math.round(P * 25)); d.troops -= dmg.troops; dmg.ships = Math.min(d.ships || 0, Math.floor(P / 15)); d.ships -= dmg.ships; dmg.air = Math.min(d.air || 0, Math.floor(P / 20)); d.air -= dmg.air; }
-    me.cd.strike = W.now + 30 * MIN; me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : defending(W, u, v) ? 0 : Math.round((hitRecently(W, u, v) ? 3 : 8 * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u); me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : 2), 0, 100);
+    me.cd.strike = W.now + tq(W, 30 * MIN); me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : defending(W, u, v) ? 0 : Math.round((hitRecently(W, u, v) ? 3 : 8 * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u); me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : 2), 0, 100);
     const what = target === 'stock' ? 'stockpiles' : target === 'infra' ? 'infrastructure' : 'military';
     const sum = target === 'stock' ? (Object.entries(dmg).filter(([, x]) => x > 0).map(([r, x]) => `${num(x)} ${rName(r)}`).join(', ') || 'almost nothing') + ' destroyed'
       : target === 'infra' ? (dmg.infra ? `infrastructure −${dmg.infra} level${dmg.infra > 1 ? 's' : ''}` : 'no infrastructure destroyed') + `, GDP −${(dmg.gdp * 100).toFixed(1)}%`
@@ -1138,13 +1139,13 @@ function Core(PD, CARDS) {
   function dirtyBomb(W, u, v, rng) {
     const why = canDirty(W, u, v); if (why) fail(why); const me = W.A[u], d = W.A[v];
     me.cash -= DIRTY.cash; me.res.steel -= DIRTY.steel; me.res.oil -= DIRTY.oil; me.res.goods -= DIRTY.goods; me.res.mun -= DIRTY.mun; const g = gapF(me, d);
-    me.cd.dirty = W.now + DIRTY.cdH * HOUR; me.cd.strike = W.now + 30 * MIN;
+    me.cd.dirty = W.now + tq(W, DIRTY.cdH * HOUR); me.cd.strike = W.now + tq(W, 30 * MIN);
     const hs = hexesOf(W, v), h = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap, icept = domeOn(W, d) && rng() < domeMis(d) ? 1 : 0, dmg = {};
     if (!icept) {
       dmg.troops = Math.floor((d.troops || 0) * .06 * g); d.troops -= dmg.troops; dmg.pop = Math.floor((d.pop || 0) * .02 * g); d.pop -= dmg.pop; dmg.food = Math.floor((d.res.food || 0) * .1 * g); d.res.food -= dmg.food;
       d.gdp = (d.gdp || 0) * .97; d.approval = clamp(d.approval - 5, 0, 100); d.stability = clamp(d.stability - 6, 0, 100);
-      d.rad = { h, t: W.now, until: W.now + DIRTY.h * HOUR, by: u };
-      d.rads = (d.rads || []).filter(r => r.until > W.now && r.h !== h); d.rads.push({ h, t: W.now, until: W.now + DIRTY.h * HOUR, by: u }); d.rads = d.rads.slice(-RAD_MAX); // clouds stack, one per province
+      d.rad = { h, t: W.now, until: W.now + tq(W, DIRTY.h * HOUR), by: u };
+      d.rads = (d.rads || []).filter(r => r.until > W.now && r.h !== h); d.rads.push({ h, t: W.now, until: W.now + tq(W, DIRTY.h * HOUR), by: u }); d.rads = d.rads.slice(-RAD_MAX); // clouds stack, one per province
     }
     const def = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) || def ? 0 : Math.round(DIRTY.aggr * aggrScale(W, v))); if (!d.ai && !def && !rogue(W, d)) me.dirtyAt = W.now;
     rogueCheck(W, u); me.approval = clamp(me.approval - 5, 0, 100);
@@ -1179,7 +1180,7 @@ function Core(PD, CARDS) {
   const heavyCostTxt = k => { const c = heavyCost(k); return [c.cash ? money(c.cash) : '', c.steel ? `${num(c.steel)} steel` : '', c.oil ? `${num(c.oil)} oil` : '', c.goods ? `${num(c.goods)} goods` : ''].filter(Boolean).join(', ') || (k === 'carpet' ? 'oil for the bombers' : 'oil for the fleet'); };
   // a weapon's effects against this target: the tech gap shrinks (or grows) every loss it causes
   const hvScale = (H, g) => { if (g === 1) return H; const o = { ...H }; for (const x of ['pop', 'troops', 'air', 'steal', 'res', 'sink', 'st']) if (typeof o[x] === 'number') o[x] = o[x] * g; if (o.stealMax) o.stealMax = o.stealMax * Math.min(1, g); if (o.tax) o.tax = 1 - (1 - o.tax) * g; if (o.research) o.research = 1 + (o.research - 1) * g; if (o.gdp) o.gdp = o.gdp < .5 ? o.gdp * g : 1 - (1 - o.gdp) * g; o.g = g; return o; };
-  const penalty = (W, n, b, h) => { const o = { t: W.now, until: W.now + h * HOUR, src: 'attack' }; for (const x of BOOST_KEYS) if (b[x] != null) o[x] = b[x]; n.boosts = (n.boosts || []).filter(q => q.until > W.now && !BOOST_KEYS.some(x => q[x] != null && o[x] != null)); n.boosts.push(o); n.boosts = n.boosts.slice(-8); };
+  const penalty = (W, n, b, h) => { const o = { t: W.now, until: W.now + tq(W, h * HOUR), src: 'attack' }; for (const x of BOOST_KEYS) if (b[x] != null) o[x] = b[x]; n.boosts = (n.boosts || []).filter(q => q.until > W.now && !BOOST_KEYS.some(x => q[x] != null && o[x] != null)); n.boosts.push(o); n.boosts = n.boosts.slice(-8); };
   // 'an artillery barrage', 'an EMP strike', 'a hypersonic missile'
   const hvN = H => /^[A-Z]{2}/.test(H.n) ? H.n : H.n[0].toLowerCase() + H.n.slice(1);
   const hvA = H => { const nm = hvN(H); return (/^[aeiou]/i.test(nm) ? 'an ' : 'a ') + nm; };
@@ -1189,7 +1190,7 @@ function Core(PD, CARDS) {
     // whole levels (infrastructure, development) are lost with a chance that shrinks with the tech gap
     const lv = x => { const y = x * Math.min(1, G); return Math.floor(y) + (R() < y - Math.floor(y) ? 1 : 0); };
     if (k !== 'bombard' && k !== 'blockade' && k !== 'carpet') { const c = heavyCost(k); me.cash -= c.cash; me.res.steel -= c.steel; me.res.oil -= c.oil; me.res.goods -= c.goods; }
-    me.cd['hv_' + k] = W.now + H.cdH * HOUR;
+    me.cd['hv_' + k] = W.now + tq(W, H.cdH * HOUR);
     const hs = k === 'bombard' || k === 'blockade' || k === 'subsalvo' || k === 'carrier' ? coastOf(W, v) : hexesOf(W, v), h0 = hs.length ? hs[Math.floor(R() * hs.length)] : d.cap, h = k === 'orbital' ? d.cap : k === 'raid' || k === 'cruise' ? (hexesOf(W, v).filter(x => devLvl(d, x) > 0).sort((a, b) => devLvl(d, b) - devLvl(d, a))[0] ?? h0) : h0, place = pname(h), dmg = {};
     let sum = '', icept = 0, traced = true, fxKind = 'missile', from = me.cap, lost = 0, fxH = h, fxN = 0;
     const nearOwn = list => list.length ? list.slice().sort((a, b) => kmBetween(+a, +fxH) - kmBetween(+b, +fxH))[0] : me.cap;
@@ -1214,13 +1215,13 @@ function Core(PD, CARDS) {
       const lostP = Math.min(.6, (d.air || 0) / ((d.air || 0) + 200 + (me.air || 0) * .5)); /* your own air force escorts the swarm, and at least 40% always gets through */ lost = Math.round(100 * lostP); dmg.troops = Math.floor((d.troops || 0) * H.troops * (1 - lostP)); d.troops -= dmg.troops; dmg.air = Math.floor((d.air || 0) * H.air * (1 - lostP)); d.air -= dmg.air;
       sum = `${num(dmg.troops)} troops${dmg.air ? ` and ${num(dmg.air)} aircraft` : ''} destroyed${lost ? ` (their air force shot down ${lost}% of the swarm)` : ''}`; lost = 0;
     } else if (k === 'blockade') {
-      const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .2)); me.ships -= lost; penalty(W, d, { tax: H.tax, gdp: H.gdp }, H.h); d.blockade = W.now + H.h * HOUR; d.blockH = h;
+      const S = me.ships, E = d.ships || 0; me.res.oil -= H.oilPer * S; lost = Math.min(S, Math.round(S * (E / (E + S + 1)) * .2)); me.ships -= lost; penalty(W, d, { tax: H.tax, gdp: H.gdp }, H.h); d.blockade = W.now + tq(W, H.h * HOUR); d.blockH = h;
       sum = `their tax revenue −${Math.round((1 - H.tax) * 100)}% and GDP −${Math.round((1 - H.gdp) * 100)}% for ${H.h} hours, and their market trade is cut off${lost ? ` (you lost ${lost} warship${lost > 1 ? 's' : ''})` : ''}`; fxKind = 'sea'; from = nearOwn(coastOf(W, u)); fxN = 6;
     } else if (k === 'raid') {
       const p = clamp(.75 - (d.fort || 0) * .03 - (d.spies || 0) * .005 + ((me.tech || 0) - (d.tech || 0)) * .01, .3, .85);
       if (R() < p) { dmg.cash = Math.round(Math.min(H.stealMax, Math.max(0, d.cash) * H.steal)); d.cash -= dmg.cash; me.cash += dmg.cash; const rk = Object.keys(RES).sort((a, b) => (d.res[b] || 0) - (d.res[a] || 0))[0]; dmg.res = Math.floor((d.res[rk] || 0) * H.res); d.res[rk] -= dmg.res; me.res[rk] = (me.res[rk] || 0) + dmg.res; if (devLvl(d, h) > 0 && lv(1)) { d.dev[h]--; dmg.dev = 1; }
         sum = `your commandos seized ${money(dmg.cash)} and ${num(dmg.res)} ${rName(rk)}${dmg.dev ? `, and wrecked a development level in ${place}` : ''}`; }
-      else { traced = true; d.cb = d.cb || {}; d.cb[u] = Math.max(d.cb[u] || 0, W.now + 24 * HOUR); me.troops = Math.max(0, (me.troops || 0) - 200); sum = `the raid on ${place} failed and your commandos were captured; ${d.name} has a 24-hour just cause against you`; dmg.failed = 1; }
+      else { traced = true; d.cb = d.cb || {}; d.cb[u] = Math.max(d.cb[u] || 0, W.now + tq(W, 24 * HOUR)); me.troops = Math.max(0, (me.troops || 0) - 200); sum = `the raid on ${place} failed and your commandos were captured; ${d.name} has a 24-hour just cause against you`; dmg.failed = 1; }
       fxKind = 'air'; from = nearOwn(hexesOf(W, u)); fxN = 3;
     } else if (k === 'artillery') {
       fxKind = 'missile'; const fz = 1 / (1 + soft(d.fort, 8) * .2); /* forts soften the barrage but never stop it: fort 10 ≈ 43%, fort 25 ≈ 31%, fort 50 ≈ 24% of full damage */ dmg.troops = Math.floor((d.troops || 0) * H.troops * fz); d.troops -= dmg.troops; dmg.fort = Math.min(d.fort || 0, lv(H.fort)); d.fort = (d.fort || 0) - dmg.fort; d.stability = clamp(d.stability - 1, 0, 100);
@@ -1252,7 +1253,7 @@ function Core(PD, CARDS) {
     } else if (k === 'emp') {
       // a stronger Golden Dome is hardened against the pulse: it may survive, and if it does go down it comes back sooner
       const hasDome = d.dome && d.dome.ready <= W.now, dl = hasDome ? domeLvl(d) : 0, knock = hasDome && R() < (H.domeP[dl - 1] ?? 1), offH = hasDome ? (H.domeH[dl - 1] ?? H.h) : 0;
-      if (knock) d.empT = W.now + offH * HOUR;
+      if (knock) d.empT = W.now + tq(W, offH * HOUR);
       dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
       sum = `${num(dmg.air)} aircraft knocked out, GDP −${Math.round(H.gdp * 100)}% and tax revenue −${Math.round((1 - H.tax) * 100)}% for ${H.h} hours${knock ? `, and the Golden Dome offline for ${offH} hours` : hasDome ? `, but their level ${dl} Golden Dome withstood the pulse` : ''}`;
       if (knock) note(W, v, 'attack', `⚡ ${me.name}'s EMP knocked out your Golden Dome. It is offline for ${offH} hours and cannot stop missiles or nuclear strikes until it comes back.`);
@@ -1282,7 +1283,7 @@ function Core(PD, CARDS) {
   const domeOn = (W, n) => !!(n && n.dome && n.dome.ready <= (W ? W.now : Date.now()) && !n.dome.off && !domeEmp(W, n) && (n.cash || 0) >= 0);
   // rarity pricing: every other player nation that already owns one makes the next nuclear deterrent or Golden Dome 1.5× more expensive (AI nations don't count)
   const RARE = { per: 1.5 };
-  function rareCost(W, k, u) { const B = k === 'nuke' ? NUKE : DOME; let o = 0; for (const [id, x] of Object.entries(W.A)) if (id !== u && x && !x.ai && (k === 'nuke' ? x.nuke : x.dome)) o++;
+  function rareCost(W, k, u) { const B = k === 'nuke' ? NUKE : DOME; let o = 0; for (const [id, x] of Object.entries(W.A)) if (id !== u && x && !x.ai && (k === 'nuke' ? x.nuke : x.dome)) o++; if (W.cfg && W.cfg.chaos) o = 0; // Chaos world: no scarcity price, everyone can arm up
     const m = Math.pow(RARE.per, o), r = v => Math.round(v * m); return { m, owners: o, cash: Math.round(B.cash * m / 1e6) * 1e6, steel: r(B.steel), oil: r(B.oil), goods: r(B.goods) }; }
   function canDome(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
@@ -1312,7 +1313,7 @@ function Core(PD, CARDS) {
   function buildDome(W, u) {
     const why = canDome(W, u); if (why) fail(why); const n = W.A[u];
     { const P = rareCost(W, 'dome', u); n.cash -= P.cash; n.res.steel -= P.steel; n.res.goods -= P.goods; n.res.oil -= P.oil; n.domePaid = P.cash; }
-    n.dome = { t: W.now, ready: W.now + (W.cfg.nukeTest ? 60e3 : DOME.buildH * HOUR), lvl: 1 }; n.approval = clamp(n.approval + 4, 0, 100);
+    n.dome = { t: W.now, ready: W.now + tq(W, (W.cfg.nukeTest ? 60e3 : DOME.buildH * HOUR)), lvl: 1 }; n.approval = clamp(n.approval + 4, 0, 100);
     news(W, u, `🛡 ${n.name} has begun building a Golden Dome: a missile shield over the whole nation.`);
     log(n, `Construction of your Golden Dome has begun. It will be operational in ${W.cfg.nukeTest ? '1 minute' : DOME.buildH + ' hours'}.`, W); touch(W, u);
     return { msg: `🛡 Golden Dome construction has begun. It will protect your nation in ${W.cfg.nukeTest ? '1 minute' : DOME.buildH + ' hours'}.` };
@@ -1327,7 +1328,7 @@ function Core(PD, CARDS) {
   function domeUp(W, u) {
     const why = canDomeUp(W, u); if (why) fail(why); const n = W.A[u], l = domeLvl(n), L = DOME.lv;
     n.cash -= L.cash[l]; n.res.steel -= L.steel[l]; n.res.goods -= L.goods[l]; n.res.oil -= L.oil[l];
-    n.dome.up = { lvl: l + 1, ready: W.now + (W.cfg.nukeTest ? 60e3 : L.h[l] * HOUR) }; log(n, `Golden Dome upgrade to level ${l + 1} has begun (${money(L.cash[l])}).`, W); touch(W, u);
+    n.dome.up = { lvl: l + 1, ready: W.now + tq(W, (W.cfg.nukeTest ? 60e3 : L.h[l] * HOUR)) }; log(n, `Golden Dome upgrade to level ${l + 1} has begun (${money(L.cash[l])}).`, W); touch(W, u);
     return { msg: `🛡 Upgrading your Golden Dome to level ${l + 1}: ready in ${W.cfg.nukeTest ? '1 minute' : L.h[l] + ' hours'}. It keeps protecting you at level ${l} meanwhile, then stops ${Math.round(L.mis[l] * 100)}% of missiles and has a ${Math.round(L.nuke[l] * 100)}% chance against a nuclear missile.` };
   }
   // nuclear test in the open ocean: for nations with a nuclear program but no warhead. Once a week; it pushes aggression to 70 (sanctions, nearly rogue).
@@ -1359,8 +1360,8 @@ function Core(PD, CARDS) {
     const wait = (n.cd && n.cd.ntest || 0) - W.now; if (wait > 0) fail(`Your next nuclear test can be held in ${wait > 48 * HOUR ? Math.ceil(wait / 864e5) + ' days' : fmtT(wait)}.`);
     if (n.ntestAt && n.ntestAt > W.now) fail('Your test is already scheduled.');
     if (n.cash < NTEST.cash) fail(`A nuclear test costs ${money(NTEST.cash)}.`);
-    const go = W.now + delay * 60e3;
-    n.cash -= NTEST.cash; n.cd = n.cd || {}; n.cd.ntest = W.now + NTEST.cdD * 24 * HOUR; n.ntest = go; n.ntestAt = go;
+    const go = W.now + tq(W, delay * 60e3);
+    n.cash -= NTEST.cash; n.cd = n.cd || {}; n.cd.ntest = W.now + tq(W, NTEST.cdD * 24 * HOUR); n.ntest = go; n.ntestAt = go;
     n.aggr = Math.max(n.aggr || 0, NTEST.aggr); n.stability = clamp(n.stability + 4, 0, 100); n.approval = clamp(n.approval + 3, 0, 100); rogueCheck(W, u);
     const at = oceanSite(W, u, rng), ocean = oceanName(at);
     news(W, u, delay ? `☢ ${n.name} has announced a nuclear test in ${inOcean(ocean)} in ${delay} minutes. Watch the globe.` : `☢ ${n.name} has begun the countdown to a nuclear test in ${inOcean(ocean)}. Watch the globe.`);
@@ -1401,7 +1402,7 @@ function Core(PD, CARDS) {
   function buildWarhead(W, u) {
     const why = canWarhead(W, u); if (why) fail(why); const n = W.A[u];
     n.cash -= WARHEAD.cash; n.res.steel -= WARHEAD.steel; n.res.oil -= WARHEAD.oil; n.res.goods -= WARHEAD.goods;
-    n.warhead = { t: W.now, ready: W.now + nkT(W).buildH * HOUR }; n.aggr = Math.min(100, (n.aggr || 0) + 20); rogueCheck(W, u);
+    n.warhead = { t: W.now, ready: W.now + tq(W, nkT(W).buildH * HOUR) }; n.aggr = Math.min(100, (n.aggr || 0) + 20); rogueCheck(W, u);
     news(W, u, `☢ Intelligence agencies report that ${n.name} is assembling a launchable nuclear warhead.`);
     log(n, `Warhead assembly has begun. It will be armed in ${fmtT(nkT(W).buildH * HOUR)}.`, W);
     for (const v of Object.keys(W.A)) if (v !== u && !W.A[v].ai) note(W, v, 'war', `☢ ${n.name} is assembling a launchable nuclear warhead. It will be armed in ${fmtT(nkT(W).buildH * HOUR)}.`);
@@ -1432,29 +1433,29 @@ function Core(PD, CARDS) {
     d.pop -= loss.pop; d.troops -= loss.troops; d.ships -= loss.ships; d.air -= loss.air; d.infra -= loss.infra; d.gdp = (d.gdp || 0) * .4;
     for (const r in RES) d.res[r] = Math.floor((d.res[r] || 0) * .45);
     d.approval = clamp(d.approval - 35, 0, 100); d.stability = clamp(d.stability - 50, 0, 100); d.health = clamp((d.health || 50) - 35, 0, 100); d.morale = clamp((d.morale || 50) - 35, 0, 100);
-    d.nuked = { t: W.now, until: Math.max(W.now + WARHEAD.nukedH * HOUR, d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name, taxOk: 1 }; // the target keeps collecting taxes; the launcher loses them instead (below)
-    if (!(retaliation || struckBy(W, me, v))) me.nukeTax = Math.max(me.nukeTax || 0, W.now + WARHEAD.nukedH * HOUR); // a second strike in self-defense is exempt
+    d.nuked = { t: W.now, until: Math.max(W.now + tq(W, WARHEAD.nukedH * HOUR), d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name, taxOk: 1 }; // the target keeps collecting taxes; the launcher loses them instead (below)
+    if (!(retaliation || struckBy(W, me, v))) me.nukeTax = Math.max(me.nukeTax || 0, W.now + tq(W, WARHEAD.nukedH * HOUR)); // a second strike in self-defense is exempt
     d.nukedBy = Object.fromEntries(Object.entries({ ...(d.nukedBy || {}), [u]: W.now }).filter(([, t]) => W.now - t < 72 * HOUR));
     // fallout zone and worldwide nuclear winter
     const hit = [];
     for (const x of Object.keys(W.A)) {
-      const n = W.A[x]; if (x === v) continue; n.winter = Math.max(n.winter || 0, W.now + WARHEAD.winterH * HOUR); n.health = clamp((n.health || 50) - 3, 0, 100); n.stability = clamp(n.stability - 3, 0, 100);
+      const n = W.A[x]; if (x === v) continue; n.winter = Math.max(n.winter || 0, W.now + tq(W, WARHEAD.winterH * HOUR)); n.health = clamp((n.health || 50) - 3, 0, 100); n.stability = clamp(n.stability - 3, 0, 100);
       const near = hexesOf(W, x).some(k => kmBetween(+k, +h) <= WARHEAD.km);
-      if (near) { n.fallout = Math.max(n.fallout || 0, W.now + WARHEAD.falloutH * HOUR); n.pop = Math.round(n.pop * .9); n.health = clamp(n.health - 20, 0, 100); n.approval = clamp(n.approval - 15, 0, 100); n.stability = clamp(n.stability - 8, 0, 100); hit.push(x);
+      if (near) { n.fallout = Math.max(n.fallout || 0, W.now + tq(W, WARHEAD.falloutH * HOUR)); n.pop = Math.round(n.pop * .9); n.health = clamp(n.health - 20, 0, 100); n.approval = clamp(n.approval - 15, 0, 100); n.stability = clamp(n.stability - 8, 0, 100); hit.push(x);
         // the fallout makes them furious: a just cause to fight the launcher for a week (attacking it adds no aggression), and some AI nations go to war over it
-        if (x !== u) { n.cb = n.cb || {}; n.cb[u] = Math.max(n.cb[u] || 0, W.now + WARHEAD.angerD * 864e5); n.nukeGrudge = { ...(n.nukeGrudge || {}), [u]: W.now }; }
+        if (x !== u) { n.cb = n.cb || {}; n.cb[u] = Math.max(n.cb[u] || 0, W.now + tq(W, WARHEAD.angerD * 864e5)); n.nukeGrudge = { ...(n.nukeGrudge || {}), [u]: W.now }; }
         note(W, x, 'war', `☢ Radioactive fallout from ${me.name}'s strike on ${d.name} is drifting over your nation: population −10%, health −20, approval −15, tax revenue halved for ${WARHEAD.falloutH} hours. You have a just cause against ${me.name} for ${WARHEAD.angerD} days.`); }
       touch(W, x);
     }
     // the attacker becomes a pariah. A second strike (automatic retaliation, or answering a nation that nuked you in the last 72 hours) is defense, not aggression.
     const secondStrike = retaliation || struckBy(W, me, v);
-    me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR;
+    me.warhead = null; me.cd.warhead = W.now + tq(W, nkT(W).cdD * 24 * HOUR);
     // AI nations poisoned by the fallout may declare war on the launcher (unless they are its allies)
     if (!secondStrike) for (const x of hit) { const n = W.A[x]; if (x === u || !n || !n.ai || n.ai.boss || atWar(W, x, u) || allies(W, u).includes(x) || Math.random() >= WARHEAD.aiWar) continue;
       setRel(n, u, 'war', W.now); setRel(n, u, 'unally', W.now); setRel(n, u, 'untrade', W.now); n.rel[u].fair = 1; n.rel[u].def = 1;
       log(n, `${n.name} declared war on ${me.name} after its nuclear fallout poisoned our people.`, W); note(W, u, 'war', `☢ ${n.name} declared war on you: your fallout poisoned its people.`); news(W, x, `${n.name} declared war on ${me.name} after nuclear fallout drifted over its land.`); touch(W, x); }
     if (!secondStrike) {
-      me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + WARHEAD.rogueH * HOUR); me.nukeRogue = W.now; // rogue status from a nuke can't be bought off or voted away
+      me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + tq(W, WARHEAD.rogueH * HOUR)); me.nukeRogue = W.now; // rogue status from a nuke can't be bought off or voted away
       for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after its nuclear strike.`); touch(W, a); }
     }
     me.approval = clamp(me.approval - (secondStrike ? 5 : me.gov === 'dic' ? 5 : 20), 0, 100);
@@ -1470,8 +1471,8 @@ function Core(PD, CARDS) {
   // a Golden Dome destroyed the nuclear missile in flight: no detonation, but the warhead is spent and the launch still counts
   function interceptNuke(W, u, v, h, retaliation) {
     const me = W.A[u], d = W.A[v], secondStrike = retaliation || struckBy(W, me, v);
-    me.warhead = null; me.cd.warhead = W.now + nkT(W).cdD * 24 * HOUR;
-    if (!secondStrike) { me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + WARHEAD.rogueH * HOUR); me.nukeRogue = W.now; for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after it launched a nuclear missile.`); touch(W, a); } }
+    me.warhead = null; me.cd.warhead = W.now + tq(W, nkT(W).cdD * 24 * HOUR);
+    if (!secondStrike) { me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + tq(W, WARHEAD.rogueH * HOUR)); me.nukeRogue = W.now; for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after it launched a nuclear missile.`); touch(W, a); } }
     me.approval = clamp(me.approval - (secondStrike ? 3 : 12), 0, 100); d.approval = clamp(d.approval + 8, 0, 100); d.stability = clamp(d.stability + 5, 0, 100);
     news(W, u, `☢ ${me.name} launched a nuclear missile at ${d.name}, but ${d.name}'s Golden Dome intercepted it high above ${pname(h)}.`);
     note(W, v, 'attack', `🛡 Your Golden Dome intercepted a nuclear missile launched by ${me.name}!`); log(d, `🛡 Your Golden Dome intercepted a nuclear missile launched by ${me.name} at ${pname(h)}.`, W);
@@ -1634,12 +1635,12 @@ function Core(PD, CARDS) {
     log(n, `Issued ${money(amt)} in government bonds at ${interestRate(W, n).toFixed(1)}% interest.`, W); touch(W, u);
     return { msg: `Bonds issued: +${money(amt)}. Interest rate ${interestRate(W, n).toFixed(1)}% per year.` };
   }
-  function setGov(W, u, g) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(GOV, g)) fail('Unknown government.'); if (g === n.gov) fail('That is already your government.'); if (left(W, n, 'gov')) fail(`Your government can change again in ${fmtT(left(W, n, 'gov'))}.`); n.gov = g; n.stability = clamp(n.stability - 25, 0, 100); n.approval = clamp(n.approval - 10, 0, 100); n.cd.gov = W.now + 6 * HOUR; n.nextElection = g === 'dem' ? W.now + W.cfg.electionH * HOUR : 0; n.campaign = 0; n.rig = 0; news(W, u, `${n.name} is now a ${GOV[g].n}.`); touch(W, u); return { msg: `You now govern a ${GOV[g].n}.` }; }
+  function setGov(W, u, g) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(GOV, g)) fail('Unknown government.'); if (g === n.gov) fail('That is already your government.'); if (left(W, n, 'gov')) fail(`Your government can change again in ${fmtT(left(W, n, 'gov'))}.`); n.gov = g; n.stability = clamp(n.stability - 25, 0, 100); n.approval = clamp(n.approval - 10, 0, 100); n.cd.gov = W.now + tq(W, 6 * HOUR); n.nextElection = g === 'dem' ? W.now + tq(W, W.cfg.electionH * HOUR) : 0; n.campaign = 0; n.rig = 0; news(W, u, `${n.name} is now a ${GOV[g].n}.`); touch(W, u); return { msg: `You now govern a ${GOV[g].n}.` }; }
 
   const COVERT_ID = { any: .2, assassinate: .45 }; // chance a failed operation's agents are identified
   // skill operations are played as a mini-game: the start pays and starts the cooldown, the server scores the game (0 to 1),
   // and the result is then rolled with odds set mostly by that score (always between about 15% and 90%)
-  function covertBegin(W, u, op, v) { const o = COVERT[op]; if (!o || !o.skill) fail('Unknown operation.'); covertCheck(W, u, op, v, false); const me = W.A[u]; me.cash -= o.cost; me.cd.covert = W.now + 20 * MIN; touch(W, u); return { ok: true }; }
+  function covertBegin(W, u, op, v) { const o = COVERT[op]; if (!o || !o.skill) fail('Unknown operation.'); covertCheck(W, u, op, v, false); const me = W.A[u]; me.cash -= o.cost; me.cd.covert = W.now + tq(W, 20 * MIN); touch(W, u); return { ok: true }; }
   function covertCheck(W, u, op, v, paid) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
@@ -1675,7 +1676,7 @@ function Core(PD, CARDS) {
     if (!opt.paid) { if (left(W, me, 'covert')) fail(`Your agents are still on assignment: ${fmtT(left(W, me, 'covert'))}.`);
       if (me.spies < o.spies) fail(`This operation needs ${num(o.spies)} agents. You have ${me.spies}.`);
       if (me.cash < o.cost) fail(`This operation costs ${money(o.cost)}.`);
-      me.cash -= o.cost; me.cd.covert = W.now + 20 * MIN; }
+      me.cash -= o.cost; me.cd.covert = W.now + tq(W, 20 * MIN); }
     const frame = op !== 'falseflag' && me.frame && me.frame.until > W.now && me.frame.as !== v && W.A[me.frame.as] ? me.frame.as : null; if (op !== 'falseflag' && me.frame) delete me.frame; // a false flag covers only your next operation
     const self = v === u;
     const p = self ? .7 : clamp(.5 + (me.spies - (them.spies || 0) * .6) * .03 + (me.tech - them.tech) * .02 - them.fort * .01 + ((them.laws || []).includes('censorship') ? .1 : 0), .1, .9);
@@ -1685,7 +1686,7 @@ function Core(PD, CARDS) {
       if (op === 'steal') { if (them.tech > me.tech) { me.tech++; msg = `Your agents stole research from ${them.name}. Tech level ${me.tech}.`; } else { me.cash += o.cost * .5; msg = `Your agents infiltrated ${them.name} but found nothing more advanced than your own research.`; } log(them, 'Security services suspect a data breach at a research institute.', W); }
       else if (op === 'sabotage') { for (const r in RES) them.res[r] = Math.round(them.res[r] * .8); if (them.infra > 0 && rng() < .5) them.infra--; msg = `Sabotage in ${them.name} succeeded: stockpiles destroyed${them.infra >= 0 ? ' and infrastructure damaged' : ''}.`; log(them, 'Explosions at industrial sites destroyed supplies. The culprits are unknown.', W); note(W, v, 'covert', 'Sabotage hit your industry. The culprits are unknown.'); }
       else if (op === 'unrest') { them.stability = clamp(them.stability - 10, 0, 100); them.approval = clamp(them.approval - 5, 0, 100); msg = `Protests have broken out across ${them.name}.`; log(them, 'Mysteriously well-funded protests have broken out.', W); }
-      else if (op === 'rebellion') { const hs = hexesOf(W, v).filter(h => h != them.cap).sort((a, b) => P[them.cap] ? kmBetween(b, them.cap) - kmBetween(a, them.cap) : 0), h = hs[0]; them.unrest = them.unrest || {}; them.unrest[h] = W.now + 24 * HOUR; msg = `Your agents are arming separatists in ${pname(h)}. For 24 hours it may declare independence from ${them.name}.`; log(them, `Separatist unrest has flared up in ${pname(h)}. Raise stability or garrison it to keep it.`, W); note(W, v, 'covert', `⚠ Armed separatists are active in ${pname(h)}. It may break away within 24 hours unless your stability is high.`); }
+      else if (op === 'rebellion') { const hs = hexesOf(W, v).filter(h => h != them.cap).sort((a, b) => P[them.cap] ? kmBetween(b, them.cap) - kmBetween(a, them.cap) : 0), h = hs[0]; them.unrest = them.unrest || {}; them.unrest[h] = W.now + tq(W, 24 * HOUR); msg = `Your agents are arming separatists in ${pname(h)}. For 24 hours it may declare independence from ${them.name}.`; log(them, `Separatist unrest has flared up in ${pname(h)}. Raise stability or garrison it to keep it.`, W); note(W, v, 'covert', `⚠ Armed separatists are active in ${pname(h)}. It may break away within 24 hours unless your stability is high.`); }
       else if (op === 'fakenews') { them.approval = clamp(them.approval - 8, 0, 100); them.stability = clamp(them.stability - 4, 0, 100); them.aggr = clamp((them.aggr || 0) + 8, 0, 100); msg = `Fake news is spreading through ${them.name}: its government is reeling and the world now sees it as more aggressive.`; log(them, 'A wave of fake news has hit your nation: approval −8, stability −4, aggression +8.', W); note(W, v, 'covert', 'A fake-news campaign hit your nation. The source is unknown.'); }
       else if (op === 'siphon') { const a = Math.round(Math.min(5e7, Math.max(0, them.cash) * .02)); them.cash -= a; me.cash += a; msg = `Your agents siphoned ${money(a)} out of ${them.name}'s treasury.`; log(them, `Auditors found ${money(a)} missing from the treasury.`, W); note(W, v, 'covert', `${money(a)} vanished from your treasury. Foreign agents are suspected.`); }
       else if (op === 'assassinate') { const g = them.gens.reduce((b, x) => !b || x.stars > b.stars ? x : b, null); them.gens = them.gens.filter(x => x !== g); them.morale = clamp((them.morale || 50) - 10, 0, 100); them.stability = clamp(them.stability - 5, 0, 100);
@@ -1698,11 +1699,11 @@ function Core(PD, CARDS) {
       else if (op === 'crash') { them.gdp = (them.gdp || 0) * .96; penalty(W, them, { tax: .8 }, 8); them.approval = clamp(them.approval - 3, 0, 100); msg = `Panic selling hit ${them.name}'s markets: GDP −4% and tax revenue −20% for 8 hours.`; log(them, '📉 Your stock market crashed after a wave of panic selling: GDP −4%, tax revenue −20% for 8 hours. Foreign agents may be behind it.', W); note(W, v, 'covert', '📉 Your stock market crashed: GDP −4% and tax revenue −20% for 8 hours.'); news(W, v, `📉 ${them.name}'s stock market has crashed.`); }
       else if (op === 'defect') { const l = Math.min(2, them.spies || 0); them.spies -= l; me.spies = (me.spies || 0) + 1; msg = `One of ${them.name}'s agents now works for you, and exposed another: they lost ${l} agent${l === 1 ? '' : 's'}, you gained 1.`; log(them, `Counter-intelligence reports ${l} of your agents have gone missing.`, W); }
       else if (op === 'poison') { const f = Math.floor((them.res.food || 0) / 3); them.res.food -= f; them.health = clamp((them.health || 50) - 6, 0, 100); them.approval = clamp(them.approval - 2, 0, 100); msg = `Your agents spoiled ${num(f)} food in ${them.name}'s warehouses.`; log(them, `☣ ${num(f)} food was found contaminated and destroyed. Health −6.`, W); note(W, v, 'covert', `☣ ${num(f)} of your food stockpile was contaminated and destroyed.`); }
-      else if (op === 'wiretap') { me.tap = { b: tBloc[0], name: tBloc[1].name, since: W.now, until: W.now + 6 * HOUR }; msg = `Your agents bugged ${tBloc[1].name}'s alliance chat. Read it on your Intelligence page for the next 6 hours.`; if (rng() < .3) { them.bugWarn = W.now + 6 * HOUR; note(W, v, 'covert', `🔴 Your alliance chat may be bugged. Someone could be listening for the next few hours.`); } }
-      else if (op === 'bankers') { them.credHit = W.now + 24 * HOUR; msg = `The leak worked: ${them.name}'s lenders are nervous and its credit rating drops one step for 24 hours.`; note(W, v, 'economy', `🏦 Damaging figures about your finances leaked to the markets. Your credit rating is one step lower for 24 hours.`); }
-      else if (op === 'falseflag') { me.frame = { as: v, until: W.now + 6 * HOUR }; msg = `Your cover story is ready. If your next operation in the next 6 hours is caught, the evidence will point to ${them.name}.`; }
+      else if (op === 'wiretap') { me.tap = { b: tBloc[0], name: tBloc[1].name, since: W.now, until: W.now + tq(W, 6 * HOUR) }; msg = `Your agents bugged ${tBloc[1].name}'s alliance chat. Read it on your Intelligence page for the next 6 hours.`; if (rng() < .3) { them.bugWarn = W.now + tq(W, 6 * HOUR); note(W, v, 'covert', `🔴 Your alliance chat may be bugged. Someone could be listening for the next few hours.`); } }
+      else if (op === 'bankers') { them.credHit = W.now + tq(W, 24 * HOUR); msg = `The leak worked: ${them.name}'s lenders are nervous and its credit rating drops one step for 24 hours.`; note(W, v, 'economy', `🏦 Damaging figures about your finances leaked to the markets. Your credit rating is one step lower for 24 hours.`); }
+      else if (op === 'falseflag') { me.frame = { as: v, until: W.now + tq(W, 6 * HOUR) }; msg = `Your cover story is ready. If your next operation in the next 6 hours is caught, the evidence will point to ${them.name}.`; }
       else if (op === 'heist') { const a = Math.round(Math.min(8e7, Math.max(0, them.cash) * .03 * (.5 + .5 * (sk || 0)))); them.cash -= a; me.cash += a; msg = `💰 The vault is open! Your agents walked out of ${them.name}'s central bank with ${money(a)}.`; log(them, `💰 Thieves cracked the central bank vault and escaped with ${money(a)}.`, W); note(W, v, 'covert', `💰 Your central bank vault was cracked: ${money(a)} is gone. Foreign agents are suspected.`); }
-      else if (op === 'warplans') { them.boosts = (them.boosts || []).filter(q => !(q.src === 'warplans')); them.boosts.push({ t: W.now, until: W.now + 12 * HOUR, src: 'warplans', def: .88 });
+      else if (op === 'warplans') { them.boosts = (them.boosts || []).filter(q => !(q.src === 'warplans')); them.boosts.push({ t: W.now, until: W.now + tq(W, 12 * HOUR), src: 'warplans', def: .88 });
         me.intel = me.intel || {}; me.intel[v] = { t: W.now, cash: Math.round(them.cash || 0), troops: them.troops || 0, ships: them.ships || 0, air: them.air || 0, spies: them.spies || 0, tech: them.tech || 0 };
         msg = `🗺 Your agents copied ${them.name}'s war plans: their defenses are 12% weaker against everyone for 12 hours. They have ${num(them.troops || 0)} troops, ${num(them.ships || 0)} warships and ${num(them.air || 0)} aircraft.`; log(them, '🗺 Spies stole your war plans: your defenses are 12% weaker for 12 hours.', W); note(W, v, 'covert', '🗺 Foreign spies stole your war plans. Your defenses are 12% weaker for 12 hours.'); }
       else if (op === 'cipher') { me.intel = me.intel || {}; me.intel[v] = { t: W.now, cash: Math.round(them.cash || 0), troops: them.troops || 0, ships: them.ships || 0, air: them.air || 0, spies: them.spies || 0, tech: them.tech || 0 }; msg = `📡 Decoded message from ${them.name}: "${opt.plain || cipherIntel(W, v)}" Your agents got away clean.`; }
@@ -1719,7 +1720,7 @@ function Core(PD, CARDS) {
         msg = `The operation failed and ${num(lost)} agents were lost, but the false flag held: ${them.name} believes ${W.A[frame].name} was behind it.`;
       } else if (caught && !self) {
         me.aggr = clamp((me.aggr || 0) + 10, 0, 100); setRel(me, v, 'unally', W.now);
-        if (op === 'assassinate' || op === 'rebellion') news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); /* small operations stay out of the public news: only the target is told */ if (op === 'assassinate' || op === 'rebellion') { /* only the serious operations hand the target a just cause; small ones are just embarrassing */ them.cb = them.cb || {}; const cbH = op === 'assassinate' ? 48 : 24; them.cb[u] = Math.max(them.cb[u] || 0, W.now + cbH * HOUR); note(W, v, 'covert', `You have a just cause against ${me.name} for ${cbH} hours: attacking it adds no aggression.`); } if (op === 'assassinate') me.aggr = clamp((me.aggr || 0) + 10, 0, 100);
+        if (op === 'assassinate' || op === 'rebellion') news(W, u, `Agents working for ${me.name} were caught attempting to ${o.n.toLowerCase()} in ${them.name}.`); /* small operations stay out of the public news: only the target is told */ if (op === 'assassinate' || op === 'rebellion') { /* only the serious operations hand the target a just cause; small ones are just embarrassing */ them.cb = them.cb || {}; const cbH = op === 'assassinate' ? 48 : 24; them.cb[u] = Math.max(them.cb[u] || 0, W.now + tq(W, cbH * HOUR)); note(W, v, 'covert', `You have a just cause against ${me.name} for ${cbH} hours: attacking it adds no aggression.`); } if (op === 'assassinate') me.aggr = clamp((me.aggr || 0) + 10, 0, 100);
         log(them, `Your counter-intelligence caught agents from ${me.name} attempting to ${o.n.toLowerCase()}.`, W); note(W, v, 'covert', `Agents from ${me.name} were caught attempting to ${o.n.toLowerCase()} in your nation!`);
         msg = `The operation failed and your agents were identified. ${num(lost)} agents lost; ${them.name} knows it was you${op === 'assassinate' || op === 'rebellion' ? ', and so does the world' : ''}.`;
       } else if (caught && self) { me.approval = clamp(me.approval - 10, 0, 100); news(W, u, `Election fraud scandal: ${me.name}'s government was caught rigging its own election.`); msg = 'Your vote-rigging was exposed! Approval −10.'; }
@@ -1744,7 +1745,7 @@ function Core(PD, CARDS) {
   function buildOutpost(W, u, h) {
     h = Number(h); const why = outpostCheck(W, u, h); if (why) fail(why); const n = W.A[u], c = outpostCost(W, u, h), fresh = !owner(W, h);
     n.cash -= c.cash; n.res.steel -= c.steel; n.res.oil -= c.oil; if (fresh) { n.hexes[h] = W.now; W.OWN = computeOwn(W.A); }
-    n.outposts = { ...(n.outposts || {}), [h]: W.now }; n.cd.outpost = W.now + OUTPOST.cdH * HOUR; gainXP(W, u, 20);
+    n.outposts = { ...(n.outposts || {}), [h]: W.now }; n.cd.outpost = W.now + tq(W, OUTPOST.cdH * HOUR); gainXP(W, u, 20);
     log(n, `🏰 Outpost established at ${pname(h)}: attacks within ${num(OUTPOST.stageKm)} km launch from here, and it and your neighbouring provinces defend 10% better.`, W);
     if (fresh) news(W, u, `🏰 ${n.name} has established an outpost at ${pname(h)}.`); touch(W, u);
     return { msg: `🏰 Outpost established at ${pname(h)}.` };
@@ -1891,15 +1892,15 @@ function Core(PD, CARDS) {
     // (big empires no longer rebel for being big: size only costs money, via the size upkeep above)
     if (rogue(W, n)) { n.approval = clamp(n.approval - .1, 0, 100); n.stability = clamp(n.stability - .1, 0, 100); }
     if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; breakAway(W, u, h, 'fell to separatists, who declared independence'); } }
-    if (n.gov !== 'dem' && n.stability < 12 && n.approval < 20 && rng() < .06) { const ks = Object.keys(GOV).filter(k => k !== n.gov); n.gov = ks[Math.floor(rng() * ks.length)]; n.cash *= .7; n.troops = Math.floor(n.troops * .85); n.stability = 45; n.approval = 50; if (n.gov === 'dem') n.nextElection = W.now + W.cfg.electionH * HOUR; news(W, u, `Revolution in ${n.name}. The new regime is a ${GOV[n.gov].n}.`); note(W, u, 'economy', `Revolution! Your nation is now a ${GOV[n.gov].n}.`); }
+    if (n.gov !== 'dem' && n.stability < 12 && n.approval < 20 && rng() < .06) { const ks = Object.keys(GOV).filter(k => k !== n.gov); n.gov = ks[Math.floor(rng() * ks.length)]; n.cash *= .7; n.troops = Math.floor(n.troops * .85); n.stability = 45; n.approval = 50; if (n.gov === 'dem') n.nextElection = W.now + tq(W, W.cfg.electionH * HOUR); news(W, u, `Revolution in ${n.name}. The new regime is a ${GOV[n.gov].n}.`); note(W, u, 'economy', `Revolution! Your nation is now a ${GOV[n.gov].n}.`); }
   }
   function election(W, u, rng) {
     const n = W.A[u];
     const vote = clamp(n.approval * .75 + 12 - n.unemp * .7 - Math.max(0, n.infl - 3) + (n.campaign || 0) + (n.rig || 0) + (rng() * 12 - 6), 3, 97);
-    const v = Math.round(vote * 10) / 10; n.lastElection = { t: W.now, vote: v, won: vote >= 50 }; n.campaign = 0; n.rig = 0; n.nextElection = W.now + W.cfg.electionH * HOUR;
+    const v = Math.round(vote * 10) / 10; n.lastElection = { t: W.now, vote: v, won: vote >= 50 }; n.campaign = 0; n.rig = 0; n.nextElection = W.now + tq(W, W.cfg.electionH * HOUR);
     if (vote >= 50) { n.stability = clamp(n.stability + 8, 0, 100); n.approval = clamp(n.approval + 4, 0, 100); gainXP(W, u, 40); news(W, u, `${n.name}'s government was re-elected with ${v}% of the vote.`); note(W, u, 'election', `You won re-election with ${v}% of the vote!`); }
     else {
-      n.stability = clamp(n.stability - 15, 0, 100); n.approval = 55; n.tax = 20; n.budget = { ...DEFBUDGET }; n.cd.gov = W.now + 12 * HOUR;
+      n.stability = clamp(n.stability - 15, 0, 100); n.approval = 55; n.tax = 20; n.budget = { ...DEFBUDGET }; n.cd.gov = W.now + tq(W, 12 * HOUR);
       if (vote < 35) { n.cash *= .85; n.morale = clamp(n.morale - 15, 0, 100); news(W, u, `Landslide defeat in ${n.name}: the government won only ${v}% and a new administration has taken over.`); note(W, u, 'election', `Landslide defeat (${v}%). A new administration has reversed your policies and purged ministries.`); }
       else { news(W, u, `The government of ${n.name} lost its election with ${v}% of the vote. A coalition takes power.`); note(W, u, 'election', `You lost the election with ${v}%. The new coalition reset your tax rate and budget.`); }
     }
@@ -1930,7 +1931,7 @@ function Core(PD, CARDS) {
   function rogueCheck(W, u) {
     const n = W.A[u]; if (!n) return false;
     if ((n.aggr || 0) >= ROGUE_AT) {
-      const was = rogue(W, n); if (!was) n.rogueT = W.now; n.rogue = Math.max(n.rogue || 0, W.now + ROGUE_MIN);
+      const was = rogue(W, n); if (!was) n.rogueT = W.now; n.rogue = Math.max(n.rogue || 0, W.now + tq(W, ROGUE_MIN));
       if (!was) {
         news(W, u, `☠ ${n.name} has been declared a rogue state. The world has imposed a full embargo.`);
         log(n, 'Your nation has been declared a rogue state: full trade embargo, trade agreements cancelled, allies have walked away, and the world may attack you freely. It lasts at least 12 hours and ends only when your aggression falls below 50.', W);
@@ -1944,7 +1945,7 @@ function Core(PD, CARDS) {
     if (n.rogue && !n.nukeRogue && W.now < n.rogue && (n.aggr || 0) < 50 && W.now >= (n.rogueT || n.rogue - 24 * HOUR) + ROGUE_MIN) n.rogue = W.now; // never for a nuclear strike: that rogue status runs its full time
     if (n.rogue && W.now >= n.rogue) {
       if ((n.aggr || 0) < 50) { n.rogue = 0; delete n.nukeRogue; news(W, u, `International sanctions on ${n.name} have been lifted.`); note(W, u, 'war', 'The world has lifted its embargo. Your nation is no longer a rogue state.'); }
-      else n.rogue = W.now + 3 * HOUR; // still too aggressive: the embargo continues
+      else n.rogue = W.now + tq(W, 3 * HOUR); // still too aggressive: the embargo continues
       return true;
     }
     return false;
@@ -1955,7 +1956,7 @@ function Core(PD, CARDS) {
     if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); else if ((n.aggr || 0) > 0) n.aggr = Math.max(0, n.aggr - k * W.m.aggrDecay); /* aggression keeps cooling while the leader is offline */ n.lastTick += k * TICK; changed = true; }
     if (W.now - n.nextCard > 3 * HOUR) n.nextCard = W.now - 3 * HOUR;
     if (rogueCheck(W, u)) changed = true;
-    if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + INSPECT.everyH * HOUR; changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + INSPECT.everyH * HOUR; n.iaeaPaid = fee;
+    if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + tq(W, INSPECT.everyH * HOUR); changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + tq(W, INSPECT.everyH * HOUR); n.iaeaPaid = fee;
       log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } }
     if (expedResolve(W, u, rng)) changed = true;
     if (n.gp && Object.keys(n.gp).length && grandResolve(W, u, rng)) changed = true;
@@ -1992,7 +1993,7 @@ function Core(PD, CARDS) {
       const c = lawCost(n); if (n.cash < c) fail(`Passing a law costs ${money(c)}.`);
       n.cash -= c; n.laws.push(k); log(n, `Passed a new law: ${LAWS[k].n}.`, W); news(W, u, `${n.name} has passed a new law: ${LAWS[k].n}.`);
     } else { if (!n.laws.includes(k)) fail('That law is not in force.'); n.laws = n.laws.filter(x => x !== k); log(n, `Repealed: ${LAWS[k].n}.`, W); }
-    n.cd.law = W.now + 6 * HOUR; touch(W, u); achCheck(W, u);
+    n.cd.law = W.now + tq(W, 6 * HOUR); touch(W, u); achCheck(W, u);
     return { msg: on ? `${LAWS[k].n} is now law.` : `${LAWS[k].n} repealed.` };
   }
 
@@ -2008,7 +2009,7 @@ function Core(PD, CARDS) {
     if (n.proj && n.proj.next > W.now) fail(`Workers are still building stage ${n.proj.stage}: next stage in ${fmtT(n.proj.next - W.now)}.`);
     const c = Wd.cost; for (const r in c) if ((r === 'cash' ? n.cash : n.res[r] || 0) < c[r]) fail(`Each stage needs ${money(c.cash)}${Object.keys(c).filter(r => r !== 'cash').map(r => `, ${num(c[r])} ${r}`).join('')}.`);
     for (const r in c) { if (r === 'cash') n.cash -= c[r]; else n.res[r] -= c[r]; }
-    const first = !n.proj; n.proj = n.proj || { k, stage: 0, spent: 0, t: W.now }; n.proj.stage++; n.proj.spent += c.cash; n.proj.next = W.now + STAGE_H * HOUR;
+    const first = !n.proj; n.proj = n.proj || { k, stage: 0, spent: 0, t: W.now }; n.proj.stage++; n.proj.spent += c.cash; n.proj.next = W.now + tq(W, STAGE_H * HOUR);
     if (first) { news(W, u, `${n.name} has begun building the ${Wd.n}.`); for (const v of Object.keys(W.A)) if (v !== u && W.A[v].proj && W.A[v].proj.k === k) note(W, v, 'economy', `${n.name} is racing you to build the ${Wd.n}!`); }
     if (n.proj.stage >= Wd.stages) {
       n.wonders = { ...(n.wonders || {}), [k]: W.now }; n.proj = null; gainXP(W, u, 150);
@@ -2028,7 +2029,7 @@ function Core(PD, CARDS) {
     if (E.coast && !hasCoast(W, u)) fail('A deep-sea expedition needs a coastal province.');
     const c = E.cost; for (const r in c) if ((r === 'cash' ? n.cash : n.res[r] || 0) < c[r]) fail(`This expedition needs ${money(c.cash)}${Object.keys(c).filter(r => r !== 'cash').map(r => `, ${num(c[r])} ${r}`).join('')}.`);
     for (const r in c) { if (r === 'cash') n.cash -= c[r]; else n.res[r] -= c[r]; }
-    n.exped = { k, t: W.now, end: W.now + E.h * HOUR }; log(n, `An expedition has set out: ${E.n}. It returns in ${E.h} hours.`, W); touch(W, u); mTrack(W, u, 'exped', 1);
+    n.exped = { k, t: W.now, end: W.now + tq(W, E.h * HOUR) }; log(n, `An expedition has set out: ${E.n}. It returns in ${E.h} hours.`, W); touch(W, u); mTrack(W, u, 'exped', 1);
     return { msg: `Expedition launched — back in ${E.h} hours.` };
   }
   function expedResolve(W, u, rng) {
@@ -2113,7 +2114,7 @@ function Core(PD, CARDS) {
     me.offOut = me.offOut || []; them.offIn = them.offIn || []; if (me.offOut.length >= 5) fail('You can have at most 5 offers waiting.'); if (them.offIn.length >= 10) fail(`${them.name} has too many offers waiting.`);
     if (!hasBundle(me, give)) fail(`You do not have ${bundleTxt(give)}.`);
     moveBundle(me, null, give); // held in escrow until accepted, declined, cancelled or expired
-    const id = rid(), o = { id, give, want, t: W.now, exp: W.now + 24 * HOUR };
+    const id = rid(), o = { id, give, want, t: W.now, exp: W.now + tq(W, 24 * HOUR) };
     me.offOut.push({ ...o, to: v }); them.offIn.push({ ...o, from: u });
     note(W, v, 'diplo', `${me.name} offers ${bundleTxt(give)} for ${bundleTxt(want)}. Answer on the Diplomacy page.`); log(me, `Offered ${bundleTxt(give)} to ${them.name} for ${bundleTxt(want)}.`, W); touch(W, u, v);
     const held = { ...give }; delete held.prov;
@@ -2263,7 +2264,7 @@ function Core(PD, CARDS) {
         if (!mine.proj && P_.req && !mine.done[P_.req]) fail(`The ${P_.n} builds on the ${BPROJ[P_.req].n}. Complete that first.`);
         if (mine.proj && mine.proj.next > W.now) fail(`Stage ${mine.proj.stage} is still being built: next stage in ${fmtT(mine.proj.next - W.now)}.`);
         const cost = blocStageCost(W, mine); if ((mine.bank || 0) < cost) fail(`Each stage costs ${moneyS(cost)} from the alliance treasury (it holds ${moneyS(mine.bank || 0)}).`);
-        mine.bank -= cost; const pr = mine.proj || (mine.proj = { k, stage: 0 }); pr.stage++; pr.next = W.now + BLOC.stageH * HOUR; gainXP(W, u, 20);
+        mine.bank -= cost; const pr = mine.proj || (mine.proj = { k, stage: 0 }); pr.stage++; pr.next = W.now + tq(W, BLOC.stageH * HOUR); gainXP(W, u, 20);
         if (pr.stage >= P_.stages) { mine.done[k] = W.now; mine.proj = null; blocLog(mine, `${P_.n} completed! ${P_.d}`, W); news(W, u, `The alliance ${mine.name} completed the ${P_.n}.`); for (const m of mine.members) if (W.A[m]) { note(W, m, 'diplo', `🏛 Your alliance completed the ${P_.n}: ${P_.d}`); touch(W, m); } return done(`${P_.n} completed!`); }
         blocLog(mine, `${n.name} built stage ${pr.stage} of ${P_.stages} of the ${P_.n} (${moneyS(cost)}).`, W); return done(`Stage ${pr.stage} of ${P_.stages} built. Next stage in ${BLOC.stageH} hours.`);
       }
@@ -2302,7 +2303,7 @@ function Core(PD, CARDS) {
   function decommission(W, u) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!n.nuke) fail('You have no nuclear weapons to decommission.');
     const hadWar = !!n.warhead, back = Math.round((n.nukePaid || 150e6) * DISARM.refund);
-    n.nuke = 0; n.warhead = null; n.iaeaAt = 0; n.nukeBan = W.now + DISARM.banD * 864e5; n.cash += back;
+    n.nuke = 0; n.warhead = null; n.iaeaAt = 0; n.nukeBan = W.now + tq(W, DISARM.banD * 864e5); n.cash += back;
     n.approval = clamp(n.approval + DISARM.ap + (hadWar ? DISARM.warheadAp : 0), 0, 100); n.stability = clamp(n.stability + DISARM.st, 0, 100); n.aggr = Math.max(0, (n.aggr || 0) - DISARM.aggr);
     W._src = 'disarm'; applyEff(W, u, { boost: { ...DISARM.boost } }); W._src = ''; gainXP(W, u, DISARM.xp); achGrant(W, u, 'peacemaker');
     for (const [v, x] of Object.entries(W.A)) if (v !== u) { x.approval = clamp(x.approval + DISARM.worldAp, 0, 100); touch(W, v); }
@@ -2317,7 +2318,7 @@ function Core(PD, CARDS) {
     n.pop -= lost; n.res.food = Math.round((n.res.food || 0) * (1 - NUKEACC.food)); n.res.steel = Math.round((n.res.steel || 0) * (1 - NUKEACC.steel)); n.res.goods = Math.round((n.res.goods || 0) * (1 - NUKEACC.goods)); n.res.oil = Math.round((n.res.oil || 0) * (1 - NUKEACC.oil));
     const paid = Math.max(0, Math.min(clean, n.cash || 0)); n.cash -= paid; if (clean > paid) n.debt = (n.debt || 0) + (clean - paid);
     n.stability = clamp(n.stability - NUKEACC.st, 0, 100); n.approval = clamp(n.approval - NUKEACC.ap, 0, 100); n.health = clamp((n.health == null ? 50 : n.health) - NUKEACC.health, 0, 100);
-    n.rad = { h, t: W.now, until: W.now + NUKEACC.h * HOUR, acc: true }; n.nukeAcc = W.now;
+    n.rad = { h, t: W.now, until: W.now + tq(W, NUKEACC.h * HOUR), acc: true }; n.nukeAcc = W.now;
     note(W, u, 'war', `☢ NUCLEAR ACCIDENT at ${pname(h)}! A reactor failure has released radiation: ${num(lost)} people lost, crops contaminated (food output −30% for ${NUKEACC.h} hours), stockpiles spent on the clean-up and ${money(clean)} in clean-up costs. Stability −${NUKEACC.st}, approval −${NUKEACC.ap}.`);
     log(n, `Nuclear accident at ${pname(h)}: ${num(lost)} people lost, ${money(clean)} spent on the clean-up.`, W);
     news(W, u, `☢ Nuclear accident in ${n.name}: a reactor failure at ${pname(h)} has released radiation.`); touch(W, u);
@@ -2370,7 +2371,7 @@ function Core(PD, CARDS) {
     if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) fail(`${pname(h)} is a disaster zone. Rebuild once it recovers.`);
     if (left(W, n, 'dev')) fail(`Your construction crews are busy: ${fmtT(left(W, n, 'dev'))}.`);
     const c = devCost(W, u, lvl); if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.goods || 0) < c.goods) fail(`Developing to ${DEV.names[lvl]} costs ${money(c.cash)}${c.steel ? `, ${num(c.steel)} steel` : ''}${c.goods ? `, ${num(c.goods)} goods` : ''}.`);
-    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.dev = n.dev || {}; n.dev[h] = lvl; n.cd.dev = W.now + DEV.cdMin * MIN * W.cfg.cd; gainXP(W, u, 8 * lvl);
+    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.dev = n.dev || {}; n.dev[h] = lvl; n.cd.dev = W.now + tq(W, DEV.cdMin * MIN * W.cfg.cd); gainXP(W, u, 8 * lvl);
     log(n, `${pname(h)} was developed into ${DEV.names[lvl] === 'Industry' ? 'an industrial region' : DEV.names[lvl] === 'Farms' ? 'farmland' : 'a ' + DEV.names[lvl].toLowerCase()} (${money(c.cash)}).`, W);
     if (lvl === 4) news(W, u, `${pname(h)} in ${n.name} has grown into a metropolis.`);
     touch(W, u); W.selHex = h; return { msg: `${pname(h)} is now ${DEV.names[lvl] === 'Farms' ? 'farmland' : DEV.names[lvl] === 'Industry' ? 'an industrial region' : 'a ' + DEV.names[lvl].toLowerCase()}: +${Math.round(DEV.prod * 100)}% output, more people and +${num(DEV.score)} score.` };
@@ -2403,7 +2404,7 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); const O = ADMIN.office; if ((n.office || 0) >= O.max) fail('Your administration is fully built.');
     if (left(W, n, 'office')) fail(`Builders are still at work: ${fmtT(left(W, n, 'office'))}.`); const c = officeCost(n);
     if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.goods || 0) < c.goods) fail(`Administrative offices level ${(n.office || 0) + 1} cost ${money(c.cash)}, ${num(c.steel)} steel and ${num(c.goods)} goods.`);
-    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.office = (n.office || 0) + 1; n.cd.office = W.now + O.cdH * HOUR; gainXP(W, u, 20);
+    n.cash -= c.cash; n.res.steel -= c.steel; n.res.goods -= c.goods; n.office = (n.office || 0) + 1; n.cd.office = W.now + tq(W, O.cdH * HOUR); gainXP(W, u, 20);
     log(n, `Administrative offices expanded to level ${n.office}: administration capacity +${O.cap}.`, W); touch(W, u); return { msg: `Administrative offices level ${n.office}: +${O.cap} administration capacity (now ${adminCap(n)}).` };
   }
   // season counters: battles won and relief sent while a season is running
@@ -2412,7 +2413,7 @@ function Core(PD, CARDS) {
   const seasonBump = (W, n, k, v = 1) => { const id = W.cfg && W.cfg.season; if (!id || !n) return; if (!n.ss || n.ss.id !== id) n.ss = { id, wins: 0, relief: 0 }; n.ss[k] = (n.ss[k] || 0) + v; };
   // vassals
   const vassalsOf = (W, u) => Object.keys(W.A).filter(k => W.A[k].overlord === u);
-  function endWar(W, a, b) { const t = W.now + 1; setRel(W.A[a], b, 'peace', t); setRel(W.A[b], a, 'peace', t); }
+  function endWar(W, a, b) { const t = W.now + tq(W, 1); setRel(W.A[a], b, 'peace', t); setRel(W.A[b], a, 'peace', t); }
   function independence(W, u) {
     const n = W.A[u]; if (!n || !n.overlord) fail('You are not a vassal.'); const o = W.A[n.overlord];
     if (!o) { delete n.overlord; delete n.vassalT; touch(W, u); return { msg: 'Your overlord is gone: you are free.' }; }
@@ -2435,7 +2436,7 @@ function Core(PD, CARDS) {
     const peak = Math.max(...lh.filter(x => W.now - x[0] <= 24 * HOUR).map(x => x[1]), cnt);
     if (peak < COMEBACK.min || cnt > peak * COMEBACK.frac || W.now - ((n.cbk && n.cbk.t) || 0) < COMEBACK.gapH * HOUR) return false;
     const lost = peak - cnt, cash = Math.min(COMEBACK.cashMax, COMEBACK.cash + lost * COMEBACK.perProv), room = Math.max(0, troopCap(n) - (n.troops || 0)), tr = Math.min(room, Math.round(troopCap(n) * COMEBACK.troopsF));
-    n.cash += cash; n.troops = (n.troops || 0) + tr; n.stability = clamp((n.stability || 0) + 15, 0, 100); n.approval = clamp((n.approval || 0) + 10, 0, 100); n.shield = W.now + COMEBACK.shieldH * HOUR;
+    n.cash += cash; n.troops = (n.troops || 0) + tr; n.stability = clamp((n.stability || 0) + 15, 0, 100); n.approval = clamp((n.approval || 0) + 10, 0, 100); n.shield = W.now + tq(W, COMEBACK.shieldH * HOUR);
     n.cbk = { t: W.now, cash, troops: tr, lost, until: n.shield }; n.lh = [[W.now, cnt]];
     note(W, u, 'war', `🛡 Comeback support: you lost ${lost} provinces in a day, so allies sent ${moneyS(cash)} and ${num(tr)} troops, and the world placed you under protection for ${COMEBACK.shieldH} hours. Attacking anyone ends the protection early.`);
     log(n, `Comeback support arrived: ${money(cash)}, ${num(tr)} troops, +15 stability, +10 approval, and ${COMEBACK.shieldH} hours of protection.`, W); news(W, u, `🛡 ${n.name} is rebuilding under international protection.`); touch(W, u); return true;
@@ -2489,7 +2490,7 @@ function Core(PD, CARDS) {
     if (W.A[id] || owner(W, h)) return false; const P_ = P[h]; let name = `Free State of ${P_.n}`.slice(0, 28); if (Object.values(W.A).some(n => n.name.toLowerCase() === name.toLowerCase())) name = `Republic of ${P_.n}`.slice(0, 28);
     if (Object.values(W.A).some(n => n.name.toLowerCase() === name.toLowerCase())) name = (`${P_.n} ` + Math.floor(W.now / 1000 % 1000)).slice(0, 28);
     const n = W.A[id] = normalize({ v: 4, name, color: info.color || COLORS[0], gov: 'dem', created: W.now - 3 * 864e5, cap: h, hexes: { [h]: W.now }, xp: 320, cash: 6e6, pop: 1.2e5, troops: 700, ships: isCoastal(h) ? 2 : 0, air: 0, spies: 2, tech: Math.max(0, (info.tech || 2) - 2), train: 0, infra: 1, fort: 1, tax: 20, approval: 75, stability: 65, aggr: 0,
-      res: { food: 400, oil: 150, steel: 150, goods: 80 }, cd: {}, cnt: {}, lastTick: W.now, nextCard: W.now + 30 * MIN, cards: [], seen: [], log: [], out: [], rel: {}, trades: [], exp: 0, imp: 0, budget: { ...DEFBUDGET }, debt: 0, unemp: 6, infl: 2, health: 50, edu: 50, iq: 50, morale: 80, nextElection: W.now + W.cfg.electionH * HOUR, ai: { p: 'isolationist', rebel: true, from: info.from || null } });
+      res: { food: 400, oil: 150, steel: 150, goods: 80 }, cd: {}, cnt: {}, lastTick: W.now, nextCard: W.now + tq(W, 30 * MIN), cards: [], seen: [], log: [], out: [], rel: {}, trades: [], exp: 0, imp: 0, budget: { ...DEFBUDGET }, debt: 0, unemp: 6, infl: 2, health: 50, edu: 50, iq: 50, morale: 80, nextElection: W.now + tq(W, W.cfg.electionH * HOUR), ai: { p: 'isolationist', rebel: true, from: info.from || null } });
     if (info.dev > 1) n.dev = { [h]: info.dev - 1 }; W.OWN = computeOwn(W.A); n.gdp = gdpTarget(W, id); n.gdpHist = [{ t: W.now, v: n.gdp }]; touch(W, id);
     news(W, id, `${name} has declared independence${info.fromName ? ` from ${info.fromName}` : ''}.`); return name;
   }
@@ -2520,7 +2521,7 @@ function Core(PD, CARDS) {
   function disasterHit(W, u, h, kind) {
     const n = W.A[u], K = DISASTER[kind]; if (!n || !K) return null; const lost = Math.round(n.pop * DISASTER.pop);
     n.pop -= lost; n.stability = clamp(n.stability - DISASTER.st, 0, 100); n.res.food = Math.round((n.res.food || 0) * .9); const dl = devLvl(n, h); if (dl > 0) n.dev[h] = dl - 1;
-    const rec = { id: rid(), u, name: n.name, h, place: pname(h), kind, t: W.now, until: W.now + DISASTER.h * HOUR, need: Math.round(Math.max(DISASTER.needMin, (n.gdp || 0) * DISASTER.needPct) / 1e5) * 1e5, got: 0, aid: {}, lost };
+    const rec = { id: rid(), u, name: n.name, h, place: pname(h), kind, t: W.now, until: W.now + tq(W, DISASTER.h * HOUR), need: Math.round(Math.max(DISASTER.needMin, (n.gdp || 0) * DISASTER.needPct) / 1e5) * 1e5, got: 0, aid: {}, lost };
     note(W, u, 'event', `${K.ic} ${/^[aeiou]/i.test(K.n) ? 'An' : 'A'} ${K.n.toLowerCase()} struck ${pname(h)}: ${num(lost)} people lost, stability −${DISASTER.st}${dl > 0 ? `, and it fell back to ${DEV.names[dl - 1].toLowerCase()}` : ''}. Output there is cut for ${DISASTER.h} hours. Other nations can send relief.`);
     news(W, u, `${K.ic} ${/^[aeiou]/i.test(K.n) ? 'An' : 'A'} ${K.n.toLowerCase()} has struck ${pname(h)} in ${n.name}.`); touch(W, u); return rec;
   }
@@ -2605,7 +2606,7 @@ function Core(PD, CARDS) {
     const busy = Object.keys(n.uw).find(x => x !== k && UWONDERS[x]); if (busy) fail(`You are already building the ${UWONDERS[busy].n}. One World Wonder at a time.`);
     const pr = n.uw[k]; if (pr && pr.next > W.now) fail(`Stage ${pr.stage} is still being built: next stage in ${fmtT(pr.next - W.now)}.`);
     const cost = Math.round(Wd.cost / UW.stages); if (n.cash < cost) fail(`Each stage of the ${Wd.n} costs ${money(cost)}.`);
-    n.cash -= cost; const P_ = n.uw[k] = pr || { stage: 0, spent: 0, t: W.now }; P_.stage++; P_.spent += cost; P_.next = W.now + uwStage(); gainXP(W, u, 50);
+    n.cash -= cost; const P_ = n.uw[k] = pr || { stage: 0, spent: 0, t: W.now }; P_.stage++; P_.spent += cost; P_.next = W.now + tq(W, uwStage()); gainXP(W, u, 50);
     if (P_.stage === 1) { news(W, u, `${n.name} has begun building the ${Wd.n}, a World Wonder only one nation can own.`); for (const v of Object.keys(W.A)) if (v !== u && W.A[v].uw && W.A[v].uw[k]) { note(W, v, 'economy', `🏁 ${n.name} is racing you for the ${Wd.n}!`); touch(W, v); } }
     if (P_.stage >= UW.stages) {
       delete n.uw[k]; n.uwon = { ...(n.uwon || {}), [k]: W.now }; gainXP(W, u, 500);
@@ -2623,7 +2624,7 @@ function Core(PD, CARDS) {
     if ((n.gpfail[k] || 0) > W.now) fail(`After the last failure your scientists need ${fmtT(n.gpfail[k] - W.now)} before trying again.`);
     if (rankOf(n.xp) < GRANDC.rank) fail(`Grand projects need the rank of ${RANKS[GRANDC.rank][1]}.`);
     if (n.cash < G.cost) fail(`The ${G.n} costs ${money(G.cost)}.`);
-    n.cash -= G.cost; const h = G.h * (NOADM ? .5 : 1); n.gp[k] = { until: W.now + h * HOUR, spent: G.cost, t: W.now };
+    n.cash -= G.cost; const h = G.h * (NOADM ? .5 : 1); n.gp[k] = { until: W.now + tq(W, h * HOUR), spent: G.cost, t: W.now };
     news(W, u, `${G.ic} ${n.name} has launched the ${G.n}. Its chance of success: ${Math.round(G.p * 100)}%.`); gainXP(W, u, 40); touch(W, u);
     return { msg: `${G.ic} The ${G.n} is under way. The result comes in ${fmtT(h * HOUR)}: a ${Math.round(G.p * 100)}% chance of success.` };
   }
@@ -2631,7 +2632,7 @@ function Core(PD, CARDS) {
     const n = W.A[u]; let ch = false;
     for (const [k, g] of Object.entries(n.gp || {})) { if (g.until > W.now) continue; delete n.gp[k]; ch = true; const G = GRAND[k]; if (!G) continue;
       if ((rng || Math.random)() < G.p) { n.gpdone = { ...(n.gpdone || {}), [k]: W.now }; n.prestige = (n.prestige || 0) + G.pr; gainXP(W, u, 200); news(W, u, `${G.ic} Success! ${n.name}'s ${G.n} worked.`); note(W, u, 'economy', `${G.ic} Your ${G.n} succeeded! +${num(G.pr)} prestige, and ${G.d.charAt(0).toLowerCase() + G.d.slice(1)}`); }
-      else { n.gpfail = n.gpfail || {}; n.gpfail[k] = W.now + GRANDC.failCdH * HOUR; n.approval = clamp(n.approval - GRANDC.failAp, 0, 100); news(W, u, `💥 ${n.name}'s ${G.n} failed. ${money(g.spent)} went up in smoke.`); note(W, u, 'economy', `💥 Your ${G.n} failed. The ${money(g.spent)} is gone and approval fell by ${GRANDC.failAp}. You can try again in ${GRANDC.failCdH} hours.`); } }
+      else { n.gpfail = n.gpfail || {}; n.gpfail[k] = W.now + tq(W, GRANDC.failCdH * HOUR); n.approval = clamp(n.approval - GRANDC.failAp, 0, 100); news(W, u, `💥 ${n.name}'s ${G.n} failed. ${money(g.spent)} went up in smoke.`); note(W, u, 'economy', `💥 Your ${G.n} failed. The ${money(g.spent)} is gone and approval fell by ${GRANDC.failAp}. You can try again in ${GRANDC.failCdH} hours.`); } }
     if (ch) touch(W, u); return ch;
   }
   function prestigeUnit(W, u, k, sell) {
