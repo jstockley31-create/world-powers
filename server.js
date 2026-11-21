@@ -1313,7 +1313,7 @@ function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r; try
 // SPY DUELS: if the target is online when a mini-game operation starts, they are warned and may defend by playing the same puzzle at the
 // same time. The better score wins: if the defender wins, the operation fails and the agents are identified. A defender who does not
 // answer within 20 seconds is simply not there, and the operation is rolled as usual.
-const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map();
+const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map(); const SPYPR = new Map(); // practice rounds, one per player
 // a duel against a player who is online waits for them to accept: 30 seconds, then it is called off (and costs the challenger nothing)
 const DUEL_WAIT = 30e3, SPYP = new Map(); // invite id -> { by, v, op, at }
 const spyPubOf = g => g.pub || null;
@@ -1338,6 +1338,14 @@ async function spyRoute(p, req, res, me) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST.' });
   if (finaleLock()) return send(res, 423, FINALE_LOCK_MSG); { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
   const b = await readBody(req, 4096); touch(me.id, req);
+  // PRACTICE: the same puzzles, free, against nobody. Nothing is spent, nothing happens in the world, and no cooldown starts.
+  if (p === '/api/spy/practice') { if (limited('spyp:' + me.id, 12, 60e3)) return send(res, 429, { error: 'Take a short break, then practice again.' });
+    const op = String(b.op || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
+    if (!S.docs['nations/' + me.id]) return send(res, 400, { error: 'Found a nation first.' });
+    const pz = spyPuzzle(op, mkWorld(), me.id, lvl), id = rid(); if (pz.pub.kind === 'sniper') pz.pub.gen = { name: 'Training target', stars: 0 };
+    SPYPR.set(me.id, { id, op, secret: pz.secret, t0: Date.now() }); return send(res, 200, { ok: true, id, game: pz.pub, practice: true }); }
+  if (p === '/api/spy/practicedone') { const g = SPYPR.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That practice round is over.' }); SPYPR.delete(me.id);
+    const sc = spyScore(g, b, g.t0); return send(res, 200, { ok: true, practice: true, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' ? g.secret : undefined }); }
   if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
     const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
     const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
