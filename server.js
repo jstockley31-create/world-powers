@@ -561,7 +561,12 @@ function councilCast() { if (!clients.size) return; const own = new Set(S.counci
 function blocRepair() { let fixed = 0; const blocs = S.blocs || {};
   for (const [id, b] of Object.entries(blocs)) b.members = (b.members || []).filter(m => { const n = S.docs['nations/' + m]; if (n && n.bloc && n.bloc !== id && blocs[n.bloc] && (blocs[n.bloc].members || []).includes(m)) { fixed++; return false; } return true; });
   if (fixed) { console.log('Removed', fixed, 'duplicate alliance memberships'); persist(); } }
-function blocsView(uid) { const me = S.docs['nations/' + uid], tap = me && me.tap && me.tap.until > Date.now() ? me.tap.b : null, tapSince = tap ? (me.tap.since || me.tap.until - 6 * HOUR) : 0; const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : tap === id ? (b.wall || []).filter(m => (m.t || 0) >= tapSince) : [], /* a wiretap lets a spy read only what is said after the bug was planted, nothing else */ log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
+// a wiretap is a poor line: the listener catches only some messages, with words missing. Which ones is fixed per listener and message, so re-reading never reveals more.
+function tapHear(uid, wall, since) { const T = core.TAP, h = x => crypto.createHash('sha1').update('tap:' + since + ':' + uid + ':' + x).digest().readUInt32BE(0) / 4294967296, out = [];
+  for (const m of wall) { if ((m.t || 0) < since) continue; const key = (m.t || 0) + ':' + (m.u || ''); if (h(key) >= T.hear) continue;
+    const words = String(m.x || '').split(/(\s+)/); let kept = 0; const x = words.map((w, i) => { if (!w.trim()) return w; if (h(key + ':' + i) < T.drop) return '▒'.repeat(Math.min(6, Math.max(2, w.length))); kept++; return w; }).join('');
+    out.push({ t: m.t, u: m.u, x, tap: 1 }); } return out; }
+function blocsView(uid) { const me = S.docs['nations/' + uid], tap = me && me.tap && me.tap.until > Date.now() ? me.tap.b : null, tapSince = tap ? (me.tap.since || me.tap.until - core.TAP.h * HOUR) : 0; const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : tap === id ? tapHear(uid, b.wall || [], tapSince) : [], /* a wiretap lets a spy read only what is said after the bug was planted, nothing else */ log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
 const disView = () => S.dis.filter(d => Date.now() < d.until + 6 * HOUR);
 function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.uid)); }
