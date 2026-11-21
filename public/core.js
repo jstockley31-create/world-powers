@@ -296,11 +296,11 @@ function flagSVG(f, w, h, ns) {
   return `<svg ${ns ? 'xmlns="http://www.w3.org/2000/svg" ' : ''}class="flag" width="${w}" height="${h}" viewBox="0 0 30 20" preserveAspectRatio="none" role="img" aria-label="flag"><g>${g}${em ? em() : ''}</g>${f.fr ? '<rect x=".9" y=".9" width="28.2" height="18.2" fill="none" stroke="#ffd25e" stroke-width="1.8"/><rect x=".2" y=".2" width="29.6" height="19.6" fill="none" stroke="#7a5612" stroke-width=".45"/><rect x="2" y="2" width="26" height="16" fill="none" stroke="rgba(255,240,190,.55)" stroke-width=".35"/>' : '<rect x=".25" y=".25" width="29.5" height="19.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width=".5"/>'}</svg>`;
 }
 const AUTO_TAX = .6; // share of one tax collection that arrives automatically every 10 minutes
-const NUKE = { tech: 350, rank: 6, cash: 500e6, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
+const NUKE = { tech: 350, rank: 6, cash: 5e9, cash0: 500e6, inc: 10, steel: 4000, oil: 4000, goods: 2500, upkeep: 3e5 };
 // mandatory international inspections for every nuclear nation: charged automatically once a day
 const INSPECT = { base: 10e6, pct: .01, cap: 80e6, warhead: 1.5, everyH: 24 };
 // a dirty bomb: a conventional missile carrying radioactive material. Far cheaper than a nuclear program; leaves a radioactive cloud over one province for 24 hours
-const DIRTY = { tech: 120, tier: 2, mun: 100, rank: 3, cash: 15e6, steel: 500, oil: 500, goods: 300, cdH: 12, h: 24, aggr: 25, km: 380 };
+const DIRTY = { tech: 120, tier: 2, mun: 100, rank: 3, cash: 5e8, cash0: 15e6, inc: 4, steel: 500, oil: 500, goods: 300, cdH: 12, h: 24, aggr: 25, km: 380 };
 // imperial overstretch: only the very biggest empires (28 provinces or more) pay upkeep for every province past 27 (rising steeply), lose stability and risk far-off provinces breaking away
 // paying off the World Council to lift sanctions or rogue status at once: 25% of the treasury (at least $50M), double for a rogue state, and doubling again for every payoff in the last 7 days
 const BRIBE = { pct: .25, min: 50e6, rogueX: 2, windowD: 7 };
@@ -321,7 +321,7 @@ const OUTPOST = { max: 4, rank: 2, stageKm: 2500, def: 1.1, cdH: 2, conv: { cash
 const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
-const WARHEAD = { tech: 400, rank: 7, cash: 2e9, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
+const WARHEAD = { tech: 400, rank: 7, cash: 25e9, cash0: 2e9, inc: 20, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
 // conventional and non-nuclear heavy weapons: real options short of a nuke
 // every heavy weapon belongs to a tier: the higher tiers take far more research, so the big weapons stay special
 const HV_TIER = { 1: 'Tactical', 2: 'Strategic', 3: 'Advanced', 4: 'Superweapon' };
@@ -890,9 +890,20 @@ function Core(PD, CARDS) {
   const note = (W, u, kind, text) => { if (W.A[u]) W.notes.push({ u, kind, text }); };
   // how much aggression an attack adds, by target: real players x4/3, AI nations x1/3, the Rising Power 0
   // fighting AI nations alone never gets you sanctioned: hits on an AI nation can't push aggression past 34 (the Council's first threshold is 35)
+  // nuclear prices: test and Chaos worlds keep the old flat price; everywhere else it is the minimum or a multiple of your own tax income, whichever is more
+  const nukeFlat = W => !!(W.cfg && (W.cfg.chaos || W.cfg.nukeTest));
+  const incCost = (W, u, B) => nukeFlat(W) ? B.cash0 : Math.max(B.cash, W.A[u] ? Math.round(taxIncome(W, u) * B.inc / 1e6) * 1e6 : 0);
+  const dirtyCost = (W, u) => incCost(W, u, DIRTY), warheadCost = (W, u) => incCost(W, u, WARHEAD);
   const AI_AGGR_CAP = 34, addAggr = (W, me, v, x) => { const d = W.A[v]; if (!(x > 0)) return me.aggr || 0; const a = me.aggr || 0; return Math.min(100, d && d.ai ? Math.max(a, Math.min(AI_AGGR_CAP, a + x)) : a + x); };
   const aggrScale = (W, v) => { const d = W.A[v]; return !d ? 1 : d.ai ? (d.ai.boss ? 0 : 1 / 3) : 4 / 3; };
-  const aggrHit = (W, u, v, how) => { (W.hits = W.hits || []).push({ u, v, how }); const d = W.A[v]; if (d) { d.hitBy = d.hitBy || {}; d.hitBy[u] = W.now; } };
+  const PACT_CAUSE = { h: 24, noteH: 6 };
+  // an attack on one is an attack on all: everyone in the victim's alliance (and its pact allies) gets a just cause against the attacker, and is told
+  function rallyAllies(W, u, v, how) { const me = W.A[u], d = W.A[v]; if (!me || !d || u === v) return; const b = blocOf(W, v), set = new Set([...(b ? b.members || [] : []), ...allies(W, v)]); set.delete(v); set.delete(u);
+    if (b && (b.members || []).includes(u)) return; let told = 0; const until = W.now + tq(W, PACT_CAUSE.h * HOUR);
+    for (const m of set) { const n = W.A[m]; if (!n || pact(W, m, u, 'ally')) continue; n.cb = n.cb || {}; const fresh = !((n.cb[u] || 0) > W.now); n.cb[u] = Math.max(n.cb[u] || 0, until); n.cbT = n.cbT || {};
+      if (fresh || W.now - (n.cbT[u] || 0) > tq(W, PACT_CAUSE.noteH * HOUR)) { n.cbT[u] = W.now; told++; note(W, m, 'attack', `🚨 ${me.name} attacked ${d.name}${b ? `, a member of your alliance ${b.name}` : ', your ally'} (${how}). An attack on one is an attack on all: for the next ${PACT_CAUSE.h} hours you have a just cause to strike ${me.name}, and fighting them adds no aggression.`); } touch(W, m); }
+    if (told) { me.cbOut = me.cbOut || {}; if (W.now - (me.cbOut[v] || 0) > tq(W, PACT_CAUSE.noteH * HOUR)) { me.cbOut[v] = W.now; note(W, u, 'war', `⚠ ${d.name} ${b ? `belongs to the alliance ${b.name}` : 'has allies'}. Your attack gave ${told} of its ${told === 1 ? 'ally' : 'allies'} a just cause to strike you for ${PACT_CAUSE.h} hours.`); if (b) news(W, u, `🚨 ${me.name} attacked ${d.name}. The alliance ${b.name} has been called to its defence.`); } } }
+  const aggrHit = (W, u, v, how) => { (W.hits = W.hits || []).push({ u, v, how }); const d = W.A[v]; if (d) { d.hitBy = d.hitBy || {}; d.hitBy[u] = W.now; } try { rallyAllies(W, u, v, how); } catch (e) {} };
   // did v hit u (any battle, air or missile strike, or nuke) in the last 24 hours?
   const hitRecently = (W, u, v) => { const n = W.A[u], a = W.A[v]; if (!n || !a) return false; return (n.hitBy && W.now - (n.hitBy[v] || 0) < 24 * HOUR) || (a.out || []).some(e => e.type === 'battle' && e.to === u && W.now - e.t < 24 * HOUR); };
   // fighting back is not aggression: u is defending against v if v started this war on u, joined it against u's pact, or v hit u or one of u's allies in the last day
@@ -1191,12 +1202,12 @@ function Core(PD, CARDS) {
     if ((me.tech || 0) < DIRTY.tech) return `A dirty bomb requires tech level ${DIRTY.tech}.`;
     if (!W.cfg.nukeTest && rankOf(me.xp) < DIRTY.rank) return `A dirty bomb requires the rank of ${RANKS[DIRTY.rank][1]}.`;
     if (left(W, me, 'dirty') && !W.cfg.nukeTest) return `Your next dirty bomb will be ready in ${fmtT(left(W, me, 'dirty'))}.`;
-    if (me.cash < DIRTY.cash || (me.res.steel || 0) < DIRTY.steel || (me.res.oil || 0) < DIRTY.oil || (me.res.goods || 0) < DIRTY.goods || (me.res.mun || 0) < DIRTY.mun) return `A dirty bomb costs ${money(DIRTY.cash)}, ${num(DIRTY.steel)} steel, ${num(DIRTY.oil)} oil, ${num(DIRTY.goods)} goods and ${num(DIRTY.mun)} munitions.`;
+    if (me.cash < dirtyCost(W, u) || (me.res.steel || 0) < DIRTY.steel || (me.res.oil || 0) < DIRTY.oil || (me.res.goods || 0) < DIRTY.goods || (me.res.mun || 0) < DIRTY.mun) return `A dirty bomb costs ${money(dirtyCost(W, u))}, ${num(DIRTY.steel)} steel, ${num(DIRTY.oil)} oil, ${num(DIRTY.goods)} goods and ${num(DIRTY.mun)} munitions.`;
     return null;
   }
   function dirtyBomb(W, u, v, rng) {
     const why = canDirty(W, u, v); if (why) fail(why); const me = W.A[u], d = W.A[v];
-    me.cash -= DIRTY.cash; me.res.steel -= DIRTY.steel; me.res.oil -= DIRTY.oil; me.res.goods -= DIRTY.goods; me.res.mun -= DIRTY.mun; const g = gapF(me, d);
+    me.cash -= dirtyCost(W, u); me.res.steel -= DIRTY.steel; me.res.oil -= DIRTY.oil; me.res.goods -= DIRTY.goods; me.res.mun -= DIRTY.mun; const g = gapF(me, d);
     me.cd.dirty = W.now + tq(W, DIRTY.cdH * HOUR); me.cd.strike = W.now + tq(W, 30 * MIN);
     const hs = hexesOf(W, v), h = hs.length ? hs[Math.floor(rng() * hs.length)] : d.cap, icept = domeOn(W, d) && rng() < domeMis(d) ? 1 : 0, dmg = {};
     if (!icept) {
@@ -1311,10 +1322,10 @@ function Core(PD, CARDS) {
     } else if (k === 'emp') {
       // a stronger Golden Dome is hardened against the pulse: it may survive, and if it does go down it comes back sooner
       const hasDome = d.dome && d.dome.ready <= W.now, dl = hasDome ? domeLvl(d) : 0, knock = hasDome && R() < (H.domeP[dl - 1] ?? 1), offH = hasDome ? (H.domeH[dl - 1] ?? H.h) : 0;
-      if (knock) d.empT = W.now + tq(W, offH * HOUR);
+      if (knock) { d.empT = W.now + tq(W, offH * HOUR); d.empAt = W.now; d.empRoll = W.now + tq(W, DOMEFIX.graceH * HOUR); }
       dmg.air = Math.floor((d.air || 0) * H.air); d.air -= dmg.air; d.gdp = (d.gdp || 0) * (1 - H.gdp); penalty(W, d, { tax: H.tax }, H.h); d.stability = clamp(d.stability - 6, 0, 100);
       sum = `${num(dmg.air)} aircraft knocked out, GDP −${Math.round(H.gdp * 100)}% and tax revenue −${Math.round((1 - H.tax) * 100)}% for ${H.h} hours${knock ? `, and the Golden Dome offline for ${offH} hours` : hasDome ? `, but their level ${dl} Golden Dome withstood the pulse` : ''}`;
-      if (knock) note(W, v, 'attack', `⚡ ${me.name}'s EMP knocked out your Golden Dome. It is offline for ${offH} hours and cannot stop missiles or nuclear strikes until it comes back.`);
+      if (knock) note(W, v, 'attack', `⚡ ${me.name}'s EMP knocked out your Golden Dome. It is offline for ${offH} hours and cannot stop missiles or nuclear strikes until it comes back. Repair it from your Military page: if it is still down after ${DOMEFIX.graceH} hours, each hour brings an ${Math.round(DOMEFIX.breakP * 100)}% chance that it breaks down completely and has to be rebuilt.`);
       else if (hasDome) note(W, v, 'attack', `🛡 ${me.name} hit you with an EMP, but your level ${dl} Golden Dome withstood the pulse and is still protecting you.`);
     }
     const def = defending(W, u, v), add = !traced || rogue(W, d) || def ? 0 : Math.round(H.aggr * aggrScale(W, v)); me.aggr = addAggr(W, me, v, add); rogueCheck(W, u);
@@ -1337,12 +1348,22 @@ function Core(PD, CARDS) {
   const domeUpkeep = (W, n) => n && n.dome && n.dome.ready <= W.now && !(n.ai && n.ai.boss) ? Math.round(DOME.upkeep * (1 + .5 * (domeLvl(n) - 1)) * W.m.upkeep) : 0;
   const domeLvl = n => n && n.dome ? clamp(n.dome.lvl || 1, 1, DOME.lv.max) : 0;
   const domeMis = n => DOME.lv.mis[domeLvl(n) - 1] || DOME.mis, domeNuke = n => DOME.lv.nuke[domeLvl(n) - 1] || DOME.nuke;
+  // a dome knocked out by an EMP still comes back by itself, but the longer it stays down the more likely it fails for good: after the grace period it has a chance every hour
+  // of breaking down completely (it is then gone and must be rebuilt). An emergency repair brings it back at once.
+  const DOMEFIX = { graceH: 3, breakP: .08, cost: .08, lvl: .25, inc: 1 };
+  const domeFixCost = (W, u) => { const n = W.A[u]; return n && n.dome ? Math.max(Math.round(DOME.cash * DOMEFIX.cost * (1 + DOMEFIX.lvl * (domeLvl(n) - 1)) / 1e6) * 1e6, Math.round(taxIncome(W, u) * DOMEFIX.inc / 1e6) * 1e6) : 0; };
+  function domeFix(W, u) { const n = W.A[u]; if (!n || !n.dome) fail('You do not have a Golden Dome.'); if (!(n.empT > W.now) || n.dome.ready > W.now) fail('Your Golden Dome is not knocked out.'); const c = domeFixCost(W, u); if ((n.cash || 0) < c) fail(`An emergency repair costs ${money(c)}.`);
+    n.cash -= c; delete n.empT; delete n.empAt; delete n.empRoll; log(n, `Emergency repair: the Golden Dome is back online (${money(c)}).`, W); touch(W, u); return { msg: `Repair crews brought your Golden Dome back online for ${money(c)}.` }; }
+  function domeDecay(W, u, rng) { const n = W.A[u]; if (!n || !n.dome || !(n.empT > 0) || n.dome.ready > W.now || (n.ai && n.ai.boss)) return false; const R = rng || Math.random, step = tq(W, HOUR); let t = n.empRoll || ((n.empAt || W.now) + tq(W, DOMEFIX.graceH * HOUR)), ch = false;
+    while (t <= Math.min(W.now, n.empT)) { ch = true; if (R() < DOMEFIX.breakP) { const lvl = domeLvl(n); n.dome = null; delete n.domePaid; delete n.empT; delete n.empAt; delete n.empRoll; n.stability = clamp((n.stability || 0) - 5, 0, 100);
+        note(W, u, 'attack', `💥 Your Golden Dome broke down completely. It was left offline too long after the EMP strike and its systems failed. The level ${lvl} dome is gone and has to be rebuilt from scratch.`); news(W, u, `💥 ${n.name}'s Golden Dome has broken down completely after being left offline.`); touch(W, u); return true; } t += step; }
+    if (ch) n.empRoll = t; return ch; }
   const domeEmp = (W, n) => { const t = n ? Math.max(n.empT || 0, (n.dome && n.dome.emp) || 0) : 0; return t > (W ? W.now : Date.now()) ? t : 0; };
   const domeOn = (W, n) => !!(n && n.dome && n.dome.ready <= (W ? W.now : Date.now()) && !n.dome.off && !domeEmp(W, n) && (n.cash || 0) >= 0);
   // rarity pricing: every other player nation that already owns one makes the next nuclear deterrent or Golden Dome 1.5× more expensive (AI nations don't count)
   const RARE = { per: 1.5 };
   function rareCost(W, k, u) { const B = k === 'nuke' ? NUKE : DOME; let o = 0; for (const [id, x] of Object.entries(W.A)) if (id !== u && x && !x.ai && (k === 'nuke' ? x.nuke : x.dome)) o++; if (W.cfg && W.cfg.chaos) o = 0; // Chaos world: no scarcity price, everyone can arm up
-    const m = Math.pow(RARE.per, o), r = v => Math.round(v * m); return { m, owners: o, cash: Math.round(B.cash * m / 1e6) * 1e6, steel: r(B.steel), oil: r(B.oil), goods: r(B.goods) }; }
+    const m = Math.pow(RARE.per, o), r = v => Math.round(v * m); const base = k === 'nuke' ? incCost(W, u, NUKE) : B.cash; return { m, owners: o, cash: Math.round(base * m / 1e6) * 1e6, steel: r(B.steel), oil: r(B.oil), goods: r(B.goods) }; }
   function canDome(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
     if (n.dome) return n.dome.ready > W.now ? 'Your Golden Dome is under construction.' : 'Your Golden Dome is already protecting your nation.';
@@ -1454,12 +1475,12 @@ function Core(PD, CARDS) {
     if (left(W, n, 'warhead') && !W.cfg.nukeTest) return `After a launch, a new warhead takes time to approve: ${fmtT(left(W, n, 'warhead'))} left.`;
     if ((n.tech || 0) < WARHEAD.tech) return `A launchable warhead requires tech level ${WARHEAD.tech}.`;
     if (!W.cfg.nukeTest && rankOf(n.xp) < WARHEAD.rank) return `A launchable warhead requires the rank of ${RANKS[WARHEAD.rank][1]}.`;
-    if (n.cash < WARHEAD.cash || n.res.steel < WARHEAD.steel || n.res.oil < WARHEAD.oil || n.res.goods < WARHEAD.goods) return `Requires ${money(WARHEAD.cash)}, ${num(WARHEAD.steel)} steel, ${num(WARHEAD.oil)} oil and ${num(WARHEAD.goods)} goods.`;
+    if (n.cash < warheadCost(W, u) || n.res.steel < WARHEAD.steel || n.res.oil < WARHEAD.oil || n.res.goods < WARHEAD.goods) return `Requires ${money(warheadCost(W, u))}, ${num(WARHEAD.steel)} steel, ${num(WARHEAD.oil)} oil and ${num(WARHEAD.goods)} goods.`;
     return null;
   }
   function buildWarhead(W, u) {
     const why = canWarhead(W, u); if (why) fail(why); const n = W.A[u];
-    n.cash -= WARHEAD.cash; n.res.steel -= WARHEAD.steel; n.res.oil -= WARHEAD.oil; n.res.goods -= WARHEAD.goods;
+    n.cash -= warheadCost(W, u); n.res.steel -= WARHEAD.steel; n.res.oil -= WARHEAD.oil; n.res.goods -= WARHEAD.goods;
     n.warhead = { t: W.now, ready: W.now + tq(W, nkT(W).buildH * HOUR) }; n.aggr = Math.min(100, (n.aggr || 0) + 20); rogueCheck(W, u);
     news(W, u, `☢ Intelligence agencies report that ${n.name} is assembling a launchable nuclear warhead.`);
     log(n, `Warhead assembly has begun. It will be armed in ${fmtT(tq(W, nkT(W).buildH * HOUR))}.`, W);
@@ -1833,10 +1854,32 @@ function Core(PD, CARDS) {
   function dropOutpost(W, u, h) { const n = W.A[u]; if (!n || !n.outposts || !n.outposts[h]) fail('There is no outpost there.'); const o = { ...n.outposts }; delete o[h]; n.outposts = o; log(n, `Outpost at ${pname(h)} dismantled.`, W); touch(W, u); return { msg: `Outpost at ${pname(h)} dismantled. The province stays yours.` }; }
   function outpostTidy(W, u) { const n = W.A[u]; if (!n || !n.outposts) return false; let ch = false; const o = { ...n.outposts }; for (const h of Object.keys(o)) if (owner(W, +h) !== u) { delete o[h]; ch = true; log(n, `Your outpost at ${pname(+h)} was lost.`, W); } if (ch) { n.outposts = o; touch(W, u); } return ch; }
   // ---------- WORLD CASINO: games of chance with the nation's treasury (all randomness on the server) ----------
-  const CASINO = { min: 1e4, maxAbs: 1e9, perMin: 30,
+  const CASINO = { min: 1e4, maxAbs: 25e9, perMin: 30,
     slots: { sym: ['cherry', 'bar', 'bell', 'star', 'diamond', 'seven'], name: ['Cherry', 'Bar', 'Bell', 'Star', 'Diamond', 'Seven'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { cherry: 1.5 } },
+    // every machine pays back about 94% over time; the two digital ones add a bonus round when 3 or more bonus symbols land
+    machines: {
+      classic: { n: 'Lucky Sevens', kind: 'reel3', tag: 'Old school', sym: ['cherry', 'bar', 'bell', 'star', 'diamond', 'seven'], name: ['Cherry', 'Bar', 'Bell', 'Star', 'Diamond', 'Seven'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { cherry: 1.5 } },
+      liberty: { n: 'Liberty Bell', kind: 'reel3', tag: 'Old school · wilds', sym: ['cherry', 'bar', 'bell', 'horseshoe', 'seven', 'wild'], name: ['Cherry', 'Bar', 'Bell', 'Horseshoe', 'Seven', 'Wild'], w: [32, 20, 23, 15, 7, 3], three: [2, 5, 10, 20, 60, 250], two: { cherry: 1 }, wild: 'wild', wildX: 2 },
+      neon: { n: 'Neon Empire', kind: 'video', tag: 'Digital · free spins', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'free', n: [7, 10, 15], x: 2 } },
+      chest: { n: 'War Chest', kind: 'video', tag: 'Digital · prize chest', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'wheel', prize: [5, 6, 8, 12, 20, 50, 100], w: [30, 24, 18, 13, 9, 4, 2], k: [1, 2, 5] } } },
     dice: { hl: 2.25, seven: 5.6 }, reds: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36] };
-  const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.floor(Math.max(0, n.cash || 0)))); // one table limit for every game: $1B, or what you have
+  const SLOT_LINES = [[1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],[0,0,1,2,2],[2,2,1,0,0],[1,0,0,0,1],[1,2,2,2,1],[0,1,1,1,0]];
+  function slPick(R, w, tot) { let r = R() * tot; for (let i = 0; i < w.length; i++) { r -= w[i]; if (r < 0) return i; } return 0; }
+  function slReel3(M, R) { const tot = M.w.reduce((a, b) => a + b, 0), r = [0, 1, 2].map(() => slPick(R, M.w, tot)), sy = r.map(i => M.sym[i]); return { reels: sy, ...slReel3Pay(M, sy) }; }
+  function slReel3Pay(M, sy) { const wi = M.wild, nw = wi ? sy.filter(x => x === wi).length : 0, rest = sy.filter(x => x !== wi);
+    if (nw === 3) return { mult: M.three[M.sym.indexOf(wi)], kind: 'jackpot' };
+    if (rest.every(x => x === rest[0])) return { mult: M.three[M.sym.indexOf(rest[0])] * Math.pow(M.wildX || 1, nw), kind: 'three', wilds: nw };
+    if (M.two) for (const k of Object.keys(M.two)) if (sy.filter(x => x === k).length === 2 && !nw) return { mult: M.two[k], kind: 'two' };
+    return { mult: 0 }; }
+  function slGrid(M, R) { const g = []; for (let c = 0; c < 5; c++) { const w = M.w.map((x, i) => M.sym[i] === 'wild' && (c === 0 || c === 4) ? 0 : x), tot = w.reduce((a, b) => a + b, 0), col = []; for (let r = 0; r < 3; r++) { let i = slPick(R, w, tot); if (M.sym[i] === 'scatter' && col.includes('scatter')) i = 0; col.push(M.sym[i]); } g.push(col); } return g; }
+  function slEval(M, g) { const wins = []; let x = 0; SLOT_LINES.forEach((L, li) => { const first = g[0][L[0]]; if (first === 'scatter' || first === 'wild') return; let n = 1; while (n < 5 && (g[n][L[n]] === first || g[n][L[n]] === 'wild')) n++; if (n >= 3) { const p = M.pay[first][n - 3]; wins.push({ l: li, s: first, n, x: p }); x += p; } });
+    let sc = 0; for (const col of g) for (const s of col) if (s === 'scatter') sc++; return { wins, x: Math.round(x * 100) / 100, sc }; }
+  function slVideo(M, R) { const g = slGrid(M, R), e = slEval(M, g), out = { grid: g, wins: e.wins, x: e.x, sc: e.sc, bonus: null }; let tot = e.x;
+    if (e.sc >= 3) { const B = M.bonus, k = Math.min(5, e.sc) - 3;
+      if (B.type === 'free') { const spins = []; let bx = 0; for (let i = 0; i < B.n[k]; i++) { const g2 = slGrid(M, R), e2 = slEval(M, g2), x2 = Math.round(e2.x * B.x * 100) / 100; spins.push({ grid: g2, wins: e2.wins, x: x2 }); bx += x2; } out.bonus = { type: 'free', spins, x: Math.round(bx * 100) / 100, mul: B.x }; tot += bx; }
+      else { const tw = B.w.reduce((a, b) => a + b, 0), i = slPick(R, B.w, tw), bx = B.prize[i] * B.k[k]; out.bonus = { type: 'wheel', i, x: bx, prize: B.prize[i], k: B.k[k] }; tot += bx; } }
+    out.mult = Math.round(tot * 100) / 100; return out; }
+  const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.floor(Math.max(0, n.cash || 0)))); // one table limit for every game: $25B, or what you have
   const cardOf = r => { const v = 1 + Math.floor(r() * 13), s = '♠♥♦♣'[Math.floor(r() * 4)]; return { v, s }; }; // an endless shoe: no deck to count, nothing hidden to peek at
   const bjVal = cs => { let t = 0, a = 0; for (const c of cs) { const x = c.v > 10 ? 10 : c.v; t += x; if (x === 1) a++; } while (a > 0 && t + 10 <= 21) { t += 10; a--; } return t; };
   function casinoBet(W, n, bet) {
@@ -1884,11 +1927,13 @@ function Core(PD, CARDS) {
       return { msg: win ? `${x} ${col}! You win ${moneyS(net)}.` : `${x} ${col}. You lose ${moneyS(bet)}.`, casino: { g: 'roulette', x, col, win, net, pick } };
     }
     if (g === 'slots') {
-      const bet = casinoBet(W, n, c.bet), S_ = CASINO.slots, tot = S_.w.reduce((a, b) => a + b, 0), spin = () => { let r = R() * tot; for (let i = 0; i < S_.sym.length; i++) { r -= S_.w[i]; if (r < 0) return i; } return 0; };
-      const reels = [spin(), spin(), spin()], sy = reels.map(i => S_.sym[i]); let mult = 0;
-      if (reels[0] === reels[1] && reels[1] === reels[2]) mult = S_.three[reels[0]]; else { const cherries = sy.filter(x => x === 'cherry').length; if (cherries === 2) mult = S_.two.cherry; }
-      const nm = reels.map(i => S_.name[i]), pay = Math.floor(bet * mult), net = casinoSettle(W, u, 'slots', bet, pay, nm.join(' · '));
-      return { msg: mult >= 5 ? `Three ${nm[0].toLowerCase()}s. You win ${moneyS(net)} (${mult}×).` : mult ? `Two cherries. ${moneyS(pay)} back.` : `${nm.join(', ')}. No win.`, casino: { g: 'slots', reels: sy, mult, net } };
+      const bet = casinoBet(W, n, c.bet), mk = has(CASINO.machines, String(c.m || '')) ? String(c.m) : 'classic', M = CASINO.machines[mk];
+      if (M.kind === 'video') { const o = slVideo(M, R), pay = Math.floor(bet * o.mult), net = casinoSettle(W, u, 'slots', bet, pay, `${M.n}${o.bonus ? ' · bonus' : ''} · ${o.mult}×`);
+        const bt = o.bonus ? (o.bonus.type === 'free' ? ` Bonus: ${o.bonus.spins.length} free spins paid ${o.bonus.x}× your stake.` : ` Bonus: the chest held ${o.bonus.x}× your stake.`) : '';
+        return { msg: o.mult > 0 ? `${o.wins.length ? `${o.wins.length} winning line${o.wins.length > 1 ? 's' : ''}.` : 'No line win.'}${bt} ${net >= 0 ? `You win ${moneyS(net)}` : `${moneyS(pay)} back`} (${o.mult}×).` : 'No win.', casino: { g: 'slots', m: mk, grid: o.grid, wins: o.wins, x: o.x, sc: o.sc, bonus: o.bonus, mult: o.mult, net } }; }
+      const o = slReel3(M, R), sy = o.reels, mult = o.mult, nm = sy.map(x => M.name[M.sym.indexOf(x)]), pay = Math.floor(bet * mult), net = casinoSettle(W, u, 'slots', bet, pay, (mk === 'classic' ? '' : M.n + ' · ') + nm.join(' · '));
+      const what = o.kind === 'jackpot' ? 'Three wilds: the jackpot!' : o.kind === 'three' ? (o.wilds ? `${nm.find(x => x !== 'Wild')}s with ${o.wilds} wild${o.wilds > 1 ? 's' : ''} (×${Math.pow(M.wildX, o.wilds)}).` : `Three ${nm[0].toLowerCase()}s.`) : '';
+      return { msg: o.kind === 'two' ? (pay > bet ? `Two cherries. ${moneyS(pay)} back.` : 'Two cherries. You get your stake back.') : mult ? `${what} You win ${moneyS(net)} (${mult}×).` : `${nm.join(', ')}. No win.`, casino: { g: 'slots', m: mk, reels: sy, mult, net, kind: o.kind || '' } };
     }
     if (g === 'dice') {
       const pick = String(c.pick); if (!['low', 'seven', 'high'].includes(pick)) fail('Choose low, seven or high.'); const bet = casinoBet(W, n, c.bet), d1 = 1 + Math.floor(R() * 6), d2 = 1 + Math.floor(R() * 6), t = d1 + d2;
@@ -2041,7 +2086,8 @@ function Core(PD, CARDS) {
     if (expedResolve(W, u, rng)) changed = true;
     if (n.gp && Object.keys(n.gp).length && grandResolve(W, u, rng)) changed = true;
     if (autoBuyTick(W, u)) changed = true;
-    if (n.dome && n.empT && n.empT <= W.now) { delete n.empT; if (n.dome.ready <= W.now) note(W, u, 'economy', `🛡 Your Golden Dome is back online after the EMP strike.`); changed = true; }
+    if (n.dome && n.empT && domeDecay(W, u, rng)) changed = true;
+    if (n.dome && n.empT && n.empT <= W.now) { delete n.empT; delete n.empAt; delete n.empRoll; if (n.dome.ready <= W.now) note(W, u, 'economy', `🛡 Your Golden Dome is back online after the EMP strike.`); changed = true; }
     if (n.dome && n.dome.up && n.dome.up.ready <= W.now) { n.dome.lvl = n.dome.up.lvl; delete n.dome.up; note(W, u, 'economy', `🛡 Your Golden Dome is now level ${n.dome.lvl}: it stops ${Math.round(domeMis(n) * 100)}% of missiles and has a ${Math.round(domeNuke(n) * 100)}% chance against a nuclear missile.`); changed = true; }
     if (offersExpire(W, u)) changed = true;
     if (n.frozen && n.frozen.until <= W.now) { const a = n.frozen.amt || 0; n.cash += a; n.frozen = null; log(n, `The asset freeze has ended: ${money(a)} returned to your treasury.`, W); note(W, u, 'council', `The World Council asset freeze has ended. ${money(a)} is back in your treasury.`); changed = true; }
@@ -2788,6 +2834,7 @@ function Core(PD, CARDS) {
       case 'movecap': return moveCap(W, u, c.h, c.name);
       case 'disarm': return decommission(W, u);
       case 'domeup': return domeUp(W, u);
+      case 'domefix': return domeFix(W, u);
       case 'games': return gamesCmd(W, u, String(c.cat || ''), c.amt);
       case 'relief': return relief(W, u, c.id, c.amt);
       case 'hideguide': { const n = W.A[u]; if (n) { n.hideGuide = true; touch(W, u); } return { msg: '' }; }
@@ -2810,7 +2857,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, covertCheck, covertCost, covertLock, TAP, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

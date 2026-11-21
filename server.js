@@ -57,7 +57,7 @@ for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) 
 const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
 const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
-const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
+const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games', m1: 'MMORPG 100' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(2e6, Math.round((n.gdp || 0) * .02 / 1e5) * 1e5)); // at least $2M per vote (2% of GDP for bigger nations, up to $25M)
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
@@ -603,6 +603,7 @@ function effCfg() {
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   if (S.map2) { c.map2 = 1; c.tall = 1; } // the bigger map, and the build-tall bonus that came with it
+  if (S.chaosTimer && S.chaosTimer.at > now && !(S.chaos && S.chaos.on)) c.chaosAt = S.chaosTimer.at; // a heads-up countdown the owner set
   if (S.chaos && S.chaos.on) { const o = S.chaos.o || {}; c.chaos = { end: S.chaos.end, speed: o.speed || 10 }; c.tm = 1 / (o.speed || 10); c.income *= 3; c.protectH = o.noShield ? 0 : c.protectH; c.boost = { label: `💥 Chaos world: weapons unlocked, timers ${o.speed || 10}× faster. Everything resets when it ends`, end: S.chaos.end }; }
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
@@ -1190,7 +1191,7 @@ S.countdown = S.countdown || null;
 S.bm = S.bm && Array.isArray(S.bm.list) ? S.bm : { list: [] }; // black market listings (seller ids never leave the server)
 // ---------- poker: Texas Hold'em tables where nations play each other ----------
 const PK = require('./poker.js');
-const PK_TABLES = [['emb1', 'Embassy Table I', 5e4, 1e5, 2e6, 1e7], ['emb2', 'Embassy Table II', 5e4, 1e5, 2e6, 1e7], ['tre1', 'Treasury Table I', 5e5, 1e6, 2e7, 1e8], ['tre2', 'Treasury Table II', 5e5, 1e6, 2e7, 1e8], ['imp1', 'Imperial Table I', 5e6, 1e7, 2e8, 1e9], ['imp2', 'Imperial Table II', 5e6, 1e7, 2e8, 1e9]];
+const PK_TABLES = [['emb1', 'Embassy Table I', 5e4, 1e5, 2e6, 1e7], ['emb2', 'Embassy Table II', 5e4, 1e5, 2e6, 1e7], ['tre1', 'Treasury Table I', 5e5, 1e6, 2e7, 1e8], ['tre2', 'Treasury Table II', 5e5, 1e6, 2e7, 1e8], ['imp1', 'Imperial Table I', 5e6, 1e7, 2e8, 1e9], ['imp2', 'Imperial Table II', 5e6, 1e7, 2e8, 1e9], ['sov1', 'Sovereign Table', 1.25e8, 2.5e8, 5e9, 25e9]];
 S.poker = S.poker && S.poker.tables ? S.poker : { tables: {}, stats: {}, rake: 0, hands: 0 };
 for (const [id, name, sb, bb, mn, mx] of PK_TABLES) { const t = S.poker.tables[id]; if (!t) S.poker.tables[id] = PK.newTable(id, name, sb, bb, mn, mx); else Object.assign(t, { name, sb, bb, min: mn, max: mx }); }
 const PK_WATCH = new Map(); // uid -> { t, at }: who is looking at which table, for live updates
@@ -1632,6 +1633,19 @@ function chaosEnd(by, why) {
 }
 // every 10 minutes during Chaos world: an airdrop for every nation (and the war chest is topped up if the admin chose unlimited money)
 const CHAOS_DROPS = [['💰', 'a war chest', n => { n.cash = (n.cash || 0) + CHAOS_OPT.chest[S.chaos.o.chest] * .25; }], ['⏱', 'an instant reset: every cooldown is ready now', n => { n.cd = {}; n.regroup = 0; }], ['🕵️', '100 extra agents', n => { n.spies = (n.spies || 0) + 100; }], ['🪖', '250,000 extra troops', n => { n.troops = (n.troops || 0) + 250000; }], ['✈', '2,000 extra aircraft', n => { n.air = (n.air || 0) + 2000; }], ['🚢', '300 extra warships', n => { n.ships = (n.ships || 0) + 300; }]];
+// HEADS-UP COUNTDOWN: the owner announces "Chaos world starts in N minutes". Everyone sees a countdown; reminders go out near the end;
+// at zero it starts by itself with the settings saved with the timer (or just announces, if the owner chose to start it by hand).
+const CHAOS_WARN = [60, 30, 15, 10, 5, 1];
+const czMins = m => m >= 60 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minute${m === 1 ? '' : 's'}`;
+function chaosTimerSet(by, mins, o, auto) { const m = Math.max(1, Math.min(24 * 60, Math.round(+mins) || 0)); S.chaosTimer = { at: Date.now() + m * 60e3, by, o, auto: !!auto, said: CHAOS_WARN.filter(x => x >= m) }; persist(); broadcast('config', effCfg());
+  const t = `💥 Chaos world starts in ${czMins(m)}! Every weapon unlocked, huge war chests, fast timers. Nothing in it is permanent: the real world comes back exactly as it was.`; systemMessage(t); broadcast('announce', { text: `Chaos world starts in ${czMins(m)}` }); audit(by, 'Chaos world countdown', `${czMins(m)}${auto ? ', starts by itself' : ', manual start'}`); }
+function chaosTimerClear(by, tell) { if (!S.chaosTimer) return; S.chaosTimer = null; persist(); broadcast('config', effCfg()); if (tell) { systemMessage('💥 The Chaos world countdown was called off.'); audit(by, 'Chaos world countdown', 'called off'); } }
+function chaosTimerLoop() { const T = S.chaosTimer; if (!T) return; const now = Date.now(); if (S.chaos && S.chaos.on) { S.chaosTimer = null; persist(); return; }
+  const left = (T.at - now) / 60e3; T.said = T.said || []; for (const w of CHAOS_WARN) if (left <= w && left > 0 && !T.said.includes(w)) { T.said.push(w); if (left > w - 1) { systemMessage(`💥 Chaos world starts in ${czMins(w)}!`); broadcast('announce', { text: `Chaos world starts in ${czMins(w)}` }); } persist(); }
+  if (now < T.at) return; S.chaosTimer = null; persist(); broadcast('config', effCfg());
+  if (!T.auto) { systemMessage('💥 The Chaos world countdown has finished. It starts as soon as the admin presses the button.'); return; }
+  try { chaosBegin(mkWorld(), T.by, T.o); } catch (e) { systemMessage('💥 Chaos world could not start just now. The admin has been told.'); audit('System', 'Chaos world countdown', 'could not start: ' + (e.message || e)); logErr('Chaos countdown start failed: ' + (e.stack || e)); } }
+setInterval(chaosTimerLoop, 2000).unref();
 function chaosLoop() {
   if (!S.chaos || !S.chaos.on) return;
   const now = Date.now();
@@ -1668,7 +1682,7 @@ function chaosBuy(uid, b) {
   S.chaos.donor = uid; persist(); systemMessage(`💛 ${who} started this Chaos world with a donation. Thank you!`); audit(who, 'Chaos world started by a supporter', `${o.mins} min, ×${o.speed}, ${o.nukes} nukes, ${o.chest} war chest`);
   return { ok: true, mins: o.mins, msg: `💥 Chaos world is on for ${o.mins} minutes! Everyone has been told. Thank you for supporting World Powers.` };
 }
-const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now(), donor: c && c.donor ? (S.users[c.donor] || {}).name || '?' : null, buyOn: S.config.chaosBuy !== false, gapLeft: chaosInfo().nextAt }; };
+const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), timer: S.chaosTimer && S.chaosTimer.at > Date.now() ? { at: S.chaosTimer.at, by: S.chaosTimer.by, auto: !!S.chaosTimer.auto, mins: S.chaosTimer.o && S.chaosTimer.o.mins } : null, t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now(), donor: c && c.donor ? (S.users[c.donor] || {}).name || '?' : null, buyOn: S.config.chaosBuy !== false, gapLeft: chaosInfo().nextAt }; };
 
 // a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
 function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
@@ -2308,6 +2322,11 @@ async function adminRoute(p, req, res, me) {
       try { chaosBegin(mkWorld(), me.name, o); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
       return send(res, 200, { ok: true, view: chaosView() });
     }
+    if (b.op === 'timer') { if (chaosOn()) return send(res, 400, { error: 'Chaos world is already running.' }); const mins = Math.round(+b.after); if (!(mins >= 1 && mins <= 1440)) return send(res, 400, { error: 'Choose between 1 minute and 24 hours.' });
+      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 2, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
+      if (Date.now() + mins * 60e3 + 60e3 > chaosMaxEnd()) return send(res, 400, { error: 'That is too close to the end of the season.' });
+      chaosTimerSet(me.name, mins, o, b.auto !== false); return send(res, 200, { ok: true, view: chaosView() }); }
+    if (b.op === 'timeroff') { chaosTimerClear(me.name, true); return send(res, 200, { ok: true, view: chaosView() }); }
     if (b.op === 'speed') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const sp = +b.speed; if (!CHAOS_OPT.speed.includes(sp)) return send(res, 400, { error: 'Choose 4, 10, 20 or 30.' });
       const old = S.chaos.o.speed || 10; if (sp !== old) { chaosRetime(old, sp); S.chaos.o.speed = sp; persist(); broadcast('config', effCfg()); systemMessage(`💥 Chaos world is now ${sp}× faster!`); audit(me.name, 'Chaos world speed', `${old}× → ${sp}×`); }
       return send(res, 200, { ok: true, view: chaosView() }); }
