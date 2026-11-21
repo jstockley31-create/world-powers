@@ -1382,6 +1382,7 @@ async function spyRoute(p, req, res, me) {
     if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy duels. Turn them back on from your Intelligence page to challenge anyone.' });
     if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That nation'} has opted out of spy duels, so you cannot challenge them.` });
     if (v === me.id || !S.docs['nations/' + v]) return send(res, 400, { error: 'Choose another nation to challenge.' });
+    if (core.MGAME.k[op] && !(spyOnline(v) && Date.now() - ((S.docs['online/' + v] || {}).t || 0) < 2 * 60e3)) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That player'} is not online right now. You can only challenge players who were online in the last 2 minutes.` });
     if (sharesNetwork(me.id, v)) return send(res, 400, { error: 'You can\'t challenge an account on the same network as yours.' });
     { const g_ = hcGate(me.id, false); if (g_) return send(res, g_.jail ? 423 : 428, g_); }
     if (v !== me.id && spyOnline(v)) { // they are online: ask them first
@@ -1389,7 +1390,7 @@ async function spyRoute(p, req, res, me) {
       if (limited('spyinv:' + me.id + ':' + v, 3, 5 * 60e3)) return send(res, 429, { error: 'You have challenged that nation several times just now. Try again in a few minutes.' });
       let W0 = mkWorld(); try { core.mgCheck(W0, me.id, op, v, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
       const id = crypto.randomBytes(6).toString('hex'); SPYP.set(id, { by: me.id, v, op, lvl, at: Date.now() });
-      sendTo(v, 'spyduel', { id, op, what: duelNames[op], by: (S.docs['nations/' + me.id] || {}).name, prize: core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
+      sendTo(v, 'spyduel', { id, op, what: duelNames[op], by: (S.docs['nations/' + me.id] || {}).name, byLeader: (S.users[me.id] || {}).name || null, prize: core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
       return send(res, 200, { ok: true, pending: true, id, wait: DUEL_WAIT, name: (S.docs['nations/' + v] || {}).name || 'They' }); }
     const W = mkWorld(); let st; try { st = core.mgBegin(W, me.id, op, lvl, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
     const pz = spyPuzzle(op, W, v, lvl, true); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, lvl, prize: st.prize, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
