@@ -54,7 +54,7 @@ if (!S.councilAutoOffV1) { S.config.councilAuto = false; S.councilAutoOffV1 = 1;
 if (!S.overPauseSet) { S.overPause = Date.now() + 24 * 36e5; S.overPauseSet = 1; }
 if (!S.migLS24) { S.config.lastStandH = 24; S.migLS24 = true; } // the capital warning period became 24 hours
 for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) S[k] = S[k] || {};
-const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
+const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, leader, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
 const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
 const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games', m1: 'MMORPG 100', mp: 'MPOG 100' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
@@ -208,10 +208,10 @@ function nationPage(req, res, slug) {
   slug = String(slug || '').toLowerCase().replace(/\/$/, ''); if (!/^[a-z0-9-]{1,60}$/.test(slug)) return notFound(req, res);
   const W = mkWorld(); const id = Object.keys(W.A).find(u => slugify(W.A[u].name) === slug); if (!id) return notFound(req, res);
   const n = W.A[id], ids = Object.keys(W.A).sort((a, b) => core.score(W, b) - core.score(W, a)), place = ids.indexOf(id) + 1;
-  const leader = n.ai ? 'AI nation' : (S.users[id] || {}).name || '—', rank = core.rankName(n), gov = (WP.GOV[n.gov] || {}).n || '';
+  const rank = core.rankName(n), gov = (WP.GOV[n.gov] || {}).n || '';
   const allies = core.allies(W, id).map(v => W.A[v].name), wars = core.wars(W, id).map(v => W.A[v].name);
   const news = (n.out || []).filter(e => e.type === 'news').slice(0, 8);
-  const desc = `${n.name} — #${place} of ${ids.length} nations in World Powers. ${rank}, ${gov}, ${core.hexesOf(W, id).length} provinces, GDP ${WP.moneyS(n.gdp || 0)}. Led by ${leader}.`;
+  const desc = `${n.name} — #${place} of ${ids.length} nations in World Powers. ${rank}, ${gov}, ${core.hexesOf(W, id).length} provinces, GDP ${WP.moneyS(n.gdp || 0)}.${n.ai ? ' An AI nation.' : ''}`;
   const row = (k, v) => `<div><span>${k}</span><b>${v}</b></div>`;
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escH(n.name)} — World Powers</title><link rel="icon" href="/icon.svg">
 <meta name="description" content="${escH(desc)}"><meta property="og:type" content="website"><meta property="og:title" content="${escH(n.name)} — World Powers"><meta property="og:description" content="${escH(desc)}"><meta property="og:image" content="https://worldpowersgame.com/og.jpg"><meta name="twitter:card" content="summary_large_image">
@@ -221,7 +221,7 @@ function nationPage(req, res, slug) {
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin:18px 0}.grid div{background:#0c1218;border:1px solid #1e2833;border-radius:10px;padding:12px}.grid span{display:block;color:#8b98a5;font-size:11px;text-transform:uppercase;letter-spacing:.08em}.grid b{font-size:18px}
 h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#d4a64a;margin:30px 0 8px}ul{padding-left:18px;color:#c5ced8}.cta{margin-top:36px;padding:22px;border:1px solid #2a3542;border-radius:12px;text-align:center;background:#0c1218}</style></head>
 <body><div class="w"><div class="top"><a class="logo" href="/"><i></i>WORLD POWERS</a><a class="play" href="/play">Play free</a></div>
-<div class="hero">${n.flag ? `<div class="flagsvg">${WP.flagSVG(n.flag, 81, 54)}</div>` : `<div class="flag" style="background:${escH(n.color)}"></div>`}<div><h1>${escH(n.name)}${n.ai ? '<span class="tag">AI</span>' : ''}${n.nuke ? '<span class="tag">☢ Nuclear power</span>' : ''}</h1><div class="sub">${escH(rank)} · ${escH(gov)} · led by ${escH(leader)} · #${place} in the world</div>${n.motto ? `<div class="sub" style="font-style:italic;margin-top:2px">“${escH(n.motto)}”</div>` : ''}</div></div>
+<div class="hero">${n.flag ? `<div class="flagsvg">${WP.flagSVG(n.flag, 81, 54)}</div>` : `<div class="flag" style="background:${escH(n.color)}"></div>`}<div><h1>${escH(n.name)}${n.ai ? '<span class="tag">AI</span>' : ''}${n.nuke ? '<span class="tag">☢ Nuclear power</span>' : ''}</h1><div class="sub">${escH(rank)} · ${escH(gov)}${n.ai ? ' · AI nation' : ''} · #${place} in the world</div>${n.motto ? `<div class="sub" style="font-style:italic;margin-top:2px">“${escH(n.motto)}”</div>` : ''}</div></div>
 <div class="grid">${row('Provinces', core.hexesOf(W, id).length)}${row('GDP', WP.moneyS(n.gdp || 0))}${row('Population', WP.num(Math.round(n.pop)))}${row('Army', WP.num(n.troops || 0))}${row('Navy / Air', `${n.ships || 0} / ${n.air || 0}`)}${row('Tech level', n.tech || 0)}${row('Approval', Math.round(n.approval) + '%')}${row('Founded', new Date(n.created).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }))}</div>
 ${Object.keys(n.wonders || {}).length ? `<h2>Wonders of the world</h2><p>${Object.keys(n.wonders).map(k => '🏛 ' + escH(WP.WONDERS[k].n)).join(' · ')}</p>` : ''}${(n.laws || []).length ? `<h2>Laws in force</h2><p>${n.laws.map(k => escH((WP.LAWS[k] || {}).n || k)).join(' · ')}</p>` : ''}${Object.keys(n.ach || {}).length ? `<h2>Achievements</h2><p>${Object.keys(n.ach).filter(k => WP.ACH[k]).map(k => '🏅 ' + escH(WP.ACH[k][0])).join(' · ')}</p>` : ''}
 ${allies.length ? `<h2>Allies</h2><p>${allies.map(escH).join(', ')}</p>` : ''}${wars.length ? `<h2>At war with</h2><p>${wars.map(escH).join(', ')}</p>` : ''}
@@ -295,7 +295,7 @@ function hdIn(me, b) {
 }
 function coLog(me, p, b, ok, note) { S.coLog.unshift({ t: Date.now(), by: me.name, id: me.id, act: p.replace('/api/admin/', ''), target: b && typeof b.id === 'string' && S.users[b.id] ? S.users[b.id].name : null, detail: b ? JSON.stringify(Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'id' && k !== 'password'))).slice(0, 300) : '', ok, note: note || null }); S.coLog = S.coLog.slice(0, 2000); persist(); }
 function audit(by, action, target, detail) { S.audit.unshift({ t: Date.now(), by, action, target: target || null, detail: detail || null }); S.audit = S.audit.slice(0, 500);
-  if (FAIR_ACTIONS.has(action)) { S.fairlog.unshift({ t: Date.now(), action, target: target || null, detail: detail || null }); S.fairlog = S.fairlog.slice(0, 3000); }
+  if (FAIR_ACTIONS.has(action)) { S.fairlog.unshift({ t: Date.now(), action, target: privTarget(target) || null, detail: detail || null }); S.fairlog = S.fairlog.slice(0, 3000); }
   persist(); }
 const buckets = new Map();
 function limited(key, max, windowMs) { const now = Date.now(); let b = buckets.get(key); if (!b || now > b.reset) { b = { n: 0, reset: now + windowMs }; buckets.set(key, b); } return ++b.n > max; }
@@ -305,7 +305,7 @@ function flag(uid, r) { if (S.chaos && S.chaos.on) return; /* the chaos copy is 
 S.dev = S.dev || { threads: [], chat: [] };
 const DEV_CATS = ['Ideas', 'Balance', 'Bugs', 'General'];
 const devTxt = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u0008\u000b-\u001f]/g, '').replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
-const devWho = id => { const u = S.users[id] || {}; return { by: id, name: u.name || 'Leader', role: u.admin ? 'admin' : u.coadmin ? 'mod' : '' }; };
+const devWho = id => { const u = S.users[id] || {}; return { by: id, name: S.users[id] ? pubName(id) : 'Leader', role: u.admin ? 'admin' : u.coadmin ? 'mod' : '' }; };
 const devSum = t => ({ id: t.id, title: t.title, cat: t.cat, ...devWho(t.by), t: t.t, last: t.last, n: t.replies.length, likes: (t.likes || []).length, pinned: !!t.pinned, locked: !!t.locked, st: t.st || '', stNote: t.stNote || '', stT: t.stT || 0 });
 const devFull = (t, uid) => ({ ...devSum(t), body: t.body, liked: (t.likes || []).includes(uid), replies: t.replies.map(r => ({ id: r.id, ...devWho(r.by), body: r.body, t: r.t, likes: (r.likes || []).length, liked: (r.likes || []).includes(uid) })) });
 function devHandle(me, p, method, b, q) {
@@ -507,7 +507,12 @@ const ipUsers = ip => { if (Date.now() - ipUseT > 60e3) { ipUse = new Map(); for
 const SHARED_IP = 4;
 const sharesNetwork = (a, b) => { const A = (S.meta[a] || {}).ips || [], B = (S.meta[b] || {}).ips || []; return A.some(ip => B.includes(ip) && ipUsers(ip) < SHARED_IP); };
 const isMuted = uid => (S.users[uid] && S.users[uid].mutedUntil || 0) > Date.now();
-const nationName = uid => uid === 'helpdesk' ? 'Helpdesk' : (S.docs['nations/' + uid] || {}).name || (S.users[uid] || {}).name || 'Unknown';
+const nationName = uid => uid === 'helpdesk' ? 'Helpdesk' : (S.docs['nations/' + uid] || {}).name || (S.users[uid] ? 'New leader' : 'Unknown');
+// Leader (account) names are private. Other players only ever see the nation name, or "New leader" before someone founds one.
+// You see your own leader name; the admin pages still show everyone's for moderation.
+const pubName = uid => (S.docs['nations/' + uid] || {}).name || 'New leader';
+const privTarget = t => { if (!t || typeof t !== 'string') return t; for (const [k, d] of Object.entries(S.docs)) if (k.startsWith('nations/') && d && d.name === t) return t; for (const [id, u] of Object.entries(S.users)) if (u && u.name === t) return pubName(id); return t; };
+const noLeaders = o => JSON.parse(JSON.stringify(o, (k, v) => k === 'leader' && (typeof v === 'string' || v === null) ? undefined : v)); // older records stored leader names: hide them, the files are untouched
 
 // ---------- what other players may see ----------
 function publicView(n) {
@@ -573,7 +578,7 @@ function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.ui
 function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
-  const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
+  const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
   return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
@@ -1200,7 +1205,7 @@ const pkCard = c => c ? { v: c.v === 14 ? 1 : c.v, s: c.s } : null;
 function pkView(t, uid) {
   const H = t.hand, now = Date.now(), done = H && H.done;
   const seats = t.seats.map((s, i) => { if (!s) return null; const n = S.docs['nations/' + s.u] || {}, P = H && H.p[i] && H.p[i].u === s.u ? H.p[i] : null;
-    const show = P && (s.u === uid || (done && done.shown[i])); return { u: s.u, name: n.name || (S.users[s.u] || {}).name || '?', color: n.color || '#888', stack: s.stack, sitOut: !!s.sitOut, leaving: !!s.leaving,
+    const show = P && (s.u === uid || (done && done.shown[i])); return { u: s.u, name: n.name || (S.users[s.u] ? 'New leader' : '?'), color: n.color || '#888', stack: s.stack, sitOut: !!s.sitOut, leaving: !!s.leaving,
       inHand: !!P, folded: !!(P && P.folded), allin: !!(P && P.allin), bet: P && !done ? P.bet : 0, cards: P ? (show ? P.hole.map(pkCard) : P.folded ? [] : [null, null]) : [], won: done ? done.won[i] || 0 : 0, hand: done ? done.names[i] || null : null, last: H && !done ? (H.log.filter(x => x[0] === i).slice(-1)[0] || null) : null }; });
   const me = t.seats.findIndex(s => s && s.u === uid), L = me >= 0 ? PK.legal(t, me) : null;
   return { id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, btn: t.btn, seats, me, board: H ? H.board.map(pkCard) : [], pot: H ? PK.potTotal(H) : 0, street: H ? (done ? 'done' : H.street) : null, toAct: H && !done ? H.toAct : -1, deadline: H && !done ? H.deadline : 0, now,
@@ -1264,7 +1269,7 @@ function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = 
   if (m === 'final') return sc; if (m === 'prov') return core.hexesOf(W, u).length; if (m === 'econ') return n.gdp || 0; if (m === 'tech') return n.tech || 0; if (m === 'power') return core.power(W, u); return 0; }
 function seasonEligible(W, se, u) { const n = W.A[u]; if (!n) return false; if (n.ai && n.ai.boss) return false; return se.who === 'all' || !n.ai; }
 function seasonTable(W, se, m, max) { m = m || se.metric; return Object.keys(W.A).filter(u => seasonEligible(W, se, u)).map(u => ({ u, v: seasonVal(W, se, u, m) })).sort((a, b) => b.v - a.v).slice(0, max || 1e9); }
-function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, leader: (S.users[x.u] || {}).name || '', color: W.A[x.u].color, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
+function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, color: W.A[x.u].color, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
   const mi = t.findIndex(x => x.u === uid);
   return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
 function seasonBegin(W) { S.finaleLast = null; /* the replay of the last finale is only shown until the next season starts */ const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
@@ -1276,7 +1281,7 @@ function seasonBegin(W) { S.finaleLast = null; /* the replay of the last finale 
   if (se.announce) { systemMessage(t); broadcast('announce', { text: t }); }
   persist(); broadcast('config', effCfg()); }
 function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !== 'live') return null; if (se.fresh) return seasonFinishFresh(W, by); const M = SEASON_METRICS[se.metric], table = seasonTable(W, se), now = Date.now();
-  const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
+  const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: n.ai ? 'AI' : '', color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
   const ranked = table.filter(x => x.v > 0 || se.metric === 'gdp'), top = ranked.slice(0, 10);
   try { const t3_ = top.slice(0, 3).map(x => W.A[x.u] && W.A[x.u].name).filter(Boolean); broadcast('finaleEnd', { name: se.name, top: t3_ }); if (S.finaleLast) S.finaleLast.top = t3_; } catch (e) {}
   const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
@@ -1333,7 +1338,7 @@ function duelPairOk(a, b) { const day = Math.floor(Date.now() / 864e5), A_ = due
 const ghostKey = (op, lvl) => op + ':' + lvl;
 function ghostSave(u, op, lvl, seed, sc) { if (!(sc.skill >= .3) || !S.users[u] || BOTS.isBot(u)) return; const k = ghostKey(op, lvl), L = S.ghosts[k] || (S.ghosts[k] = []); if (L.some(x => x.seed === seed && x.u === u)) return; L.unshift({ seed, skill: Math.round(sc.skill * 1000) / 1000, why: String(sc.why || '').slice(0, 120), u, t: Date.now() }); S.ghosts[k] = L.slice(0, 16); const seen = S.ghostSeen[u] || (S.ghostSeen[u] = []); seen.unshift(seed); S.ghostSeen[u] = seen.slice(0, 300); }
 function ghostPick(u, op, lvl) { const seen = new Set(S.ghostSeen[u] || []), L = (S.ghosts[ghostKey(op, lvl)] || []).filter(x => x.u !== u && S.docs['nations/' + x.u] && !sharesNetwork(u, x.u) && !seen.has(x.seed));
-  if (L.length) { const x = L[crypto.randomInt(0, L.length)]; return { seed: x.seed, skill: x.skill, why: x.why, u: x.u, name: (S.docs['nations/' + x.u] || {}).name || 'A rival', leader: (S.users[x.u] || {}).name || null }; }
+  if (L.length) { const x = L[crypto.randomInt(0, L.length)]; return { seed: x.seed, skill: x.skill, why: x.why, u: x.u, name: (S.docs['nations/' + x.u] || {}).name || 'A rival', leader: null }; }
   return { seed: mgSeed(), skill: Math.round((.42 + crypto.randomInt(0, 2600) / 10000) * 1000) / 1000, why: '', u: null, name: 'Academy instructor', leader: null, house: true }; }
 const MGM = v => '$' + Math.round(v).toLocaleString('en-US');
 const mgName = u => (S.docs['nations/' + u] || {}).name || 'They';
@@ -1417,7 +1422,7 @@ async function spyRoute(p, req, res, me) {
     if (limited('spyinv:' + me.id + ':' + v, 4, 5 * 60e3)) return send(res, 429, { error: 'You have challenged that nation several times just now. Try again in a few minutes.' });
     const W0 = mkWorld(); if (!friendly) { try { core.mgCheck(W0, me.id, op, v, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; } }
     const id = crypto.randomBytes(6).toString('hex'); SPYP.set(id, { by: me.id, v, op, lvl, friendly, at: Date.now() });
-    sendTo(v, 'spyduel', { id, op, lvl, friendly, what: duelNames[op], by: mgName(me.id), byLeader: (S.users[me.id] || {}).name || null, prize: friendly ? 0 : core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
+    sendTo(v, 'spyduel', { id, op, lvl, friendly, what: duelNames[op], by: mgName(me.id), byLeader: null, prize: friendly ? 0 : core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
     return send(res, 200, { ok: true, pending: true, id, wait: DUEL_WAIT, name: mgName(v) }); }
   if (p === '/api/spy/finish') { const g = SPYG.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That game is over.' });
     if (g.attScore) return send(res, 200, { ok: true, pending: true });
@@ -1678,7 +1683,7 @@ function chaosBuy(uid, b) {
   if (chaosOn()) return { error: 'A Chaos world is already running. Your purchase is kept: start yours after it ends.' };
   const inf = chaosInfo(); if (inf.nextAt) return { error: `The real world needs a break between Chaos worlds. You can start yours in ${Math.ceil((inf.nextAt - Date.now()) / 60e3)} minutes. Your purchase is kept.` };
   const o = { mins: [15, 30].includes(+b.mins) ? +b.mins : 15, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 2, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
-  const who = (S.users[uid] || {}).name || 'A supporter';
+  const who = S.docs['nations/' + uid] ? pubName(uid) : 'A supporter';
   try { chaosBegin(mkWorld(), who, o); } catch (e) { return { error: e.message.replace('choose a shorter time', 'choose 15 minutes, or start it after the season') + ' Your purchase is kept.' }; }
   S.chaos.donor = uid; persist(); systemMessage(`💛 ${who} started this Chaos world with a donation. Thank you!`); audit(who, 'Chaos world started by a supporter', `${o.mins} min, ×${o.speed}, ${o.nukes} nukes, ${o.chest} war chest`);
   return { ok: true, mins: o.mins, msg: `💥 Chaos world is on for ${o.mins} minutes! Everyone has been told. Thank you for supporting World Powers.` };
@@ -1695,7 +1700,7 @@ function seasonFinishFresh(W, by) {
     for (const [u, g] of Object.entries(se0.grants)) { const paid = seasonGrant(u, g); addNote(u, 'event', `🏆 ${se0.name}: ${g.lines.length ? 'you ' + g.lines.join('; ') : 'you took part'}.${paid ? '' : ' Found a nation to receive your rewards.'}`); }
     S.seasons.cur = null; audit(by || 'System', 'Season ended', se0.name + ' (prizes paid after a restart)'); persist(true); broadcast('config', effCfg()); return null; } }
   const se = S.seasons.cur, M = SEASON_METRICS[se.metric] || SEASON_METRICS.final, table = seasonTable(W, se), now = Date.now();
-  const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: (S.users[x.u] || {}).name || (n.ai ? 'AI' : ''), color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
+  const pick = x => { const n = W.A[x.u]; return { name: n.name, leader: n.ai ? 'AI' : '', color: n.color, flag: n.flag || null, ai: !!n.ai, value: x.v, shown: M.fmt(x.v) }; };
   const ranked = table.filter(x => x.v > 0), top = ranked.slice(0, 10);
   const cats = (se.cats || []).filter(k => SEASON_METRICS[k] && k !== se.metric).map(k => { const best = seasonTable(W, se, k, 1)[0]; return best && best.v > 0 ? { k, award: SEASON_METRICS[k].title, metric: SEASON_METRICS[k].n, ...pick(best), shown: SEASON_METRICS[k].fmt(best.v), u: best.u } : null; }).filter(Boolean);
   const ord = i => ['1st', '2nd', '3rd'][i] || `${i + 1}th`, place = ['Champion', '2nd place', '3rd place'], grants = {};
@@ -1732,7 +1737,7 @@ const casinoTotals = () => Object.fromEntries(Object.entries((S.casino && S.casi
 function casinoRecord(W) { const C_ = S.casino; for (const e of W.casinoEv || []) { const n = W.A[e.u] || {}, day = new Date(e.t).toISOString().slice(0, 10);
   const add = (o, k) => { const x = o[k] = o[k] || { plays: 0, wag: 0, net: 0, wins: 0 }; x.plays++; x.wag += e.bet; x.net += e.net; if (e.net > 0) { x.wins++; x.won = (x.won || 0) + e.net; } else if (e.net < 0) x.lost = (x.lost || 0) - e.net; };
   add(C_.tot, e.g); add(C_.tot, 'all'); C_.days[day] = C_.days[day] || {}; add(C_.days[day], e.g); add(C_.days[day], 'all');
-  const row = { t: e.t, u: e.u, name: n.name || '?', leader: (S.users[e.u] || {}).name || '', g: e.g, bet: e.bet, net: e.net, d: e.d };
+  const row = { t: e.t, u: e.u, name: n.name || '?', leader: '', g: e.g, bet: e.bet, net: e.net, d: e.d };
   C_.recent = [row, ...C_.recent].slice(0, 200); if (e.net > 0) C_.big = [...C_.big, row].sort((a, b) => b.net - a.net).slice(0, 25); }
   const keep = Object.keys(C_.days).sort().slice(-60); C_.days = Object.fromEntries(keep.map(k => [k, C_.days[k]])); W.casinoEv = null; }
 
@@ -2220,9 +2225,9 @@ function inviteReward(W, id) {
   const u = S.users[id]; if (!u || !u.ref || u.refDone) return; u.refDone = true; const inv = u.ref, im = meta(inv);
   if (sharesNetwork(id, inv)) { flag(id, `Invited by ${(S.users[inv] || {}).name} from the same network — no invite reward given`); return; }
   if ((im.invites || 0) >= 20 || !W.A[id]) return;
-  W.A[id].cash += 5e5; addNote(id, 'economy', `Welcome bonus: $500,000 for joining through ${(S.users[inv] || {}).name || 'a friend'}'s invite.`);
+  W.A[id].cash += 5e5; addNote(id, 'economy', `Welcome bonus: $500,000 for joining through ${S.docs['nations/' + inv] ? pubName(inv) : 'a friend'}'s invite.`);
   im.invites = (im.invites || 0) + 1;
-  if (W.A[inv]) { W.A[inv].cash += 1e6; W.changed.add(inv); addNote(inv, 'economy', `${u.name} joined through your invite and founded ${W.A[id].name}. You received $1,000,000.`); }
+  if (W.A[inv]) { W.A[inv].cash += 1e6; W.changed.add(inv); addNote(inv, 'economy', `A new leader joined through your invite and founded ${W.A[id].name}. You received $1,000,000.`); }
 }
 // ---------- admin ----------
 function analytics() {
@@ -2729,7 +2734,7 @@ async function adminRoute(p, req, res, me) {
         for (const c of COLS) if (S.docs[c + '/' + b.id]) setDoc(c, b.id, null);
         for (const c of clients) if (c.uid === b.id) endStream(c);
         broadcast('user', { id: b.id, name: null }); audit(me.name, 'Banned player', target);
-      } else { u.banned = false; broadcast('user', { id: b.id, name: u.name }); audit(me.name, 'Unbanned player', target); }
+      } else { u.banned = false; broadcast('user', { id: b.id, name: pubName(b.id) }); audit(me.name, 'Unbanned player', target); }
       persist(); return send(res, 200, { ok: true });
     }
     case '/api/admin/mute': {
@@ -2887,12 +2892,12 @@ async function handle(req, res) {
     }
     if (req.method === 'GET' && p === '/api/fairplay') {
       const c = effCfg(), keys = ['cd', 'income', 'xp', 'protectH', 'lastStandH', 'war', 'conquest', 'weakRule', 'councilAuto', 'nukeTest', 'aiBoss', 'bots', 'botWar', 'electionH', 'eventsOn', 'signups'];
-      return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500), logTotal: S.fairlog.length,
+      return send(res, 200, { fingerprint: FINGERPRINT, files: CODE, live: START, releases: S.releases.slice(0, 50), log: S.fairlog.slice(0, 500).map(e => e.target ? { ...e, target: privTarget(e.target) } : e), logTotal: S.fairlog.length,
         settings: Object.fromEntries(keys.map(k => [k, c[k]])), defaults: Object.fromEntries(keys.map(k => [k, WP.DEFCFG[k]])), boost: c.boost || null, council: S.council.active, event: S.event, finance: S.finance.slice(0, 500),
         world: { nations: Object.keys(S.docs).filter(k => k.startsWith('nations/')).length, players: Object.keys(S.users).length } }, { 'Cache-Control': 'no-store' });
     }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
-    if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: HOF, cur }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
+    if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: noLeaders(HOF), cur }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
     if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!isStaff(me)) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
     if (req.method === 'GET' && p.startsWith('/n/')) return await nationPage(req, res, p.slice(3));
     if (!p.startsWith('/api/')) return notFound(req, res);
@@ -2923,7 +2928,7 @@ async function handle(req, res) {
       const inv = byInvite(b.ref); if (inv && inv !== id) S.users[id].ref = inv;
       meta(id).signupIp = ipOf(req); touch(id, req); stat('signups');
       const shared = Object.keys(S.users).filter(o => o !== id && sharesNetwork(o, id)); if (shared.length) flag(id, `Signed up from the same network as ${shared.map(o => S.users[o].name).join(', ')}`);
-      const token = newSession(id); broadcast('user', { id, name });
+      const token = newSession(id); broadcast('user', { id, name: pubName(id) });
       return send(res, 200, pub({ id, ...S.users[id] }), { 'Set-Cookie': sessionCookie(req, token, SESSION_DAYS * 86400) });
     }
     if (p === '/api/guest' && req.method === 'POST') {
@@ -2937,7 +2942,7 @@ async function handle(req, res) {
       const inv = byInvite(b.ref); if (inv) S.users[id].ref = inv;
       meta(id).signupIp = ipOf(req); touch(id, req); stat('signups');
       const shared = Object.keys(S.users).filter(o => o !== id && sharesNetwork(o, id)); if (shared.length) flag(id, `Guest game started from the same network as ${shared.map(o => S.users[o].name).join(', ')}`);
-      const token = newSession(id); broadcast('user', { id, name });
+      const token = newSession(id); broadcast('user', { id, name: pubName(id) });
       return send(res, 200, pub({ id, ...S.users[id] }), { 'Set-Cookie': sessionCookie(req, token, SESSION_DAYS * 86400) });
     }
     if (p === '/api/login' && req.method === 'POST') {
@@ -2973,7 +2978,7 @@ async function handle(req, res) {
     if (p === '/api/poker' && req.method === 'POST' && finaleLock()) return send(res, 423, FINALE_LOCK_MSG);
     if (p === '/api/poker') return pokerRoute(p, req, res, me);
     if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
-    if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: HOF });
+    if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: noLeaders(HOF) });
     if (p === '/api/me' && req.method === 'GET') { touch(me.id, req); return send(res, 200, pub(me)); }
     if (p === '/api/account/save' && req.method === 'POST') {
       const u = S.users[me.id]; if (!u.guest) return send(res, 400, { error: 'Your account is already saved.' });
@@ -2987,7 +2992,7 @@ async function handle(req, res) {
       if (!b.agree) return send(res, 400, { error: 'Please agree to the Terms and Privacy Policy.' });
       if (findByEmail(email)) return send(res, 409, { error: 'An account with that email already exists.' });
       if (Object.entries(S.users).some(([id2, x]) => id2 !== me.id && x.name.toLowerCase() === name.toLowerCase())) return send(res, 409, { error: 'That leader name is taken.' });
-      Object.assign(u, { email, name, ...hashPw(pw) }); delete u.guest; persist(); broadcast('user', { id: me.id, name });
+      Object.assign(u, { email, name, ...hashPw(pw) }); delete u.guest; persist(); broadcast('user', { id: me.id, name: pubName(me.id) });
       return send(res, 200, { ok: true, me: pub({ id: me.id, ...u }) });
     }
     if (p === '/api/invite' && req.method === 'GET') {
@@ -3099,7 +3104,7 @@ async function handle(req, res) {
     }
 
     // ---- mail ----
-    if (p === '/api/mail' && req.method === 'GET') return send(res, 200, { mail: (S.mail[me.id] || []).map(m => ({ ...m, fromName: nationName(m.from), toName: nationName(m.to), fromLeader: m.from === HD ? 'Game staff' : (S.users[m.from] || {}).name, toLeader: m.to === HD ? 'Game staff' : (S.users[m.to] || {}).name })) });
+    if (p === '/api/mail' && req.method === 'GET') return send(res, 200, { mail: (S.mail[me.id] || []).map(m => ({ ...m, fromName: nationName(m.from), toName: nationName(m.to), fromLeader: m.from === HD ? 'Game staff' : m.from === me.id ? me.name : nationName(m.from), toLeader: m.to === HD ? 'Game staff' : m.to === me.id ? me.name : nationName(m.to) })) });
     if (p === '/api/mail/send' && req.method === 'POST') {
       if (limited('mail:' + me.id, 10, 10 * 60e3)) return send(res, 429, { error: 'You are sending mail too quickly. Try again in a few minutes.' });
       const b = await readBody(req, 8 * 1024); touch(me.id, req); return send(res, 200, mailSend(me, b));
@@ -3195,7 +3200,7 @@ async function handle(req, res) {
           const prevT = ((S.docs['chat/' + me.id] || {}).m || [])[0]?.t || 0;
           d = cleanChat(d); stat('chat');
           const nm = d.m[0]; if (nm && nm.t > prevT && nm.x.includes('@')) { const low = nm.x.toLowerCase(); let k = 0;
-            for (const [uid2, u2] of Object.entries(S.users)) { if (k >= 3 || uid2 === me.id || u2.banned || !u2.name) continue; if (low.includes('@' + u2.name.toLowerCase()) && !((meta(uid2).muted || []).includes(me.id))) { k++; addNote(uid2, 'mention', `${nationName(me.id)} mentioned you in chat: “${nm.x.slice(0, 90)}”`); } } }
+            for (const [uid2, u2] of Object.entries(S.users)) { const nn2 = (S.docs['nations/' + uid2] || {}).name; if (k >= 3 || uid2 === me.id || u2.banned || !nn2) continue; if (low.includes('@' + nn2.toLowerCase()) && !((meta(uid2).muted || []).includes(me.id))) { k++; addNote(uid2, 'mention', `${nationName(me.id)} mentioned you in chat: “${nm.x.slice(0, 90)}”`); } } }
         }
         setDoc(col, id, d); return send(res, 200, { ok: true });
       }

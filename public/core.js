@@ -321,7 +321,7 @@ const OUTPOST = { max: 4, rank: 2, stageKm: 2500, def: 1.1, cdH: 2, conv: { cash
 const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
-const WARHEAD = { tech: 400, rank: 7, cash: 25e9, cash0: 2e9, inc: 20, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 24, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
+const WARHEAD = { tech: 400, rank: 7, cash: 25e9, cash0: 2e9, inc: 20, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 0, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
 // conventional and non-nuclear heavy weapons: real options short of a nuke
 // every heavy weapon belongs to a tier: the higher tiers take far more research, so the big weapons stay special
 const HV_TIER = { 1: 'Tactical', 2: 'Strategic', 3: 'Advanced', 4: 'Superweapon' };
@@ -507,7 +507,7 @@ function Core(PD, CARDS) {
   // fresh-start season worlds (cfg.noAdmin): nukes come earlier with shorter waits, and the Golden Dome earlier still, so a defence always exists before the first warhead
   // and every nuclear consequence is timed for a 7-day season: half as long (so a victim can still recover before the end), with costs scaled to season wealth
   const seasonNukes = on => { WARHEAD.holdH = on ? 12 : 24; WARHEAD.buildH = on ? 12 : 24; /* tech levels are the same in seasons: nukes and domes stay rare */
-    WARHEAD.warH = on ? 12 : 24; WARHEAD.rogueH = on ? 36 : 72; WARHEAD.nukedH = on ? 36 : 72; WARHEAD.falloutH = on ? 24 : 48; WARHEAD.winterH = on ? 18 : 36; WARHEAD.angerD = on ? 3 : 7; NUKE.upkeep = on ? 1.5e6 : 3e5; INSPECT.cap = on ? 1e9 : 80e6;
+    WARHEAD.warH = 0; /* no waiting period: a nation at war that has built and armed a warhead may launch it */ WARHEAD.rogueH = on ? 36 : 72; WARHEAD.nukedH = on ? 36 : 72; WARHEAD.falloutH = on ? 24 : 48; WARHEAD.winterH = on ? 18 : 36; WARHEAD.angerD = on ? 3 : 7; NUKE.upkeep = on ? 1.5e6 : 3e5; INSPECT.cap = on ? 1e9 : 80e6;
     // every other multi-day timer, sized for a 7-day season
     DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 36 : 72; HEAVY.orbital.cdH = on ? 24 : 48;
     CAPMOVE.cdH = on ? 24 : 72; CAPMOVE.holdH = on ? 12 : 24; CAPMOVE.weakH = on ? 12 : 24; VASSAL.freeH = on ? 24 : 48; COMEBACK.gapH = on ? 24 : 72; COMEBACK.shieldH = on ? 12 : 24;
@@ -1520,7 +1520,7 @@ function Core(PD, CARDS) {
     gainXP(W, u, 50); touch(W, u); return { msg: 'Your nuclear deterrent is operational.' };
   }
   // admin "nuke test mode": no 24h wait, warheads arm in 1 minute, no 7-day lockout
-  const nkT = W => W.cfg.nukeTest ? { holdH: 0, buildH: 1 / 60, cdD: 0, warH: 0 } : W.cfg.chaos ? { ...WARHEAD, holdH: 0, buildH: 1, cdD: 1 / 24, warH: 1 } : WARHEAD; // Chaos world: an hour of war, an hour to build, an hour between launches (all then sped up)
+  const nkT = W => W.cfg.nukeTest ? { holdH: 0, buildH: 1 / 60, cdD: 0, warH: 0 } : W.cfg.chaos ? { ...WARHEAD, holdH: 0, buildH: 1, cdD: 1 / 24, warH: 0 } : WARHEAD; // Chaos world: an hour of war, an hour to build, an hour between launches (all then sped up)
   function canWarhead(W, u) {
     const n = W.A[u]; if (!n) return 'Found a nation first.';
     if (!n.nuke) return 'You need an operational nuclear deterrent first.';
@@ -1557,7 +1557,7 @@ function Core(PD, CARDS) {
     const mob = tq(W, W.m.mobilize * MIN); if (W.now - warSince(W, u, v) < mob) return `Forces are mobilizing — ready in ${fmtT(mob - (W.now - warSince(W, u, v)))}.`;
     if (!d.ai && W.now - d.created < W.cfg.protectH * HOUR) return `${d.name} is under new-nation protection.`;
     if (shieldOn(W, d)) return `${d.name} is rebuilding under international protection for another ${fmtT(d.shield - W.now)}.`;
-    // a last resort: only after a full day of war, unless they have already nuked you
+    // no waiting period: once at war (after the usual few minutes of mobilizing) an armed warhead can be launched
     if (!W.cfg.nukeTest && !struckBy(W, me, v) && W.now - warSince(W, u, v) < tq(W, nkT(W).warH * HOUR)) return `A nuclear strike is a last resort: you must be at war with ${d.name} for ${fmtT(tq(W, nkT(W).warH * HOUR))} first (${fmtT(tq(W, nkT(W).warH * HOUR) - (W.now - warSince(W, u, v)))} left).`;
     // several nations may strike the same country, one after another (each strike adds its own damage)
     return null;
