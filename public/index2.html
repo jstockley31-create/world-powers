@@ -4768,7 +4768,7 @@ function ntWarnDraw(){for(const[id,f]of ntWarns)if(f.go<=Date.now()-5000)ntWarns
  el.innerHTML=`<span class="ic">☢</span><span><b>NUCLEAR TEST ${left>0?`in ${m}:${String(sec).padStart(2,'0')}`:'starting'}</b>${esc(f.byName)} · ${esc(ntWhere(f.ocean))}${list.length>1?` · +${list.length-1} more`:''}</span><button class="btn sm" data-w="see">Show me where</button><button class="btn sm ghost" data-w="x" aria-label="Hide">✕</button>`}
 window.addEventListener('wp-ntestwarn',e=>ntWarn(e.detail));
 // voting opens a voting site in a new tab and claims the daily bonus here (once a day, whichever site)
-document.addEventListener('click',e=>{const a=e.target.closest('.votebtn,.votetile,.votebtn2');if(a)claimVote(a.dataset.vote||'gt')});
+document.addEventListener('click',e=>{const a=e.target.closest('.votebtn,.votetile,.votebtn2,a.vcoin');if(a)claimVote(a.dataset.vote||'gt')});
 // update: show a short notice, then reload once nothing important is happening (not while typing, and not during a nuke or a test)
 window.addEventListener('wp-update',()=>{const n=document.createElement('div');n.className='upnote';n.innerHTML='<span class="spin"></span>Updating to the latest version…';document.body.appendChild(n);
  const t0=Date.now();const go=()=>{const a=document.activeElement,typing=a&&/INPUT|TEXTAREA/.test(a.tagName)&&a.value&&a.value.length>0;if((nukeBusy||typing)&&Date.now()-t0<120000)return setTimeout(go,2000);location.reload()};setTimeout(go,1800)});
