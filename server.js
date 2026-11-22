@@ -179,8 +179,8 @@ STATIC['/og.jpg'] = loadFile('og.jpg', 'image/jpeg', 'public, max-age=604800');
 for (const f of ['banner-240x100.png', 'banner-468x60.png', 'banner-728x90.png']) STATIC['/' + f] = loadFile(f, 'image/png', 'public, max-age=86400'); // banners for voting and link sites
 for (const f of ['inter-latin.woff2', 'inter-latin-ext.woff2', 'cinzel-700.woff2', 'jbmono-500.woff2']) STATIC['/fonts/' + f] = loadFile('fonts/' + f, 'font/woff2', 'public, max-age=31536000, immutable');
 STATIC['/fonts/fonts.css'] = loadFile('fonts/fonts.css', 'text/css; charset=utf-8', 'public, max-age=86400');
-STATIC['/robots.txt'] = { type: 'text/plain; charset=utf-8', buf: Buffer.from('User-agent: *\nAllow: /$\nAllow: /faq\nAllow: /n/\nAllow: /terms\nAllow: /privacy\nDisallow: /\n'), cache: 'public, max-age=86400' };
-Object.assign(STATIC['/robots.txt'], { gz: zlib.gzipSync(STATIC['/robots.txt'].buf), br: zlib.brotliCompressSync(STATIC['/robots.txt'].buf), etag: '"robots2"' });
+STATIC['/robots.txt'] = { type: 'text/plain; charset=utf-8', buf: Buffer.from('User-agent: *\nAllow: /$\nAllow: /faq\nAllow: /n/\nAllow: /terms\nAllow: /privacy\nAllow: /sitemap.xml\nDisallow: /\n\nSitemap: ' + (process.env.SITE_URL || 'https://worldpowersgame.com').replace(/\/$/, '') + '/sitemap.xml\n'), cache: 'public, max-age=86400' };
+Object.assign(STATIC['/robots.txt'], { gz: zlib.gzipSync(STATIC['/robots.txt'].buf), br: zlib.brotliCompressSync(STATIC['/robots.txt'].buf), etag: '"robots3"' });
 const NOTFOUND = loadFile('404.html', HTML, 'no-cache');
 STATIC['/manifest.webmanifest'] = loadFile('manifest.webmanifest', 'application/manifest+json', 'no-cache');
 STATIC['/icon.svg'] = loadFile('icon.svg', 'image/svg+xml', 'public, max-age=604800');
@@ -579,7 +579,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  return { seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -2221,13 +2221,23 @@ function restoreNation(id, snapName, by) {
 }
 
 // invite rewards: both players gain when an invited friend founds a nation (not for the same network, max 20 per inviter)
+// Invite rewards. The new player gets a welcome bonus. The inviter is paid in two parts: some when the friend founds a nation,
+// and most of it when the friend reaches Governor, so the reward is for bringing someone who actually plays. Never paid on a shared network.
+const INVITE = { welcome: 25e6, found: 10, foundMin: 10e6, rank: 3, rankX: 40, rankMin: 50e6, max: 20 };
+const rankIdx = xp => { let r = 0; for (let i = 0; i < WP.RANKS.length; i++) if ((xp || 0) >= WP.RANKS[i][0]) r = i; return r; };
+const invitePay = (W, inv) => { const t = W.A[inv] ? core.taxIncome(W, inv) : 0; return { found: Math.round(Math.max(INVITE.foundMin, t * INVITE.found) / 1e5) * 1e5, rank: Math.round(Math.max(INVITE.rankMin, t * INVITE.rankX) / 1e5) * 1e5 }; };
 function inviteReward(W, id) {
   const u = S.users[id]; if (!u || !u.ref || u.refDone) return; u.refDone = true; const inv = u.ref, im = meta(inv);
   if (sharesNetwork(id, inv)) { flag(id, `Invited by ${(S.users[inv] || {}).name} from the same network — no invite reward given`); return; }
-  if ((im.invites || 0) >= 20 || !W.A[id]) return;
-  W.A[id].cash += 5e5; addNote(id, 'economy', `Welcome bonus: $500,000 for joining through ${S.docs['nations/' + inv] ? pubName(inv) : 'a friend'}'s invite.`);
-  im.invites = (im.invites || 0) + 1;
-  if (W.A[inv]) { W.A[inv].cash += 1e6; W.changed.add(inv); addNote(inv, 'economy', `A new leader joined through your invite and founded ${W.A[id].name}. You received $1,000,000.`); }
+  if ((im.invites || 0) >= INVITE.max || !W.A[id]) return;
+  W.A[id].cash += INVITE.welcome; addNote(id, 'economy', `Welcome bonus: ${WP.moneyS(INVITE.welcome)} for joining through ${S.docs['nations/' + inv] ? pubName(inv) : 'a friend'}'s invite.`);
+  im.invites = (im.invites || 0) + 1; u.refPaid = true;
+  if (W.A[inv]) { const amt = invitePay(W, inv).found; W.A[inv].cash += amt; W.changed.add(inv); addNote(inv, 'economy', `A new leader joined through your invite and founded ${W.A[id].name}. You received ${WP.moneyS(amt)}. A bigger bonus follows when they reach ${WP.RANKS[INVITE.rank][1]}.`); }
+}
+function inviteRank(W, id) { // second part: the invited player has reached Governor
+  const u = S.users[id]; if (!u || !u.ref || !u.refPaid || u.refRank || !W.A[id] || rankIdx(W.A[id].xp) < INVITE.rank) return; u.refRank = true; const inv = u.ref;
+  if (!W.A[inv] || sharesNetwork(id, inv)) return; const amt = invitePay(W, inv).rank; W.A[inv].cash += amt; W.changed.add(inv);
+  addNote(inv, 'economy', `${W.A[id].name}, who joined through your invite, reached ${WP.RANKS[INVITE.rank][1]}. You received ${WP.moneyS(amt)}.`); persist();
 }
 // ---------- admin ----------
 function analytics() {
@@ -2897,6 +2907,11 @@ async function handle(req, res) {
         settings: Object.fromEntries(keys.map(k => [k, c[k]])), defaults: Object.fromEntries(keys.map(k => [k, WP.DEFCFG[k]])), boost: c.boost || null, council: S.council.active, event: S.event, finance: S.finance.slice(0, 500),
         world: { nations: Object.keys(S.docs).filter(k => k.startsWith('nations/')).length, players: Object.keys(S.users).length } }, { 'Cache-Control': 'no-store' });
     }
+    if (req.method === 'GET' && p === '/sitemap.xml') { // the pages search engines may read: the front page, the FAQ and every nation's public page
+      const base = (process.env.SITE_URL || 'https://worldpowersgame.com').replace(/\/$/, ''), day = new Date().toISOString().slice(0, 10), urls = ['/', '/faq'], seen = new Set();
+      for (const [k, n] of Object.entries(S.docs)) if (k.startsWith('nations/') && n && n.name) { const sl = slugify(n.name); if (sl && !seen.has(sl)) { seen.add(sl); urls.push('/n/' + sl); } }
+      const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls.slice(0, 5000).map(u => `<url><loc>${escH(base + u)}</loc><lastmod>${day}</lastmod></url>`).join('\n') + '\n</urlset>\n';
+      res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); return res.end(xml); }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
     if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: noLeaders(HOF), cur }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
     if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!isStaff(me)) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
@@ -3008,7 +3023,7 @@ async function handle(req, res) {
     }
     if (p === '/api/invite' && req.method === 'GET') {
       const code = inviteCode(me.id), joined = Object.values(S.users).filter(u => u.ref === me.id).length, rewarded = (meta(me.id).invites || 0);
-      return send(res, 200, { code, joined, rewarded });
+      const W_ = mkWorld(); return send(res, 200, { code, joined, rewarded, max: INVITE.max, welcome: INVITE.welcome, pay: invitePay(W_, me.id), rank: WP.RANKS[INVITE.rank][1] });
     }
     if (p === '/api/bug' && req.method === 'POST') {
       const b = await readBody(req, 1200 * 1024); const idea = b.kind === 'idea';
@@ -3089,6 +3104,7 @@ async function handle(req, res) {
       if (b.c === 'dip' && b.kind === 'peace' && typeof b.v === 'string' && S.users[b.v] && !BOTS.isBot(b.v) && r.msg !== undefined && core.atWar(W, me.id, b.v)) { const seen = (S.meta[b.v] || {}).lastSeen || 0, on = [...clients].some(c => c.uid === b.v); if (!on && Date.now() - seen >= PEACE_IDLE.awayH * 36e5) r.msg = `Peace offered. They haven't played for over a day, so if they don't answer within ${PEACE_IDLE.waitH} hours, peace is signed for them automatically.`; }
       actLog(me.id, W, b, true, r.msg); try { botRecord(me.id, b, readyAt, req, b.c === 'act' && W.A[me.id] ? Math.max(0, +((W.A[me.id].cd || {})[String(b.k)] || 0) - Date.now()) : 0); } catch (e) {} pactCheck(W); if (W.crch || (b.c === 'attack' && S.crisis)) crisisCheck(W);
       if (b.c === 'found') { stat('nations'); if (!S.fresh) inviteReward(W, me.id); else if (S.seasons.cur && S.seasons.cur.fresh) { const pl = S.seasons.cur.played = S.seasons.cur.played || {}; pl[me.id] = 1; } }
+      if (!S.fresh && !chaosOn() && me.ref && !me.refRank) inviteRank(W, me.id);
       const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;
       if (W.casinoEv) casinoRecord(W);
       commit(W); if (pendFound) seasonPendingApply(me.id);
