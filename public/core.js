@@ -895,20 +895,21 @@ function Core(PD, CARDS) {
   // ---------- NATION DEVELOPMENT: ministries, infrastructure, storage, processing, civil defence, counter-intelligence, reserves, trade routes ----------
   // Every bonus is small and capped, and every price is the higher of a floor and a multiple of the nation's own tax income, so it stays a real choice for small and large nations alike.
   const UPG = {
-    min: { max: 10, floor: 1e8, inc: 60, grow: 1.5, list: {
+    min: { max: 10, floor: 1e8, grow: 3, list: {
       treasury: { n: 'Treasury', ic: '🏦', f: .01, d: 'tax revenue' }, defense: { n: 'Defense', ic: '🛡', f: .01, d: 'attack and defence strength' }, interior: { n: 'Interior', ic: '🏛', f: .03, d: 'lower chance that far provinces break away' },
       foreign: { n: 'Foreign Affairs', ic: '🤝', f: .03, d: 'less aggression from your attacks', route: .05 }, science: { n: 'Science', ic: '🔬', f: .015, d: 'cheaper research' } } },
-    lvl: { max: 5, floor: 5e8, inc: 150, grow: 1.8, list: {
+    lvl: { max: 5, floor: 1e9, grow: 5, list: {
       store: { n: 'Warehouses and strategic reserve', ic: '📦', depot: .3, protect: .08, imp: .05 }, refine: { n: 'Refineries and processing', ic: '⚗', oil: 150, yield: .7, food: 2000, pop: .0002, share: .02 },
       civil: { n: 'Civil defence', ic: '🚨', f: .06 }, ci: { n: 'Counter-intelligence bureau', ic: '🕵', succ: .03, caught: .2 } } },
-    infra: { floor: 2e9, inc: 600, list: {
+    infra: { ladder: [25e9, 1e11, 4e11, 16e11], list: {
       grid: { n: 'National power grid', ic: '⚡', h: 4, steel: 3000, goods: 1500, f: .06, d: 'Production of every resource +6%.' }, rail: { n: 'Rail network', ic: '🚆', h: 6, steel: 5000, goods: 1000, f: .08, d: 'Army upkeep −8%.' },
       uni: { n: 'Universities', ic: '🎓', h: 8, steel: 1000, goods: 4000, f: .08, d: 'Research costs 8% less.' }, ports: { n: 'Deep-water ports', ic: '⚓', h: 6, steel: 4000, goods: 2000, f: .25, imp: .2, coast: true, d: 'Trade routes pay 25% more and your daily import limit is 20% higher. Needs a coast.' } } },
     route: { max: 3, pay: 1, cap: 4, floor: 25e7, inc: 120 },
     reserve: { capF: .5, cash: 100, upkeep: 1.5, cdMin: 10, callMin: 30 } };
   const upOf = n => (n && n.up) || {}, minL = (n, k) => clamp((upOf(n).min || {})[k] || 0, 0, UPG.min.max), lvlL = (n, k) => clamp((upOf(n).lvl || {})[k] || 0, 0, UPG.lvl.max), hasInfra = (n, k) => !!(upOf(n).infra || {})[k];
-  const upCost = (W, u, grp, k) => { const n = W.A[u], G = UPG[grp], l = grp === 'min' ? minL(n, k) : lvlL(n, k); return Math.round(Math.max(G.floor, taxIncome(W, u) * G.inc) * Math.pow(G.grow, l) / 1e5) * 1e5; };
-  const progCost = (W, u) => Math.round(Math.max(UPG.infra.floor, taxIncome(W, u) * UPG.infra.inc) / 1e6) * 1e6;
+  // Development prices are the same for every nation and climb steeply by level. They do not depend on income, so a small nation gets no discount on levels it keeps for good.
+  const upCost = (W, u, grp, k) => { const n = W.A[u], G = UPG[grp], l = grp === 'min' ? minL(n, k) : lvlL(n, k); return Math.round(G.floor * Math.pow(G.grow, l)); };
+  const progCost = (W, u) => { const U = W.A[u].up || {}, k = Object.keys(U.infra || {}).length + (U.build ? 1 : 0), L = UPG.infra.ladder; return L[Math.min(k, L.length - 1)]; }; // your 1st, 2nd, 3rd and 4th program each cost more
   const cdF = d => 1 - UPG.lvl.list.civil.f * lvlL(d, 'civil'); // civil defence: how much of the usual damage from bombs, missiles and nukes still lands
   const storeKeep = d => 1 - UPG.lvl.list.store.protect * lvlL(d, 'store'); // strategic reserve: the share of a stockpile that bombing, sabotage and raids can still reach
   const reserveCap = n => Math.floor(troopCap(n) * UPG.reserve.capF);
