@@ -858,14 +858,22 @@ body.warroom{overflow:hidden}body.warroom #mod{z-index:58}
 .czhead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
 .czt{font-family:Cinzel,Georgia,serif;letter-spacing:.04em;font-weight:700}
 .czstat{display:flex;gap:28px;margin:0}
-.czlive{display:grid;grid-template-columns:1.1fr 1.2fr 1.2fr;gap:10px;margin:0 0 12px}
+.czlive{margin:0 0 10px}.czlive.big{display:grid;grid-template-columns:1.1fr 1.2fr 1.2fr;gap:10px;position:relative;padding-bottom:30px}
+.czls{display:grid;grid-template-columns:auto auto minmax(0,1.1fr) minmax(0,1.3fr) auto;gap:6px;align-items:stretch}
+.czlk{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:1px;min-width:0;padding:5px 10px;border:1px solid var(--bd);border-radius:9px;background:var(--s1)}.czlk:hover,.czlk:focus-visible{border-color:var(--bd2);outline:none}.czlk:focus-visible{box-shadow:0 0 0 2px var(--ac)}
+.czlk>span{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--mu);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.czlk>span u{text-decoration:none}@media (max-width:900px){.czlk>span u{display:none}}.czlk>span i{font-style:normal;text-transform:none;letter-spacing:0;font-family:ui-monospace,monospace}
+.czlk>b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}.czlk>b small{font-weight:400;color:var(--mu);font-size:11.5px}.czlk>b em{font-style:normal}
+.czlk.jp{border-color:#6b5320;background:#1b1508}.czlk.jp>b{color:#f3d27a;font-size:15px}.czlk.jp.tb{border-color:#1f5a4a;background:#0a1a15}.czlk.jp.tb>b{color:#7fe0c0}
+.czlm{all:unset;box-sizing:border-box;cursor:pointer;font-size:11.5px;color:var(--mu);padding:0 10px;border:1px solid var(--bd);border-radius:9px;display:flex;align-items:center}.czlm:hover{color:var(--tx)}.czlm:focus-visible{box-shadow:0 0 0 2px var(--ac)}.czlm.full{position:absolute;right:0;bottom:0;height:24px}
+@media (max-width:900px){.czls{grid-template-columns:1fr 1fr}.czlm{grid-column:1/-1;justify-content:center;padding:4px}.czlk.jp>b{font-size:13.5px}}
 .czlc{border:1px solid var(--bd);border-radius:12px;background:var(--s1);padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:4px}.czlc small{color:var(--mu);font-size:11.5px;line-height:1.4}.czlc small b{color:var(--tx)}
+.czjps{display:flex;flex-direction:column;gap:10px;min-width:0}.czjps .czlc{flex:1}.czlc.jp.tb{border-color:#1f5a4a;background:linear-gradient(180deg,#0a2019,#0a1411)}.czlc.jp.tb .czjpv{color:#7fe0c0;text-shadow:0 0 18px rgba(127,224,192,.22)}
 .czll{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mu);font-weight:600}
 .czlc.jp{border-color:#6b5320;background:linear-gradient(180deg,#221a08,#14110a)}.czjpv{font-size:24px;color:#f3d27a;font-variant-numeric:tabular-nums;line-height:1.15;overflow-wrap:anywhere;text-shadow:0 0 18px rgba(243,210,122,.25)}
 .cztp{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.cztp>b{font-size:18px;color:var(--ac)}.cztp span{font-size:12px;color:var(--mu)}.cztp span b{color:var(--tx);font-family:ui-monospace,monospace;font-weight:500}
 .cztl,.czfl{list-style:none;margin:2px 0;padding:0;font-size:12.5px}.cztl li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;padding:2px 0;align-items:baseline}.cztl li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cztl li small{font-size:11px}.cztl li.me span{color:var(--ac);font-weight:600}
 .czfl li{display:flex;flex-direction:column;padding:3px 0;border-bottom:1px solid var(--bd)}.czfl li:last-child{border-bottom:0}.czfl li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media (max-width:900px){.czlive{grid-template-columns:1fr}.czjpv{font-size:21px}}
+@media (max-width:900px){.czlive.big{grid-template-columns:1fr}.czjpv{font-size:21px}}
 .czcele{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,rgba(60,44,8,.72),rgba(4,6,10,.82));cursor:pointer;animation:czcin .25s ease-out both;overflow:hidden}.czcele.out{opacity:0;transition:opacity .3s}
 .czcb{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:20px;animation:czcpop .6s cubic-bezier(.2,1.4,.3,1) both}
 .czct{font-family:Georgia,serif;font-weight:700;font-size:clamp(40px,11vw,92px);letter-spacing:.04em;line-height:1;background:linear-gradient(180deg,#fff3c4,#f0c14b 55%,#a8741a);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 0 #5a3d08) drop-shadow(0 0 26px rgba(240,193,75,.55))}
@@ -4133,6 +4141,7 @@ const slBonusName=B=>B.type==='free'?(B.bombs?'Free spins with bombs':B.cas?'Fre
 function csPlay(body,auto){if(body.g==='slots')body.m=C.CASINO.machines[csMach]?csMach:'classic';if(csBusy)return;if(!auto&&csAuto)csAuto=null;csBusy=true;if(body.a==='deal'||body.g!=='bj')csLastBet[body.g]=body.bet;const g=body.g;const fromRot=csRot;cmd({c:'casino',...body},false).then(r=>{csBusy=false;if(!r||!r.casino){if(auto&&csAuto)csAutoStop('Auto spin stopped');render();return}const R_=r.casino;
  if(g==='roulette'){const i=CZ_ORDER.indexOf(R_.x),th=360/37;csRot=fromRot-1440-((((fromRot+i*th)%360)+360)%360)}
  if(g==='slots'){slRun(R_,r.msg,auto);return}
+ if(R_.jp)setTimeout(()=>{try{czCelebrate({jp:R_.jp,net:R_.jp,tbl:1})}catch(e){}},1300);if(Date.now()-czLiveAt>2500)czLivePull();
  if(g==='bac'){csAnim={g,r:R_};render();setTimeout(()=>{csAnim=null;if(R_.tot)CZTOT=R_.tot;csLast.bac={...R_,msg:r.msg,t:Date.now()};SND.play(R_.net>0?'win':R_.push?'ok':'lose');render()},CZ_RM()?300:(R_.P.length+R_.B.length)*360+650);return}
  if(g==='vp'){if(R_.tot&&R_.done)CZTOT=R_.tot;csLast.vp={...R_,msg:r.msg,t:Date.now()};if(R_.done){SND.play(R_.net>0?'win':R_.mult?'ok':'lose');vpHold=[0,0,0,0,0]}render();return}
  if(g==='craps'){if(!R_.d){render();return}csAnim={g,r:R_};render();const D=czRun('dice',R_);setTimeout(()=>{csAnim=null;if(R_.tot&&(R_.done||R_.a==='field'))CZTOT=R_.tot;csLast.craps={...R_,msg:r.msg,t:Date.now()};if(R_.done||R_.a==='field')SND.play(R_.net>0?'win':R_.push?'ok':'lose');else try{SND.tick()}catch(e){}render()},D);return}
@@ -4143,22 +4152,31 @@ const CZ_BRAND='<div class="czbrand" aria-hidden="true"><svg viewBox="0 0 64 64"
 // all-time record for each table: the house against every player, never reset
 /* live casino: the shared slots jackpot, the weekly slots tournament and a feed of recent big wins (refreshed every few seconds) */
 let CZL=null,czLiveAt=0;
-async function czLivePull(){czLiveAt=Date.now();try{const was=CZL&&CZL.jp.pot;CZL=await WP.api('GET','/api/casino/live');const el=$('czlive');if(el&&page==='casino'){el.innerHTML=czLiveInner();if(was&&CZL.jp.pot>was&&!CZ_RM())czCount($('czjpv'),was,CZL.jp.pot,900,money)}}catch(e){}}
+async function czLivePull(){czLiveAt=Date.now();try{const was=CZL&&CZL.jp.pot,was2=CZL&&CZL.jp2&&CZL.jp2.pot;CZL=await WP.api('GET','/api/casino/live');const el=$('czlive');if(el&&page==='casino'){el.innerHTML=czLiveInner();if(was&&CZL.jp.pot>was&&!CZ_RM())czCount($('czjpv'),was,CZL.jp.pot,900,money);if(was2&&CZL.jp2&&CZL.jp2.pot>was2&&!CZ_RM())czCount($('czjpv2'),was2,CZL.jp2.pot,900,money)}}catch(e){}}
 setInterval(()=>{if(page==='casino'&&document.visibilityState==='visible'&&Date.now()-czLiveAt>7e3)czLivePull()},3500);
 function czCount(el,a,b,ms,f){if(!el)return;const t0=performance.now();const st=t=>{const k=Math.min(1,(t-t0)/ms),e=1-Math.pow(1-k,3);if(!el.isConnected)return;el.textContent=f(a+(b-a)*e);if(k<1)requestAnimationFrame(st)};requestAnimationFrame(st)}
 const czMachOf=f=>{if(f.g!=='slots')return CZ_GN[f.g]||f.g;const d=String(f.d||''),M=Object.values(C.CASINO.machines).find(m=>d.startsWith(m.n));return M?M.n:'Lucky Sevens'};
-function czLiveInner(){const L=CZL;if(!L)return'<p class="mu" style="margin:0;font-size:13px">Loading the jackpot…</p>';const T=L.tour,J=L.jp;
+let czLiveBig=false;
+function czLiveInner(){const L=CZL;if(L&&!czLiveBig){const T=L.tour,J=L.jp,J2=L.jp2||{pot:0},t1=T.top[0],f=L.feed[0];
+ return`<div class="czls"><button class="czlk jp" data-act="czlivebig" title="Every slot spin adds 1% of its stake. Any spin can win all of it."><span>Slots jackpot</span><b class="num" id="czjpv">${money(J.pot)}</b></button>
+ <button class="czlk jp tb" data-act="czlivebig" title="Every bet on the other games adds 1% of its stake. Any bet can win all of it."><span>Tables jackpot</span><b class="num" id="czjpv2">${money(J2.pot)}</b></button>
+ <button class="czlk" data-act="czlivebig" title="Best single slot win multiplier of the week. Top three share the pool."><span>Tournament · <i data-until="${T.ends}">${fmtT(Math.max(0,T.ends-Date.now()))}</i><u> left</u></span><b class="num">${moneyS(T.pool)} <small>${t1?`1st ${esc(t1.name)} ${t1.x}×`:'no entries yet'}</small></b></button>
+ <button class="czlk" data-act="czlivebig" title="Recent wins of 5× or more by any nation."><span>Big wins</span><b>${f?`${esc(f.name)} <em class="gn num">+${moneyS(f.net)}</em> <small>${esc(czMachOf(f))} · ${ago(f.t)}</small>`:'<small>None yet</small>'}</b></button>
+ <button class="czlm" data-act="czlivebig" aria-expanded="false">Details</button></div>`}
+ return czLiveFull()+(L?'<button class="czlm full" data-act="czlivebig" aria-expanded="true">Hide details</button>':'')}
+function czLiveFull(){const L=CZL;if(!L)return'<p class="mu" style="margin:0;font-size:13px">Loading the jackpot…</p>';const T=L.tour,J=L.jp,J2=L.jp2||{pot:0};
  const top=T.top.slice(0,5).map((r,i)=>`<li${r.me?' class="me"':''}><span>${i+1}. ${esc(r.name)}</span><small>${esc(r.m)}</small><b class="num">${r.x}×</b></li>`).join('');
  const feed=L.feed.slice(0,5).map(f=>`<li><span><b>${esc(f.name)}</b> won <b class="gn num">${moneyS(f.net)}</b></span><small>${f.jp?'Jackpot on ':''}${esc(czMachOf(f))}${f.jp?'':` · ${f.x}×`} · ${ago(f.t)}</small></li>`).join('');
  const lw=T.last&&T.last.winners&&T.last.winners[0];
- return`<div class="czlc jp"><span class="czll">Slots jackpot</span><b class="num czjpv" id="czjpv">${money(J.pot)}</b><small>Every slot spin adds 1% of its stake. Any spin on any machine can win all of it, and bigger stakes have a better chance.${J.last?` Last won by <b>${esc(J.last.name)}</b>: ${moneyS(J.last.amt)}, ${ago(J.last.t)}.`:''}</small></div>
+ return`<div class="czjps"><div class="czlc jp"><span class="czll">Slots jackpot</span><b class="num czjpv" id="czjpv">${money(J.pot)}</b><small>Every slot spin adds 1% of its stake. Any spin on any machine can win all of it, and bigger stakes have a better chance.${J.last?` Last won by <b>${esc(J.last.name)}</b>: ${moneyS(J.last.amt)}, ${ago(J.last.t)}.`:''}</small></div>
+ <div class="czlc jp tb"><span class="czll">Tables jackpot</span><b class="num czjpv" id="czjpv2">${money(J2.pot)}</b><small>Every bet on blackjack, roulette, baccarat, craps, dice, video poker and crash adds 1% of its stake. Any bet can win all of it, and bigger stakes have a better chance.${J2.last?` Last won by <b>${esc(J2.last.name)}</b>: ${moneyS(J2.last.amt)}, ${ago(J2.last.t)}.`:''}</small></div></div>
  <div class="czlc"><span class="czll">Weekly slots tournament</span><div class="cztp"><b class="num">${moneyS(T.pool)}</b><span>prize pool · ends in <b data-until="${T.ends}">${fmtT(Math.max(0,T.ends-Date.now()))}</b></span></div>${top?`<ol class="cztl">${top}</ol>`:'<p class="mu" style="margin:6px 0 0;font-size:12.5px">No entries yet this week. Be the first.</p>'}<small>Best single win multiplier on a stake of ${moneyS(T.minBet)} or more. Top three share the pool ${T.split.map(x=>Math.round(x*100)+'%').join(' / ')}.${T.mine?` Your best: <b>${T.mine}×</b>.`:''}${lw?` Last week: ${esc(lw.name)}, ${lw.x}×.`:''}</small></div>
  <div class="czlc"><span class="czll">Big wins</span>${feed?`<ul class="czfl">${feed}</ul>`:'<p class="mu" style="margin:6px 0 0;font-size:12.5px">No big wins yet. Wins of 5× or more appear here.</p>'}</div>`}
 /* big-win celebration: a banner, a counting total and a shower of coins for wins of 20x or more, and for the jackpot */
 function czCelebrate(R_){const x=R_.mult||0,jp=R_.jp||0;if(!jp&&x<20)return;if(page!=='casino')return;const tier=jp?'JACKPOT':x>=100?'EPIC WIN':x>=50?'MEGA WIN':'BIG WIN',amt=Math.max(0,R_.net||0),rm=CZ_RM();
  document.querySelectorAll('.czcele').forEach(e=>e.remove());const d=document.createElement('div');d.className='czcele'+(jp?' jp':x>=100?' t3':x>=50?' t2':'');d.setAttribute('role','status');
  const coins=rm?'':Array.from({length:jp?70:x>=50?54:36},(_,i)=>`<i style="left:${(Math.random()*100).toFixed(1)}%;animation-delay:${(Math.random()*1.6).toFixed(2)}s;animation-duration:${(1.6+Math.random()*1.5).toFixed(2)}s;--s:${(.7+Math.random()*.8).toFixed(2)}">$</i>`).join('');
- d.innerHTML=`<div class="czcoins" aria-hidden="true">${coins}</div><div class="czcb"><span class="czct">${tier}</span><b class="num czca">${moneyS(rm?amt:0)}</b><small>${jp?'You won the shared slots jackpot':`${x}× your stake`}</small></div>`;
+ d.innerHTML=`<div class="czcoins" aria-hidden="true">${coins}</div><div class="czcb"><span class="czct">${tier}</span><b class="num czca">${moneyS(rm?amt:0)}</b><small>${jp?(R_.tbl?'You won the shared tables jackpot':'You won the shared slots jackpot'):`${x}× your stake`}</small></div>`;
  document.body.appendChild(d);if(!rm)czCount(d.querySelector('.czca'),0,amt,jp?2600:1700,v=>'+'+moneyS(v));else d.querySelector('.czca').textContent='+'+moneyS(amt);
  SND.play('promo');if(!rm)for(let i=0;i<(jp?14:8);i++)setTimeout(()=>SND.play('coin'),350+i*170);
  const kill=()=>{d.classList.add('out');setTimeout(()=>d.remove(),350)};d.onclick=kill;setTimeout(kill,jp?6500:4200)}
@@ -4314,7 +4332,7 @@ function crashDraw(){if(!CRT)return;const m=crashM(),el=document.getElementById(
  if(el)el.textContent=m.toFixed(2)+'×';if(bt&&!CRT.cashing)bt.textContent=`Cash out · $${czShort(Math.floor(CRT.bet*m))}`;
  if(pa){const T=Math.max(8,(Date.now()-CRT.t0)/1000),Y=Math.max(2,m*1.15),k=C.CASINO.crash.k,N=40,te=(Date.now()-CRT.t0)/1000;let d='';for(let i=0;i<=N;i++){const t=te*i/N,y=Math.exp(k*t);d+=(i?'L':'M')+(20+560*t/T).toFixed(1)+' '+(250-230*(y-1)/(Y-1)).toFixed(1)}pa.setAttribute('d',d);if(rk){rk.setAttribute('x',(20+560*te/T).toFixed(1));rk.setAttribute('y',(250-230*(m-1)/(Y-1)-6).toFixed(1))}}
  CRT.raf=requestAnimationFrame(crashDraw)}
-function crashEnd(res){if(!CRT)return;cancelAnimationFrame(CRT.raf);clearInterval(CRT.poll);CRT=null;const R_=res.casino||{};if(res.me&&WP.applyOwn)WP.applyOwn(res.me);if(R_.tot)CZTOT=R_.tot;if(!R_.none)csLast.crash={...R_,msg:res.msg,t:Date.now()};SND.play(R_.win?'win':'lose');render()}
+function crashEnd(res){if(!CRT)return;cancelAnimationFrame(CRT.raf);clearInterval(CRT.poll);CRT=null;const R_=res.casino||{};if(R_.jp)setTimeout(()=>{try{czCelebrate({jp:R_.jp,net:R_.jp,tbl:1})}catch(e){}},600);if(res.me&&WP.applyOwn)WP.applyOwn(res.me);if(R_.tot)CZTOT=R_.tot;if(!R_.none)csLast.crash={...R_,msg:res.msg,t:Date.now()};SND.play(R_.win?'win':'lose');render()}
 async function crashPeek(a){if(!CRT||CRT.asking)return;CRT.asking=true;try{const r=await WP.api('POST','/api/casino/crash',{a});if(!CRT)return;CRT.asking=false;const R_=r.casino||{};if(R_.alive){if(R_.m>=1){const t0=Date.now()-Math.log(R_.m)/C.CASINO.crash.k*1000;if(Math.abs(t0-CRT.t0)>250)CRT.t0=t0}CRT.cashing=false;return}crashEnd(r)}catch(e){if(CRT){CRT.asking=false;CRT.cashing=false}}}
 function crashRun(t0,bet,auto){CRT={t0,bet,auto:auto||0};CRT.poll=setInterval(()=>crashPeek('peek'),500);CRT.raf=requestAnimationFrame(crashDraw)}
 function crashStart(){if(CRT||csBusy)return;const av=parseFloat(String(crsAuto).replace(/[^\d.]/g,''));const auto=av>=1.01?Math.min(C.CASINO.crash.max,av):0;csBusy=true;const bet=csBetNow();csLastBet.crash=bet;cmd({c:'casino',g:'crash',a:'start',bet,auto},false).then(r=>{csBusy=false;if(!r||!r.casino){render();return}delete csLast.crash;crashRun(Date.now(),bet,auto);render()}).catch(()=>{csBusy=false;render()})}
@@ -4414,7 +4432,7 @@ function pCasino(){if(!CZL&&Date.now()-czLiveAt>3e3)czLivePull();const n=me,mx=C
  const hist=(cs.hist||[]).map(h=>`<div><time>${ago(h.t)}</time><span>${CZ_GN[h.g]||h.g}<i class="mu"> ${esc(h.d||'')}</i></span><span class="num">${moneyS(h.bet)}${h.nz&&h.nz.length?` <small class="czbn">${h.nz.map(z=>czfLink(z,h.g)).join(' ')}</small>`:''}</span><b class="num ${h.net>0?'gn':h.net<0?'rd':''}">${h.net>0?'+':''}${moneyS(h.net)}</b></div>`).join('');
  return`<div class="czhead"><div><h1 class="pg czt">World Casino</h1><p class="pgsub">Stakes come from your nation's treasury. The house keeps a small edge.</p></div>
  <dl class="czstat"><div><dt>Treasury</dt><dd class="num ${n.cash<0?'rd':''}">${moneyS(n.cash)}</dd></div><div><dt>Table limit</dt><dd class="num">${moneyS(mx)}</dd></div><div><dt>Your results</dt><dd class="num ${cs.net>0?'gn':cs.net<0?'rd':''}">${cs.net>0?'+':''}${moneyS(cs.net||0)}</dd></div></dl></div>
- ${czFull?'':`<div class="czlive" id="czlive">${czLiveInner()}</div>`}
+ ${czFull?'':`<div class="czlive${czLiveBig?' big':''}" id="czlive">${czLiveInner()}</div>`}
  <div class="czstage${czFull?' czfull':''}">
  <div class="czbar"><div class="czseg" role="tablist">${tabs}</div><div class="czbarr">${czFull?`<span class="czfcash">Treasury <b class="num">${moneyS(n.cash)}</b></span>`:''}<button class="czfs" data-act="czfull" title="${czFull?'Exit full screen (Esc)':'Full screen'}" aria-label="${czFull?'Exit full screen':'Full screen'}">${I(czFull?'unfull':'full')}</button></div></div>
  ${game}
@@ -4838,6 +4856,7 @@ case'lwskip':{const b=lwBattle;lwBattle=null;closeModal();if(b)battleReport(b);b
  case'budget':{const b2=budgetDraft||me.budget;const r=await cmd({c:'budget',b:b2});if(r){budgetDraft=null}break}
  case'budgetreset':budgetDraft={...DEFBUDGET};render();break;
  case'finrange':finRange=a;render();break;
+ case'czlivebig':{czLiveBig=!czLiveBig;const el=$('czlive');if(el){el.className='czlive'+(czLiveBig?' big':'');el.innerHTML=czLiveInner()}break}
  case'bonds':cmd({c:'bonds',amt:+$('bondAmt').value});break;
  case'repay':cmd({c:'bonds',amt:+$('bondAmt').value||me.debt,repay:true});break;
  case'mggiveup':mgGiveUp();break;

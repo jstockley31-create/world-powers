@@ -630,7 +630,7 @@ function fairSample() { try { const W = mkWorld(); if (!core.fairOn(W)) return; 
 // note when each nation joined its current bloc (from this update on), so bloc-mates kept for a day count as alliances in the fair score
 function blocSince() { try { const now = Date.now(); for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue; const id = k.slice(8); if (!n.bloc) { if (n.blocT) { delete n.blocT; delete n.blocId; } continue; } if (n.blocId !== n.bloc) { n.blocId = n.bloc; n.blocT = now; try { sendNation(id); } catch (e) {} } } } catch (e) { logErr('Bloc tracking failed: ' + e.message); } }
 setInterval(() => { blocSince(); fairSample(); }, 10 * 60e3).unref(); setTimeout(() => { blocSince(); fairSample(); }, 20e3).unref();
-const mkWorld = () => { const W = core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council, S.blocs, S.crisis, extW()); if (S.casino) { W.czJ = S.casino.jp; W.czT = S.casino.tour; } return W; };
+const mkWorld = () => { const W = core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council, S.blocs, S.crisis, extW()); if (S.casino) { W.czJ = S.casino.jp; W.czT = S.casino.tour; W.czJ2 = S.casino.jp2; } return W; };
 // how long a nuclear missile takes to reach its target on everyone's globe (the client uses the same formula), plus the camera's lead-in
 function nukeFlightMs(fx) { const a = core.P[fx.from], b = core.P[fx.h]; if (!a || !b) return 4000; const r = Math.PI / 180, s2 = Math.sin((b.c[1] - a.c[1]) * r / 2) ** 2 + Math.cos(a.c[1] * r) * Math.cos(b.c[1] * r) * Math.sin((b.c[0] - a.c[0]) * r / 2) ** 2, d = 2 * Math.asin(Math.min(1, Math.sqrt(s2))); return Math.round(Math.max(26000, Math.min(48000, 26000 + d * 9000)) + 1500); }
 function commit(W) {
@@ -1758,7 +1758,7 @@ function seasonFinishFresh(W, by) {
 S.casino = S.casino || { tot: {}, days: {}, recent: [], big: [] };
 // slots extras: a shared jackpot, a weekly tournament (Monday to Monday, UTC) and per-machine results for the admin page
 const czWeek = t => Math.floor(((t || Date.now()) / 864e5 + 3) / 7), czWeekEnd = wk => ((wk + 1) * 7 - 3) * 864e5;
-S.casino.jp = S.casino.jp || { pot: core.CASINO.jp.seed }; S.casino.mach = S.casino.mach || {};
+S.casino.jp = S.casino.jp || { pot: core.CASINO.jp.seed }; S.casino.jp2 = S.casino.jp2 || { pot: core.CASINO.jp.seed }; S.casino.mach = S.casino.mach || {};
 S.casino.tour = S.casino.tour || { wk: czWeek(), pool: core.CASINO.tour.seed, top: {} };
 function czTourRoll() { const T = S.casino.tour, wk = czWeek(); if (T.wk === wk) return;
   const rows = Object.entries(T.top || {}).filter(([u]) => S.docs['nations/' + u] && !S.docs['nations/' + u].ai).sort((a, b) => b[1].x - a[1].x || a[1].t - b[1].t).slice(0, 3), winners = [];
@@ -1768,10 +1768,10 @@ function czTourRoll() { const T = S.casino.tour, wk = czWeek(); if (T.wk === wk)
   if (winners.length) try { systemMessage(`🏆 Weekly slots tournament: ${winners.map((w, i) => `${['1st', '2nd', '3rd'][i]} ${w.name} (${w.x}× on ${w.m}, ${WP.moneyS(w.prize)})`).join(' · ')}. A new week has started.`); } catch (e) {}
   T.last = { wk: T.wk, pool: T.pool, winners }; T.wk = wk; T.top = {}; T.pool = core.CASINO.tour.seed + (winners.length ? 0 : Math.max(0, (T.pool || 0) - core.CASINO.tour.seed)); persist(); } // an unclaimed pool rolls over
 setInterval(() => { try { czTourRoll(); } catch (e) { logErr('czTourRoll: ' + e.message); } }, 60e3).unref();
-function czLive(uid) { const C_ = S.casino, T = C_.tour, J = C_.jp;
+function czLive(uid) { const C_ = S.casino, T = C_.tour, J = C_.jp, J2 = C_.jp2;
   const feed = (C_.recent || []).filter(r => r.net > 0 && (r.jp || r.net >= r.bet * 5) && !BOTS.isBot(r.u)).slice(0, 12).map(r => ({ t: r.t, name: r.name, g: r.g, d: r.d, net: r.net, x: Math.round((r.net + r.bet - (r.jp || 0)) / r.bet * 10) / 10, jp: r.jp || 0 }));
   const top = Object.entries(T.top || {}).sort((a, b) => b[1].x - a[1].x || a[1].t - b[1].t).slice(0, 10).map(([u, r]) => ({ name: r.name, x: r.x, m: r.m, amt: r.amt, me: u === uid }));
-  return { jp: { pot: Math.floor(J.pot || 0), last: J.last ? { name: J.last.name, amt: J.last.amt, t: J.last.t, m: J.last.m } : null }, feed, tour: { pool: Math.floor(T.pool || 0), ends: czWeekEnd(T.wk), top, mine: (T.top || {})[uid] ? T.top[uid].x : 0, last: T.last || null, minBet: core.CASINO.tour.minBet, split: core.CASINO.tour.split } }; }
+  return { jp: { pot: Math.floor(J.pot || 0), last: J.last ? { name: J.last.name, amt: J.last.amt, t: J.last.t, m: J.last.m } : null }, jp2: { pot: Math.floor(J2.pot || 0), last: J2.last ? { name: J2.last.name, amt: J2.last.amt, t: J2.last.t, m: J2.last.m } : null }, feed, tour: { pool: Math.floor(T.pool || 0), ends: czWeekEnd(T.wk), top, mine: (T.top || {})[uid] ? T.top[uid].x : 0, last: T.last || null, minBet: core.CASINO.tour.minBet, split: core.CASINO.tour.split } }; }
 // the finite world market (off until the owner switches it on): its stock, foreign supply rate and hourly history
 S.mkt = S.mkt && typeof S.mkt === 'object' ? S.mkt : { on: false };
 function mktView(full) { const M = S.mkt || {}; const v = { on: !!M.on, stock: M.stock || null, ref: M.ref || null, sup: M.sup != null ? M.sup : core.MKT.sup, primed: M.primed || 0 }; if (full) v.hist = (M.hist || []).slice(-72); return v; }

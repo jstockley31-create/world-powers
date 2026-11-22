@@ -2007,7 +2007,12 @@ function Core(PD, CARDS) {
     if (cs.win.length >= CASINO.perMin) fail('The croupier needs a moment. Try again in a few seconds.'); cs.win.push(W.now); return b;
   }
   function casinoSettle(W, u, game, bet, pay, detail, nz, ex) { // pay = total returned to the player (0 = lost the bet)
-    const n = W.A[u], cs = n.casino, net = pay - bet; nz = nz || (W.fairNonce != null ? [W.fairNonce] : null); n.cash += net; cs.played++; cs.wagered += bet; cs.net += net; if (net > cs.best) cs.best = net; (W.casinoEv = W.casinoEv || []).push({ u, g: game, bet, net, d: detail, t: W.now, m: ex && ex.m, jp: (ex && ex.jp) || 0 });
+    const n = W.A[u], cs = n.casino;
+    // the tables jackpot: every game except slots (which has its own) feeds one pot with 1% of each stake; any settled bet can win it, with the same odds as the slots jackpot
+    if (game !== 'slots' && W.czJ2 && !n.ai && bet > 0) { const J = W.czJ2, GN = { bj: 'blackjack', roulette: 'roulette', dice: 'high-low dice', bac: 'baccarat', vp: 'video poker', craps: 'craps', crash: 'crash' }[game] || game; J.pot = Math.max(CASINO.jp.seed, J.pot || 0) + bet * CASINO.jp.feed;
+      if (Math.random() < Math.min(CASINO.jp.maxP, bet / CASINO.jp.per)) { const jp = Math.floor(J.pot); J.pot = CASINO.jp.seed; J.last = { u, name: n.name, amt: jp, t: W.now, m: GN }; J.hits = (J.hits || 0) + 1; J.paid = (J.paid || 0) + jp; pay += jp; detail = `${detail} · JACKPOT`; ex = { ...(ex || {}), jp }; W.czHit = (W.czHit || 0) + jp;
+        news(W, u, `💰 JACKPOT! ${n.name} just won the World Casino tables jackpot of ${moneyS(jp)} at ${GN}.`); note(W, u, 'economy', `💰 JACKPOT! You won the tables jackpot: ${moneyS(jp)} is in your treasury.`); } }
+    const net = pay - bet; nz = nz || (W.fairNonce != null ? [W.fairNonce] : null); n.cash += net; cs.played++; cs.wagered += bet; cs.net += net; if (net > cs.best) cs.best = net; (W.casinoEv = W.casinoEv || []).push({ u, g: game, bet, net, d: detail, t: W.now, m: ex && ex.m, jp: (ex && ex.jp) || 0 });
     cs.hist = [{ t: W.now, g: game, bet, net, d: detail, nz: nz || undefined, fh: W.fairHash ? W.fairHash.slice(0, 16) : undefined }, ...(cs.hist || [])].slice(0, 12);
     if (net >= 5e6 && (game === 'slots' || net >= 2e7)) news(W, u, `🎰 ${n.name} just won ${moneyS(net)} at the World Casino (${({ bj: 'blackjack', roulette: 'roulette', slots: 'slots', dice: 'high-low dice', bac: 'baccarat', vp: 'video poker', craps: 'craps', crash: 'crash' })[game]}).`);
     touch(W, u); return net;
@@ -2017,7 +2022,8 @@ function Core(PD, CARDS) {
     if (J) { J.pot = Math.max(CASINO.jp.seed, J.pot || 0) + bet * CASINO.jp.feed; if (R() < Math.min(CASINO.jp.maxP, bet / CASINO.jp.per)) { jp = Math.floor(J.pot); J.pot = CASINO.jp.seed; J.last = { u, name: n.name, amt: jp, t: W.now, m: M.n }; J.hits = (J.hits || 0) + 1; J.paid = (J.paid || 0) + jp; news(W, u, `💰 JACKPOT! ${n.name} just won the World Casino jackpot of ${moneyS(jp)} on ${M.n}.`); } }
     if (T) { T.top = T.top || {}; T.pool = Math.max(CASINO.tour.seed, T.pool || 0) + bet * CASINO.tour.feed; if (bet >= CASINO.tour.minBet && mult > ((T.top[u] || {}).x || 0)) T.top[u] = { x: mult, amt: Math.floor(bet * mult), m: M.n, t: W.now, name: n.name }; }
     return jp; }
-  function casino(W, u, c, rng) {
+  function casino(W, u, c, rng) { W.czHit = 0; const r = casino0(W, u, c, rng); if (W.czHit && r) { if (r.casino) r.casino.jp = W.czHit; r.msg = `💰 JACKPOT! You won the ${moneyS(W.czHit)} tables jackpot. ${r.msg || ''}`; } W.czHit = 0; return r; }
+  function casino0(W, u, c, rng) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); const R = rng || Math.random, g = String(c.g || '');
     if (n.crash && g !== 'crash') { const r0 = crashResolve(W, u, false); if (r0.alive) fail('Your crash round is still running. Cash out or wait for it to end.'); }
     if (g === 'bj') {
