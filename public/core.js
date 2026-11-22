@@ -481,6 +481,8 @@ function Core(PD, CARDS) {
     for (const [u, n] of caps) if (P[n.cap] && !(best[n.cap] && best[n.cap].cap)) best[n.cap] = { u, ts: 0, cap: true };
     return best;
   }
+  // in a Chaos world the real world's peace laws (world truce, nuclear ban, non-proliferation treaty) are set aside: they come back with the real world
+  const chaosMods = (m, cfg) => { if (cfg && cfg.chaos) { m.truce = false; m.nonukes = false; m.npt = false; } return m; };
   // global modifiers from the active world event and passed council resolutions
   function mods(ev, council, now) {
     const m = { gdp: 1, tax: 1, unemp: 0, infl: 0, rate: 0, price: {}, food: 1, oil: 1, research: 1, upkeep: 1, atkCost: 1, aggrDecay: 1, mobilize: 10, aggrPerAttack: 15, spread: 0, pandemic: 0, apBonus: 0, health: 0, pandemicCut: 1, npt: false, tradeMul: 1, nonukes: false, truce: false };
@@ -510,7 +512,7 @@ function Core(PD, CARDS) {
     DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 36 : 72; HEAVY.orbital.cdH = on ? 24 : 48;
     CAPMOVE.cdH = on ? 24 : 72; CAPMOVE.holdH = on ? 12 : 24; CAPMOVE.weakH = on ? 12 : 24; VASSAL.freeH = on ? 24 : 48; COMEBACK.gapH = on ? 24 : 72; COMEBACK.shieldH = on ? 12 : 24;
     NTEST.cdD = on ? 2 : 7; DISARM.banD = on ? 2 : 7; BRIBE.windowD = on ? 2 : 7; NUKEACC.gapD = on ? 2 : 7; BLOC.inviteH = on ? 24 : 72; ROUTE_D = on ? 2 : 7; };
-  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], MK: (ext && ext.mkt) || null, changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = mods(ev, council, now); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
+  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], MK: (ext && ext.mkt) || null, changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = chaosMods(mods(ev, council, now), cfg); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
   const owner = (W, h) => W.OWN[h] && W.OWN[h].u;
   // a read-only pass (drawing a page) can freeze the world so province lists are worked out once per nation instead of on every call
   let HXC = null; const freeze = W => { HXC = { W, m: new Map() }; }, thaw = () => { HXC = null; };
