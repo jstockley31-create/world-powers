@@ -630,7 +630,7 @@ function fairSample() { try { const W = mkWorld(); if (!core.fairOn(W)) return; 
 // note when each nation joined its current bloc (from this update on), so bloc-mates kept for a day count as alliances in the fair score
 function blocSince() { try { const now = Date.now(); for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue; const id = k.slice(8); if (!n.bloc) { if (n.blocT) { delete n.blocT; delete n.blocId; } continue; } if (n.blocId !== n.bloc) { n.blocId = n.bloc; n.blocT = now; try { sendNation(id); } catch (e) {} } } } catch (e) { logErr('Bloc tracking failed: ' + e.message); } }
 setInterval(() => { blocSince(); fairSample(); }, 10 * 60e3).unref(); setTimeout(() => { blocSince(); fairSample(); }, 20e3).unref();
-const mkWorld = () => core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council, S.blocs, S.crisis, extW());
+const mkWorld = () => { const W = core.world(nationsMap(), effCfg(), Date.now(), S.event, S.council, S.blocs, S.crisis, extW()); if (S.casino) { W.czJ = S.casino.jp; W.czT = S.casino.tour; } return W; };
 // how long a nuclear missile takes to reach its target on everyone's globe (the client uses the same formula), plus the camera's lead-in
 function nukeFlightMs(fx) { const a = core.P[fx.from], b = core.P[fx.h]; if (!a || !b) return 4000; const r = Math.PI / 180, s2 = Math.sin((b.c[1] - a.c[1]) * r / 2) ** 2 + Math.cos(a.c[1] * r) * Math.cos(b.c[1] * r) * Math.sin((b.c[0] - a.c[0]) * r / 2) ** 2, d = 2 * Math.asin(Math.min(1, Math.sqrt(s2))); return Math.round(Math.max(26000, Math.min(48000, 26000 + d * 9000)) + 1500); }
 function commit(W) {
@@ -1205,30 +1205,56 @@ const pkCard = c => c ? { v: c.v === 14 ? 1 : c.v, s: c.s } : null;
 function pkView(t, uid) {
   const H = t.hand, now = Date.now(), done = H && H.done;
   const seats = t.seats.map((s, i) => { if (!s) return null; const n = S.docs['nations/' + s.u] || {}, P = H && H.p[i] && H.p[i].u === s.u ? H.p[i] : null;
-    const show = P && (s.u === uid || (done && done.shown[i])); return { u: s.u, name: n.name || (S.users[s.u] ? 'New leader' : '?'), color: n.color || '#888', stack: s.stack, sitOut: !!s.sitOut, leaving: !!s.leaving,
+    const show = P && (s.u === uid || (done && done.shown[i])); return { u: s.u, bot: !!s.bot, name: s.bot ? s.name : n.name || (S.users[s.u] ? 'New leader' : '?'), color: s.bot ? '#6b7a8c' : n.color || '#888', stack: s.stack, sitOut: !!s.sitOut, leaving: !!s.leaving,
       inHand: !!P, folded: !!(P && P.folded), allin: !!(P && P.allin), bet: P && !done ? P.bet : 0, cards: P ? (show ? P.hole.map(pkCard) : P.folded ? [] : [null, null]) : [], won: done ? done.won[i] || 0 : 0, hand: done ? done.names[i] || null : null, last: H && !done ? (H.log.filter(x => x[0] === i).slice(-1)[0] || null) : null }; });
   const me = t.seats.findIndex(s => s && s.u === uid), L = me >= 0 ? PK.legal(t, me) : null;
   return { id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, btn: t.btn, seats, me, board: H ? H.board.map(pkCard) : [], pot: H ? PK.potTotal(H) : 0, street: H ? (done ? 'done' : H.street) : null, toAct: H && !done ? H.toAct : -1, deadline: H && !done ? H.deadline : 0, now,
-    legal: L, no: H ? H.no : t.handNo, result: done ? { pot: done.pot, rake: done.rake, ranOut: !!H.ranOut } : null, next: !H || done ? t.next : 0, hist: t.hist.slice(0, 8).map(h => ({ ...h, board: h.board.map(pkCard), win: h.win.map(w => ({ ...w, name: (S.docs['nations/' + w.u] || {}).name || '?' })), shown: Object.fromEntries(Object.entries(h.shown).map(([u, c]) => [(S.docs['nations/' + u] || {}).name || '?', c.map(pkCard)])) })) };
+    legal: L, no: H ? H.no : t.handNo, result: done ? { pot: done.pot, rake: done.rake, ranOut: !!H.ranOut } : null, next: !H || done ? t.next : 0, hist: t.hist.slice(0, 8).map(h => ({ ...h, board: h.board.map(pkCard), win: h.win.map(w => ({ ...w, name: pkName(w.u) })), shown: Object.fromEntries(Object.entries(h.shown).map(([u, c]) => [pkName(u), c.map(pkCard)])) })) };
 }
 function pkLobby(uid) { const mine = pkSeatOf(uid); return { tables: Object.values(S.poker.tables).map(t => ({ id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, seated: t.seats.filter(Boolean).length, seats: PK.SEATS, playing: t.hand && !t.hand.done ? Object.keys(t.hand.p).length : 0, pot: t.hand && !t.hand.done ? PK.potTotal(t.hand) : 0 })), mine: mine ? mine.t.id : null, stats: S.poker.stats[uid] || { hands: 0, won: 0, net: 0 } }; }
+const pkName = u => String(u).startsWith('house:') ? PK_HOUSE[+String(u).split(':')[2] % PK_HOUSE.length] + ' (house)' : (S.docs['nations/' + u] || {}).name || '?';
+// house players: computer opponents that fill empty seats, so one player at a table always has a game. They play with the house's chips:
+// what they win is gone, what they lose is paid by the house. They leave when no player is seated.
+const PK_HOUSE = ['The Ambassador', 'The Banker', 'The General', 'The Envoy', 'The Admiral', 'The Senator'];
+function pkHouse(t, now) { let ch = false; const idle = !t.hand || t.hand.done, bots = t.seats.filter(s => s && s.bot).length, humans = t.seats.filter(s => s && !s.bot && !s.leaving && !s.sitOut).length;
+  if (idle) {
+    if (!humans && bots) { for (let i = 0; i < t.seats.length; i++) if (t.seats[i] && t.seats[i].bot) { t.seats[i] = null; ch = true; } }
+    else if (humans && humans + bots < 3) { const i = t.seats.findIndex(s => !s); if (i >= 0) { t.seats[i] = { u: 'house:' + t.id + ':' + i, bot: true, name: PK_HOUSE[i % PK_HOUSE.length] + ' (house)', stack: Math.min(t.max, t.min * 3), sitOut: false, missed: 0, joined: now }; ch = true; if (now >= t.next - 500) t.next = now + 2500; } }
+    for (const s of t.seats) if (s && s.bot) { if (s.stack < t.bb * 15) { s.stack = Math.min(t.max, t.min * 3); ch = true; } s.sitOut = false; s.missed = 0; } }
+  const H = t.hand; if (H && !H.done && H.toAct >= 0 && t.seats[H.toAct] && t.seats[H.toAct].bot) { const i = H.toAct, key = i + ':' + H.log.length + ':' + H.street;
+    if (H.botK !== key) { H.botK = key; H.botAt = now + 1200 + Math.random() * 2200; }
+    else if (now >= H.botAt) { try { pkBotAct(t, i, now); } catch (e) { try { PK.act(t, i, 'fold', 0, now); } catch (x) {} } ch = true; } }
+  return ch; }
+function pkBotAct(t, i, now) { const H = t.hand, L = PK.legal(t, i), P = H.p[i], s = t.seats[i], r = Math.random(); if (!L) return;
+  const a = P.hole[0], b = P.hole[1], hi = Math.max(a.v, b.v), lo = Math.min(a.v, b.v); let st;
+  if (H.board.length < 3) st = a.v === b.v ? .55 + hi / 14 * .45 : (hi + lo) / 28 * .55 + (a.s === b.s ? .08 : 0) + (hi - lo <= 2 ? .06 : 0) + (hi >= 13 ? .12 : 0);
+  else { const rk = PK.best([...P.hole, ...H.board]), cat = rk[0], bd = PK.best(H.board.length >= 5 ? H.board : [...H.board, { v: 0, s: 'x' }, { v: -1, s: 'y' }].slice(0, 5))[0];
+    st = [.12, .42, .68, .8, .88, .92, .96, .99, 1][cat] || .1; if (cat === bd) st -= .25; /* the board itself makes that hand: no real strength */ if (cat === 1 && hi >= 12) st += .08; if (cat === 0 && hi >= 13) st += .1; }
+  const odds = L.toCall / Math.max(1, L.pot + L.toCall), raiseTo = f => Math.max(L.minTo, Math.min(L.maxTo, Math.floor((L.curBet + Math.max(t.bb, L.pot * f)) / t.sb) * t.sb));
+  if (L.check) { if (L.canRaise && ((st > .7 && r < .75) || (st > .45 && r < .3) || r < .06)) return PK.act(t, i, 'raise', raiseTo(st > .7 ? .6 : .4), now); return PK.act(t, i, 'check', 0, now); }
+  if (st > .86 && L.canRaise && r < .6) return PK.act(t, i, 'raise', raiseTo(.8), now);
+  if (L.toCall > s.stack * .5 && st < .8) return PK.act(t, i, 'fold', 0, now);
+  if (st > odds + .14 || (L.toCall <= t.bb && st > .22) || (r < .04 && L.toCall <= L.pot * .5)) return PK.act(t, i, 'call', 0, now);
+  return PK.act(t, i, 'fold', 0, now); }
 const pkTimers = {};
 function pkPush(t) { if (pkTimers[t.id]) return; pkTimers[t.id] = setTimeout(() => { delete pkTimers[t.id]; const now = Date.now(), to = new Set(t.seats.filter(Boolean).map(s => s.u)); for (const [u, w] of PK_WATCH) if (w.t === t.id && now - w.at < 90e3) to.add(u); for (const u of to) sendTo(u, 'poker', { t: t.id, v: pkView(t, u) }); }, 40); }
 // chips go back to the nation's treasury
-function pkCashOut(t, i, why) { const s = t.seats[i]; if (!s) return 0; const amt = s.stack; s.stack = 0; const n = S.docs['nations/' + s.u]; if (n && amt > 0) { core.finSync(null, n); n.cash = (n.cash || 0) + amt; core.finSync(null, n, 'casino'); setDoc('nations', s.u, n); } if (why) addNote(s.u, 'diplo', `🃏 ${why}: ${WP.moneyS(amt)} from your chips went back to your treasury.`); return amt; }
+function pkCashOut(t, i, why) { const s = t.seats[i]; if (!s) return 0; const amt = s.stack; s.stack = 0; const n = S.docs['nations/' + s.u]; if (n && amt > 0) { core.finSync(null, n); n.cash = (n.cash || 0) + amt; core.finSync(null, n, 'casino'); setDoc('nations', s.u, n); } if (why && !s.bot) addNote(s.u, 'diplo', `🃏 ${why}: ${WP.moneyS(amt)} from your chips went back to your treasury.`); return amt; }
 function pkStand(t, i, why) { const s = t.seats[i]; if (!s) return; const H = t.hand, live = H && !H.done && H.p[i] && !H.p[i].folded;
   if (live && !H.p[i].allin) PK.foldOut(t, i, Date.now());
   pkCashOut(t, i, why); if (H && !H.done && H.p[i] && !H.p[i].folded) s.leaving = true; else t.seats[i] = null; }
 function pkStandUser(uid, why) { const m = pkSeatOf(uid); if (m) { pkStand(m.t, m.i, why); pkPush(m.t); persist(); } }
 // before the world is switched or rewound, every chip goes home and every hand stops
 function pkCashAll(why) { for (const t of Object.values(S.poker.tables)) { const H = t.hand; if (H && !H.done) for (const [i, P] of Object.entries(H.p)) { const s = t.seats[i]; if (s) s.stack += P.total; } t.hand = null; for (let i = 0; i < t.seats.length; i++) if (t.seats[i]) { pkCashOut(t, i, why); t.seats[i] = null; } pkPush(t); } persist(); }
-function pkStats(H) { if (!H || !H.done || H.counted) return; H.counted = true; S.poker.hands++; S.poker.rake += H.done.rake || 0; for (const [u, net] of Object.entries(H.done.net)) { const st = S.poker.stats[u] = S.poker.stats[u] || { hands: 0, won: 0, net: 0 }; st.hands++; if (net > 0) st.won++; st.net += net; } }
+function pkStats(H) { if (!H || !H.done || H.counted) return; H.counted = true; S.poker.hands++; S.poker.rake += H.done.rake || 0; for (const [u, net] of Object.entries(H.done.net)) { if (String(u).startsWith('house:')) continue; const st = S.poker.stats[u] = S.poker.stats[u] || { hands: 0, won: 0, net: 0 }; st.hands++; if (net > 0) st.won++; st.net += net; } }
 setInterval(() => { const now = Date.now();
   for (const t of Object.values(S.poker.tables)) { let ch = false;
-    try { ch = PK.tick(t, now); } catch (e) { logErr('poker tick: ' + e.message); }
+    try { if (pkHouse(t, now)) ch = true; } catch (e) { logErr('poker house: ' + e.message); }
+    try { if (PK.tick(t, now)) ch = true; } catch (e) { logErr('poker tick: ' + e.message); }
     if (t.hand && t.hand.done && !t.hand.counted) { pkStats(t.hand); ch = true; }
     if (!t.hand || t.hand.done) for (let i = 0; i < t.seats.length; i++) { const s = t.seats[i]; if (!s) continue;
       if (s.leaving) { pkCashOut(t, i, null); t.seats[i] = null; ch = true; continue; }
+      if (s.bot) continue;
       if (!S.docs['nations/' + s.u]) { t.seats[i] = null; ch = true; continue; }
       if (s.sitOut) { s.outSince = s.outSince || now; if (now - s.outSince > 10 * 60e3) { pkCashOut(t, i, `You were away from ${t.name} for 10 minutes and were stood up`); t.seats[i] = null; ch = true; } } else s.outSince = 0; }
     if (ch) { pkPush(t); persist(); } }
@@ -1730,6 +1756,22 @@ function seasonFinishFresh(W, by) {
 
 // casino bookkeeping for the admin page: totals by game and by day, biggest wins, recent plays
 S.casino = S.casino || { tot: {}, days: {}, recent: [], big: [] };
+// slots extras: a shared jackpot, a weekly tournament (Monday to Monday, UTC) and per-machine results for the admin page
+const czWeek = t => Math.floor(((t || Date.now()) / 864e5 + 3) / 7), czWeekEnd = wk => ((wk + 1) * 7 - 3) * 864e5;
+S.casino.jp = S.casino.jp || { pot: core.CASINO.jp.seed }; S.casino.mach = S.casino.mach || {};
+S.casino.tour = S.casino.tour || { wk: czWeek(), pool: core.CASINO.tour.seed, top: {} };
+function czTourRoll() { const T = S.casino.tour, wk = czWeek(); if (T.wk === wk) return;
+  const rows = Object.entries(T.top || {}).filter(([u]) => S.docs['nations/' + u] && !S.docs['nations/' + u].ai).sort((a, b) => b[1].x - a[1].x || a[1].t - b[1].t).slice(0, 3), winners = [];
+  rows.forEach(([u, r], i) => { const n = S.docs['nations/' + u], prize = Math.floor((T.pool || 0) * core.CASINO.tour.split[i]); core.finSync(null, n); n.cash = (n.cash || 0) + prize; core.finSync(null, n, 'rewards');
+    (n.log = n.log || []).unshift({ t: Date.now(), x: `Weekly slots tournament: place ${i + 1} with a ${r.x}× win on ${r.m}. Prize ${WP.moneyS(prize)}.` }); n.log = n.log.slice(0, 60); setDoc('nations', u, n);
+    addNote(u, 'economy', `🏆 You finished ${['1st', '2nd', '3rd'][i]} in the weekly slots tournament with a ${r.x}× win on ${r.m}. Prize: ${WP.moneyS(prize)}.`); winners.push({ name: n.name, x: r.x, m: r.m, prize }); });
+  if (winners.length) try { systemMessage(`🏆 Weekly slots tournament: ${winners.map((w, i) => `${['1st', '2nd', '3rd'][i]} ${w.name} (${w.x}× on ${w.m}, ${WP.moneyS(w.prize)})`).join(' · ')}. A new week has started.`); } catch (e) {}
+  T.last = { wk: T.wk, pool: T.pool, winners }; T.wk = wk; T.top = {}; T.pool = core.CASINO.tour.seed + (winners.length ? 0 : Math.max(0, (T.pool || 0) - core.CASINO.tour.seed)); persist(); } // an unclaimed pool rolls over
+setInterval(() => { try { czTourRoll(); } catch (e) { logErr('czTourRoll: ' + e.message); } }, 60e3).unref();
+function czLive(uid) { const C_ = S.casino, T = C_.tour, J = C_.jp;
+  const feed = (C_.recent || []).filter(r => r.net > 0 && (r.jp || r.net >= r.bet * 5) && !BOTS.isBot(r.u)).slice(0, 12).map(r => ({ t: r.t, name: r.name, g: r.g, d: r.d, net: r.net, x: Math.round((r.net + r.bet - (r.jp || 0)) / r.bet * 10) / 10, jp: r.jp || 0 }));
+  const top = Object.entries(T.top || {}).sort((a, b) => b[1].x - a[1].x || a[1].t - b[1].t).slice(0, 10).map(([u, r]) => ({ name: r.name, x: r.x, m: r.m, amt: r.amt, me: u === uid }));
+  return { jp: { pot: Math.floor(J.pot || 0), last: J.last ? { name: J.last.name, amt: J.last.amt, t: J.last.t, m: J.last.m } : null }, feed, tour: { pool: Math.floor(T.pool || 0), ends: czWeekEnd(T.wk), top, mine: (T.top || {})[uid] ? T.top[uid].x : 0, last: T.last || null, minBet: core.CASINO.tour.minBet, split: core.CASINO.tour.split } }; }
 // the finite world market (off until the owner switches it on): its stock, foreign supply rate and hourly history
 S.mkt = S.mkt && typeof S.mkt === 'object' ? S.mkt : { on: false };
 function mktView(full) { const M = S.mkt || {}; const v = { on: !!M.on, stock: M.stock || null, ref: M.ref || null, sup: M.sup != null ? M.sup : core.MKT.sup, primed: M.primed || 0 }; if (full) v.hist = (M.hist || []).slice(-72); return v; }
@@ -1737,7 +1779,8 @@ const casinoTotals = () => Object.fromEntries(Object.entries((S.casino && S.casi
 function casinoRecord(W) { const C_ = S.casino; for (const e of W.casinoEv || []) { const n = W.A[e.u] || {}, day = new Date(e.t).toISOString().slice(0, 10);
   const add = (o, k) => { const x = o[k] = o[k] || { plays: 0, wag: 0, net: 0, wins: 0 }; x.plays++; x.wag += e.bet; x.net += e.net; if (e.net > 0) { x.wins++; x.won = (x.won || 0) + e.net; } else if (e.net < 0) x.lost = (x.lost || 0) - e.net; };
   add(C_.tot, e.g); add(C_.tot, 'all'); C_.days[day] = C_.days[day] || {}; add(C_.days[day], e.g); add(C_.days[day], 'all');
-  const row = { t: e.t, u: e.u, name: n.name || '?', leader: '', g: e.g, bet: e.bet, net: e.net, d: e.d };
+  const row = { t: e.t, u: e.u, name: n.name || '?', leader: '', g: e.g, bet: e.bet, net: e.net, d: e.d }; if (e.jp) row.jp = e.jp;
+  if (e.g === 'slots' && e.m) { const x = C_.mach[e.m] = C_.mach[e.m] || { plays: 0, wag: 0, paid: 0, jp: 0, wins: 0, best: 0 }, back = e.bet + e.net - (e.jp || 0); x.plays++; x.wag += e.bet; x.paid += back; x.jp += e.jp || 0; if (back > 0) x.wins++; if (back / e.bet > x.best) x.best = Math.round(back / e.bet * 100) / 100; }
   C_.recent = [row, ...C_.recent].slice(0, 200); if (e.net > 0) C_.big = [...C_.big, row].sort((a, b) => b.net - a.net).slice(0, 25); }
   const keep = Object.keys(C_.days).sort().slice(-60); C_.days = Object.fromEntries(keep.map(k => [k, C_.days[k]])); W.casinoEv = null; }
 
@@ -3004,6 +3047,7 @@ async function handle(req, res) {
     if (p === '/api/poker' && req.method === 'POST' && finaleLock()) return send(res, 423, FINALE_LOCK_MSG);
     if (p === '/api/poker') return pokerRoute(p, req, res, me);
     if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
+    if (p === '/api/casino/live' && req.method === 'GET') return send(res, 200, czLive(me.id));
     if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: noLeaders(HOF) });
     if (p === '/api/me' && req.method === 'GET') { touch(me.id, req); return send(res, 200, pub(me)); }
     if (p === '/api/account/save' && req.method === 'POST') {
