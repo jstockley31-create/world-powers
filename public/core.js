@@ -939,7 +939,7 @@ function Core(PD, CARDS) {
     fail('Unknown order.'); }
   // once per tick: finish infrastructure, and for every full hour pay trade routes and run the refineries
   function upTick(W, u) { const n = W.A[u], U = n.up; if (!U) return false; let ch = false;
-    if (U.build && U.build.ready <= W.now) { const k = U.build.k; U.infra = { ...(U.infra || {}), [k]: W.now }; delete U.build; ch = true; if (UPG.infra.list[k]) note(W, u, 'economy', `${UPG.infra.list[k].ic} Your ${UPG.infra.list[k].n} is finished. ${UPG.infra.list[k].d}`); }
+    if (U.build && U.build.ready <= W.now) { const k = U.build.k; U.infra = { ...(U.infra || {}), [k]: W.now }; delete U.build; ch = true; if (UPG.infra.list[k]) { const I_ = UPG.infra.list[k]; note(W, u, 'economy', `${I_.ic} Development complete: your ${I_.n} is finished. ${I_.d}`); log(n, `${I_.ic} Development complete: ${I_.n} finished. ${I_.d}`); } }
     const rts = routesOf(W, u), rf = lvlL(n, 'refine'); if (!rts.length && !(rf && U.ref && (U.ref.oil || U.ref.food))) { if (U.hT) { delete U.hT; ch = true; } return ch; }
     if (!U.hT) { U.hT = W.now; return true; } const hrs = Math.min(12, Math.floor((W.now - U.hT) / tq(W, HOUR))); if (hrs < 1) return ch; U.hT += hrs * tq(W, HOUR); if (W.now - U.hT > tq(W, HOUR)) U.hT = W.now;
     let earn = 0; for (const v of rts.slice(0, UPG.route.cap)) if (!routeCut(W, u, v)) earn += routePay(W, u, v) * hrs; if (earn) { n.cash += earn; n.rev = (n.rev || 0) + earn; U.rEarn = (U.rEarn || 0) + earn; }
@@ -1917,8 +1917,19 @@ function Core(PD, CARDS) {
       classic: { n: 'Lucky Sevens', kind: 'reel3', tag: 'Old school', sym: ['cherry', 'bar', 'bell', 'star', 'diamond', 'seven'], name: ['Cherry', 'Bar', 'Bell', 'Star', 'Diamond', 'Seven'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { cherry: 1.5 } },
       liberty: { n: 'Liberty Bell', kind: 'reel3', tag: 'Old school · wilds', sym: ['cherry', 'bar', 'bell', 'horseshoe', 'seven', 'wild'], name: ['Cherry', 'Bar', 'Bell', 'Horseshoe', 'Seven', 'Wild'], w: [32, 20, 23, 15, 7, 3], three: [2, 5, 10, 20, 60, 250], two: { cherry: 1 }, wild: 'wild', wildX: 2 },
       neon: { n: 'Neon Empire', kind: 'video', tag: 'Digital · free spins', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'free', n: [7, 10, 15], x: 2 } },
-      chest: { n: 'War Chest', kind: 'video', tag: 'Digital · prize chest', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'wheel', prize: [5, 6, 8, 12, 20, 50, 100], w: [30, 24, 18, 13, 9, 4, 2], k: [1, 2, 5] } } },
-    dice: { hl: 2.25, seven: 5.6 }, reds: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36] };
+      chest: { n: 'War Chest', kind: 'video', tag: 'Digital · prize chest', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'crate', prize: [5, 6, 8, 12, 20, 50, 100], w: [30, 24, 18, 13, 9, 4, 2], k: [1, 2, 5] } },
+      // four more digital machines, each with its own playable bonus round. Prizes are drawn by the server when the bonus starts.
+      oil: { n: 'Oil Baron', kind: 'video', tag: 'Digital · rising free spins', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'free', n: [7, 10, 15], x: 1, rise: 1, cap: 10 } },
+      vault: { n: 'Spy Vault', kind: 'video', tag: 'Digital · crack the safes', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'pick', tiles: 12, min: 2, max: 8, end: .27, prize: [.5, 1, 2, 3, 5, 10, 25], w: [26, 24, 20, 14, 9, 5, 2], k: [1, 2, 5] } },
+      tour: { n: 'World Tour', kind: 'video', tag: 'Digital · bonus wheel', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'wheel', seg: [6, 10, 6, 20, 10, 40, 5, 15, 6, 75, 10, 250], w: [16, 10, 14, 6, 12, 3, 16, 8, 14, 1.5, 10, .5], k: [1, 2, 5] } },
+      winter: { n: 'Nuclear Winter', kind: 'video', tag: 'Digital · three bonuses', sym: ['L1', 'L2', 'L3', 'L4', 'H1', 'H2', 'H3', 'wild', 'scatter'], w: [17, 17, 16, 16, 10, 7, 4, 5, 3], pay: { L1: [1, 2.5, 10], L2: [1, 2.5, 10], L3: [1.2, 3, 12], L4: [1.2, 3, 12], H1: [2, 7, 30], H2: [3, 12, 60], H3: [5, 25, 150] }, bonus: { type: 'combo', seg: [5, 'free', 8, 'pick', 12, 'free', 6, 'pick', 25, 'free', 10, 100], w: [14, 9, 11, 9, 8, 9, 13, 9, 4, 9, 9, 1], k: [1, 2, 5],
+        sub: { free: { type: 'free', n: [8, 10, 15], x: 2 }, pick: { type: 'pick', tiles: 12, min: 2, max: 8, end: .27, prize: [.5, 1, 2, 3, 5, 10, 25], w: [26, 24, 20, 14, 9, 5, 2], k: [1, 2, 5] } } } } },
+    dice: { hl: 2.25, seven: 5.6 },
+    bac: { player: 2, banker: 1.95, tie: 9 }, // total returned per $1 staked; a tie returns player and banker bets
+    vp: { pay: { royal: 250, sflush: 50, quads: 25, full: 7, flush: 5, straight: 4, trips: 3, twopair: 2, jacks: 1 }, name: { royal: 'Royal flush', sflush: 'Straight flush', quads: 'Four of a kind', full: 'Full house', flush: 'Flush', straight: 'Straight', trips: 'Three of a kind', twopair: 'Two pair', jacks: 'Jacks or better' } },
+    craps: { oddsX: 2, pass: { 4: 2, 10: 2, 5: 1.5, 9: 1.5, 6: 1.2, 8: 1.2 }, dont: { 4: .5, 10: .5, 5: 2 / 3, 9: 2 / 3, 6: 5 / 6, 8: 5 / 6 }, field: { 2: 3, 3: 2, 4: 2, 9: 2, 10: 2, 11: 2, 12: 4 } },
+    crash: { rtp: .94, k: .12, max: 100 }, // the multiplier is e^(k × seconds); it stops at 100×
+    reds: [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36] };
   const SLOT_LINES = [[1,1,1,1,1],[0,0,0,0,0],[2,2,2,2,2],[0,1,2,1,0],[2,1,0,1,2],[0,0,1,2,2],[2,2,1,0,0],[1,0,0,0,1],[1,2,2,2,1],[0,1,1,1,0]];
   function slPick(R, w, tot) { let r = R() * tot; for (let i = 0; i < w.length; i++) { r -= w[i]; if (r < 0) return i; } return 0; }
   function slReel3(M, R) { const tot = M.w.reduce((a, b) => a + b, 0), r = [0, 1, 2].map(() => slPick(R, M.w, tot)), sy = r.map(i => M.sym[i]); return { reels: sy, ...slReel3Pay(M, sy) }; }
@@ -1931,10 +1942,16 @@ function Core(PD, CARDS) {
   function slEval(M, g) { const wins = []; let x = 0; SLOT_LINES.forEach((L, li) => { const first = g[0][L[0]]; if (first === 'scatter' || first === 'wild') return; let n = 1; while (n < 5 && (g[n][L[n]] === first || g[n][L[n]] === 'wild')) n++; if (n >= 3) { const p = M.pay[first][n - 3]; wins.push({ l: li, s: first, n, x: p }); x += p; } });
     let sc = 0; for (const col of g) for (const s of col) if (s === 'scatter') sc++; return { wins, x: Math.round(x * 100) / 100, sc }; }
   function slVideo(M, R) { const g = slGrid(M, R), e = slEval(M, g), out = { grid: g, wins: e.wins, x: e.x, sc: e.sc, bonus: null }; let tot = e.x;
-    if (e.sc >= 3) { const B = M.bonus, k = Math.min(5, e.sc) - 3;
-      if (B.type === 'free') { const spins = []; let bx = 0; for (let i = 0; i < B.n[k]; i++) { const g2 = slGrid(M, R), e2 = slEval(M, g2), x2 = Math.round(e2.x * B.x * 100) / 100; spins.push({ grid: g2, wins: e2.wins, x: x2 }); bx += x2; } out.bonus = { type: 'free', spins, x: Math.round(bx * 100) / 100, mul: B.x }; tot += bx; }
-      else { const tw = B.w.reduce((a, b) => a + b, 0), i = slPick(R, B.w, tw), bx = B.prize[i] * B.k[k]; out.bonus = { type: 'wheel', i, x: bx, prize: B.prize[i], k: B.k[k] }; tot += bx; } }
+    if (e.sc >= 3) { out.bonus = slBonus(M, M.bonus, R, Math.min(5, e.sc) - 3); tot += out.bonus.x; }
     out.mult = Math.round(tot * 100) / 100; return out; }
+  // one bonus round, drawn in full by the server the moment it starts. k = 0, 1 or 2 for 3, 4 or 5 bonus symbols.
+  function slBonus(M, B, R, k) { const r2 = v => Math.round(v * 100) / 100, sum = a => a.reduce((x, y) => x + y, 0);
+    if (B.type === 'free') { const spins = []; let bx = 0, mul = B.x; for (let i = 0; i < B.n[k]; i++) { const g2 = slGrid(M, R), e2 = slEval(M, g2), x2 = r2(e2.x * mul); spins.push({ grid: g2, wins: e2.wins, x: x2, mul }); bx += x2; if (B.rise && e2.x > 0) mul = Math.min(B.cap, mul + B.rise); } return { type: 'free', spins, x: r2(bx), mul: B.x, rise: B.rise || 0, cap: B.cap || 0 }; }
+    if (B.type === 'crate') { const i = slPick(R, B.w, sum(B.w)); return { type: 'crate', i, x: B.prize[i] * B.k[k], prize: B.prize[i], k: B.k[k] }; }
+    if (B.type === 'pick') { const tw = sum(B.w), picks = []; for (let j = 0; j < B.max; j++) { if (j >= B.min && R() < B.end) break; picks.push(B.prize[slPick(R, B.w, tw)]); } return { type: 'pick', picks, k: B.k[k], x: r2(sum(picks) * B.k[k]) }; }
+    if (B.type === 'wheel') { const i = slPick(R, B.w, sum(B.w)); return { type: 'wheel', i, seg: B.seg[i], k: B.k[k], x: B.seg[i] * B.k[k] }; }
+    if (B.type === 'combo') { const i = slPick(R, B.w, sum(B.w)), sg = B.seg[i]; if (typeof sg === 'number') return { type: 'combo', i, k: B.k[k], x: sg * B.k[k] }; const sub = slBonus(M, B.sub[sg], R, k); return { type: 'combo', i, sub, k: B.k[k], x: sub.x }; }
+    return { type: 'none', x: 0 }; }
   const casinoMax = n => Math.max(CASINO.min, Math.min(CASINO.maxAbs, Math.floor(Math.max(0, n.cash || 0)))); // one table limit for every game: $5B, or what you have
   const cardOf = r => { const v = 1 + Math.floor(r() * 13), s = '♠♥♦♣'[Math.floor(r() * 4)]; return { v, s }; }; // an endless shoe: no deck to count, nothing hidden to peek at
   const bjVal = cs => { let t = 0, a = 0; for (const c of cs) { const x = c.v > 10 ? 10 : c.v; t += x; if (x === 1) a++; } while (a > 0 && t + 10 <= 21) { t += 10; a--; } return t; };
@@ -1948,11 +1965,12 @@ function Core(PD, CARDS) {
   function casinoSettle(W, u, game, bet, pay, detail, nz) { // pay = total returned to the player (0 = lost the bet)
     const n = W.A[u], cs = n.casino, net = pay - bet; nz = nz || (W.fairNonce != null ? [W.fairNonce] : null); n.cash += net; cs.played++; cs.wagered += bet; cs.net += net; if (net > cs.best) cs.best = net; (W.casinoEv = W.casinoEv || []).push({ u, g: game, bet, net, d: detail, t: W.now });
     cs.hist = [{ t: W.now, g: game, bet, net, d: detail, nz: nz || undefined, fh: W.fairHash ? W.fairHash.slice(0, 16) : undefined }, ...(cs.hist || [])].slice(0, 12);
-    if (net >= 5e6 && (game === 'slots' || net >= 2e7)) news(W, u, `🎰 ${n.name} just won ${moneyS(net)} at the World Casino (${({ bj: 'blackjack', roulette: 'roulette', slots: 'slots', dice: 'high-low dice' })[game]}).`);
+    if (net >= 5e6 && (game === 'slots' || net >= 2e7)) news(W, u, `🎰 ${n.name} just won ${moneyS(net)} at the World Casino (${({ bj: 'blackjack', roulette: 'roulette', slots: 'slots', dice: 'high-low dice', bac: 'baccarat', vp: 'video poker', craps: 'craps', crash: 'crash' })[game]}).`);
     touch(W, u); return net;
   }
   function casino(W, u, c, rng) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); const R = rng || Math.random, g = String(c.g || '');
+    if (n.crash && g !== 'crash') { const r0 = crashResolve(W, u, false); if (r0.alive) fail('Your crash round is still running. Cash out or wait for it to end.'); }
     if (g === 'bj') {
       const a = String(c.a || 'deal');
       if (a === 'deal') { if (n.bj) fail('Finish your current hand first.'); const bet = casinoBet(W, n, c.bet); n.cash -= bet; n.bj = { bet, p: [cardOf(R), cardOf(R)], d: [cardOf(R)], t: W.now, nz: W.fairNonce != null ? [W.fairNonce] : undefined };
@@ -1975,18 +1993,21 @@ function Core(PD, CARDS) {
       if (a === 'stand') return bjEnd(W, u, R);
       fail('Unknown move.');
     }
-    if (g === 'roulette') {
-      const pick = String(c.pick); const num_ = /^\d+$/.test(pick) ? +pick : null; if (!(num_ != null ? num_ >= 0 && num_ <= 36 : ['red', 'black', 'odd', 'even', 'low', 'high'].includes(pick))) fail('Pick a number from 0 to 36 or an outside bet.');
-      const bet = casinoBet(W, n, c.bet), x = Math.floor(R() * 37), col = x === 0 ? 'green' : CASINO.reds.includes(x) ? 'red' : 'black';
-      const win = num_ != null ? x === num_ : x !== 0 && (pick === col || (pick === 'odd' && x % 2 === 1) || (pick === 'even' && x % 2 === 0) || (pick === 'low' && x <= 18) || (pick === 'high' && x >= 19));
-      const pay = win ? bet * (num_ != null ? 36 : 2) : 0, net = casinoSettle(W, u, 'roulette', bet, pay, `${x} ${col}`);
-      return { msg: win ? `${x} ${col}! You win ${moneyS(net)}.` : `${x} ${col}. You lose ${moneyS(bet)}.`, casino: { g: 'roulette', x, col, win, net, pick } };
+    if (g === 'roulette') { // one spin, any number of spots: straight-up numbers pay 36×, outside bets 2×
+      const OUT = ['red', 'black', 'odd', 'even', 'low', 'high'], okPick = p => /^\d+$/.test(p) ? +p >= 0 && +p <= 36 : OUT.includes(p);
+      let bets = Array.isArray(c.bets) ? c.bets.slice(0, 43).map(b => ({ pick: String(b && b.pick), bet: Math.floor(Number(b && b.bet)) })) : [{ pick: String(c.pick), bet: Math.floor(Number(c.bet)) }];
+      if (!bets.length) fail('Place at least one bet.'); { const m = {}; for (const b of bets) { if (!okPick(b.pick)) fail('Pick a number from 0 to 36 or an outside bet.'); if (!(b.bet >= CASINO.min)) fail(`The minimum bet on each spot is ${money(CASINO.min)}.`); m[b.pick] = (m[b.pick] || 0) + b.bet; } bets = Object.entries(m).map(([pick, bet]) => ({ pick, bet })); }
+      const total = bets.reduce((a, b) => a + b.bet, 0), bet = casinoBet(W, n, total), x = Math.floor(R() * 37), col = x === 0 ? 'green' : CASINO.reds.includes(x) ? 'red' : 'black';
+      const hit = p => /^\d+$/.test(p) ? x === +p : x !== 0 && (p === col || (p === 'odd' && x % 2 === 1) || (p === 'even' && x % 2 === 0) || (p === 'low' && x <= 18) || (p === 'high' && x >= 19));
+      let pay = 0; for (const b of bets) { b.win = hit(b.pick); if (b.win) pay += b.bet * (/^\d+$/.test(b.pick) ? 36 : 2); }
+      const net = casinoSettle(W, u, 'roulette', bet, pay, `${x} ${col}`), win = pay > 0, many = bets.length > 1;
+      return { msg: `${x} ${col}${win ? '!' : '.'} ${net > 0 ? 'You win ' + moneyS(net) : net === 0 ? 'You break even' : many && win ? `${moneyS(pay)} back from ${moneyS(bet)} staked: you lose ${moneyS(-net)}` : 'You lose ' + moneyS(bet)}.`, casino: { g: 'roulette', x, col, win, net, pick: many ? null : bets[0].pick, bets, total: bet, pay } };
     }
     if (g === 'slots') {
       const bet = casinoBet(W, n, c.bet), mk = has(CASINO.machines, String(c.m || '')) ? String(c.m) : 'classic', M = CASINO.machines[mk];
       if (M.kind === 'video') { const o = slVideo(M, R), pay = Math.floor(bet * o.mult), net = casinoSettle(W, u, 'slots', bet, pay, `${M.n}${o.bonus ? ' · bonus' : ''} · ${o.mult}×`);
-        const bt = o.bonus ? (o.bonus.type === 'free' ? ` Bonus: ${o.bonus.spins.length} free spins paid ${o.bonus.x}× your stake.` : ` Bonus: the chest held ${o.bonus.x}× your stake.`) : '';
-        return { msg: o.mult > 0 ? `${o.wins.length ? `${o.wins.length} winning line${o.wins.length > 1 ? 's' : ''}.` : 'No line win.'}${bt} ${net >= 0 ? `You win ${moneyS(net)}` : `${moneyS(pay)} back`} (${o.mult}×).` : 'No win.', casino: { g: 'slots', m: mk, grid: o.grid, wins: o.wins, x: o.x, sc: o.sc, bonus: o.bonus, mult: o.mult, net } }; }
+        const bo = o.bonus && (o.bonus.sub || o.bonus), bt = !o.bonus ? '' : bo.type === 'free' ? ` Bonus: ${bo.spins.length} free spins paid ${bo.x}× your stake.` : bo.type === 'pick' ? ` Bonus: ${bo.picks.length} safes held ${bo.x}× your stake.` : bo.type === 'crate' ? ` Bonus: the chest held ${bo.x}× your stake.` : ` Bonus: the wheel paid ${o.bonus.x}× your stake.`;
+        return { msg: o.mult > 0 ? `${o.wins.length ? `${o.wins.length} winning line${o.wins.length > 1 ? 's' : ''}.` : 'No line win.'}${bt} ${net > 0 ? `You win ${moneyS(net)}` : net === 0 ? 'Your stake is returned' : `${moneyS(pay)} back`} (${o.mult}×).` : 'No win.', casino: { g: 'slots', m: mk, grid: o.grid, wins: o.wins, x: o.x, sc: o.sc, bonus: o.bonus, mult: o.mult, net } }; }
       const o = slReel3(M, R), sy = o.reels, mult = o.mult, nm = sy.map(x => M.name[M.sym.indexOf(x)]), pay = Math.floor(bet * mult), net = casinoSettle(W, u, 'slots', bet, pay, (mk === 'classic' ? '' : M.n + ' · ') + nm.join(' · '));
       const what = o.kind === 'jackpot' ? 'Three wilds: the jackpot!' : o.kind === 'three' ? (o.wilds ? `${nm.find(x => x !== 'Wild')}s with ${o.wilds} wild${o.wilds > 1 ? 's' : ''} (×${Math.pow(M.wildX, o.wilds)}).` : `Three ${nm[0].toLowerCase()}s.`) : '';
       return { msg: o.kind === 'two' ? (pay > bet ? `Two cherries. ${moneyS(pay)} back.` : 'Two cherries. You get your stake back.') : mult ? `${what} You win ${moneyS(net)} (${mult}×).` : `${nm.join(', ')}. No win.`, casino: { g: 'slots', m: mk, reels: sy, mult, net, kind: o.kind || '' } };
@@ -1996,8 +2017,64 @@ function Core(PD, CARDS) {
       const hit = (pick === 'low' && t < 7) || (pick === 'high' && t > 7) || (pick === 'seven' && t === 7), pay = hit ? Math.floor(bet * (pick === 'seven' ? CASINO.dice.seven : CASINO.dice.hl)) : 0, net = casinoSettle(W, u, 'dice', bet, pay, `${d1}+${d2}`);
       return { msg: hit ? `${d1} + ${d2} = ${t}. You win ${moneyS(net)}!` : `${d1} + ${d2} = ${t}. You lose ${moneyS(bet)}.`, casino: { g: 'dice', d: [d1, d2], t, win: hit, net, pick } };
     }
+    if (g === 'bac') { // baccarat with the standard third-card rules
+      const pick = String(c.pick); if (!['player', 'banker', 'tie'].includes(pick)) fail('Bet on Player, Banker or Tie.'); const bet = casinoBet(W, n, c.bet);
+      const P = [cardOf(R)], B = [cardOf(R)]; P.push(cardOf(R)); B.push(cardOf(R)); let pv = bacVal(P), bv = bacVal(B);
+      if (pv < 8 && bv < 8) { let p3 = null; if (pv <= 5) { const c3 = cardOf(R); P.push(c3); p3 = c3.v >= 10 ? 0 : c3.v; pv = bacVal(P); }
+        const draw = p3 === null ? bv <= 5 : bv <= 2 || (bv === 3 && p3 !== 8) || (bv === 4 && p3 >= 2 && p3 <= 7) || (bv === 5 && p3 >= 4 && p3 <= 7) || (bv === 6 && (p3 === 6 || p3 === 7));
+        if (draw) { B.push(cardOf(R)); bv = bacVal(B); } }
+      const res = pv > bv ? 'player' : bv > pv ? 'banker' : 'tie', pay = res === pick ? Math.floor(bet * CASINO.bac[pick]) : res === 'tie' ? bet : 0, net = casinoSettle(W, u, 'bac', bet, pay, `Player ${pv} · Banker ${bv}`);
+      return { msg: `Player ${pv}, Banker ${bv}: ${res === 'tie' ? 'a tie' : (res === 'player' ? 'Player' : 'Banker') + ' wins'}. ${net > 0 ? 'You win ' + moneyS(net) : net < 0 ? 'You lose ' + moneyS(-net) : 'Your bet is returned'}.`, casino: { g: 'bac', P, B, pv, bv, res, pick, win: net > 0, push: net === 0, net } };
+    }
+    if (g === 'vp') { // video poker, Jacks or Better: one 52-card deck, hold what you like, draw once
+      const a = String(c.a || 'deal'), key = x => x.v + x.s, SU = '♠♥♦♣', fresh = taken => { for (;;) { const x = { v: 1 + Math.floor(R() * 13), s: SU[Math.floor(R() * 4)] }; if (!taken.has(key(x))) { taken.add(key(x)); return x; } } };
+      if (a === 'deal') { if (n.vp) fail('Finish your current hand first.'); const bet = casinoBet(W, n, c.bet); n.cash -= bet; const tk = new Set(), h = [0, 1, 2, 3, 4].map(() => fresh(tk)); n.vp = { bet, h, t: W.now, nz: W.fairNonce != null ? [W.fairNonce] : undefined }; touch(W, u); return { msg: 'Cards dealt. Choose which to hold, then draw.', casino: { g: 'vp', vp: n.vp, rank: vpRank(h) } }; }
+      if (a === 'draw') { const v = n.vp; if (!v) fail('Deal a new hand first.'); const hold = Array.isArray(c.hold) ? c.hold.slice(0, 5).map(x => !!x) : [], tk = new Set(v.h.map(key)), was = v.h.slice(), h = v.h.map((x, i) => hold[i] ? x : fresh(tk)); // new cards come from the 47 left in the deck
+        delete n.vp; const rank = vpRank(h), mult = rank ? CASINO.vp.pay[rank] : 0, pay = Math.floor(v.bet * mult); n.cash += v.bet; const net = casinoSettle(W, u, 'vp', v.bet, pay, rank ? CASINO.vp.name[rank] : 'No pair', [...(v.nz || []), ...(W.fairNonce != null ? [W.fairNonce] : [])]);
+        return { msg: rank ? `${CASINO.vp.name[rank]}. ${net > 0 ? 'You win ' + moneyS(net) : 'Your bet is returned'} (${mult}×).` : `No winning hand. You lose ${moneyS(v.bet)}.`, casino: { g: 'vp', h, was, hold: [0, 1, 2, 3, 4].map(i => !!hold[i]), rank, mult, net, bet: v.bet, done: 1 } }; }
+      fail('Unknown move.');
+    }
+    if (g === 'craps') { // pass / don't pass with odds, plus the one-roll field bet
+      const a = String(c.a || ''), CR = CASINO.craps, roll = () => [1 + Math.floor(R() * 6), 1 + Math.floor(R() * 6)], cr = n.craps;
+      if (a === 'field') { const bet = casinoBet(W, n, c.bet), d = roll(), t = d[0] + d[1], x = CR.field[t] || 0, net = casinoSettle(W, u, 'craps', bet, Math.floor(bet * x), `Field · ${d[0]}+${d[1]}`);
+        return { msg: `${d[0]} + ${d[1]} = ${t}. ${x ? 'The field wins: ' + moneyS(net) + '.' : 'The field loses ' + moneyS(bet) + '.'}`, casino: { g: 'craps', a: 'field', d, t, win: x > 0, net, cr: n.craps || null } }; }
+      if (a === 'pass' || a === 'dont') { if (cr) fail('Finish your current round first.'); const bet = casinoBet(W, n, c.bet), d = roll(), t = d[0] + d[1], nat = t === 7 || t === 11, crap = t === 2 || t === 3 || t === 12;
+        if (nat || crap) { const x = a === 'pass' ? (nat ? 2 : 0) : nat ? 0 : t === 12 ? 1 : 2, net = casinoSettle(W, u, 'craps', bet, bet * x, `${a === 'pass' ? 'Pass' : "Don't pass"} · come-out ${t}`);
+          return { msg: `Come-out roll: ${d[0]} + ${d[1]} = ${t}. ${net > 0 ? 'You win ' + moneyS(net) : net < 0 ? 'You lose ' + moneyS(bet) : 'Twelve is a push: your bet is returned'}.`, casino: { g: 'craps', a, d, t, done: 1, win: net > 0, push: net === 0, net, side: a } }; }
+        n.cash -= bet; n.craps = { side: a, bet, point: t, odds: 0, rolls: [d], t: W.now, nz: W.fairNonce != null ? [W.fairNonce] : undefined }; touch(W, u);
+        return { msg: `Come-out roll: ${d[0]} + ${d[1]}. The point is ${t}.`, casino: { g: 'craps', a, d, t, cr: n.craps } }; }
+      if (!cr) fail('Place a pass or don\'t pass bet first.');
+      if (a === 'odds') { const amt = Math.floor(Number(c.bet)), room = cr.bet * CR.oddsX - cr.odds; if (!(amt >= 1)) fail('Choose how much to put behind your bet.'); if (amt > room) fail(room > 0 ? `You can add up to ${money(room)} more in odds (${CR.oddsX}× your bet).` : 'Your odds bet is already at the limit.'); if (n.cash < amt) fail('You do not have that much money.');
+        n.cash -= amt; cr.odds += amt; touch(W, u); return { msg: `${moneyS(amt)} in odds placed. Odds pay at the true chance, with no house edge.`, casino: { g: 'craps', a, cr } }; }
+      if (a === 'roll') { const d = roll(), t = d[0] + d[1]; if (W.fairNonce != null) cr.nz = [...(cr.nz || []), W.fairNonce].slice(-30); cr.rolls = [...cr.rolls, d].slice(-12);
+        if (t !== cr.point && t !== 7) { touch(W, u); return { msg: `${d[0]} + ${d[1]} = ${t}. Roll again: the point is ${cr.point}.`, casino: { g: 'craps', a, d, t, cr } }; }
+        delete n.craps; const made = t === cr.point, won = cr.side === 'pass' ? made : !made, tot = cr.bet + cr.odds, pay = won ? Math.floor(cr.bet * 2 + cr.odds * (1 + CR[cr.side][cr.point])) : 0; n.cash += tot;
+        const net = casinoSettle(W, u, 'craps', tot, pay, `${cr.side === 'pass' ? 'Pass' : "Don't pass"} · point ${cr.point} ${made ? 'made' : 'seven out'}`, cr.nz);
+        return { msg: `${d[0]} + ${d[1]} = ${t}. ${made ? 'The point is made' : 'Seven out'}: ${won ? 'you win ' + moneyS(net) : 'you lose ' + moneyS(tot)}.`, casino: { g: 'craps', a, d, t, done: 1, win: won, net, side: cr.side, point: cr.point } }; }
+      fail('Unknown move.');
+    }
+    if (g === 'crash') { // a multiplier climbs until it crashes; cash out before it does
+      const a = String(c.a || 'start'), CC = CASINO.crash;
+      if (a === 'start') { if (n.crash) { const r0 = crashResolve(W, u, false); if (r0.alive) fail('Your current round is still running.'); }
+        const bet = casinoBet(W, n, c.bet), auto = Number(c.auto) >= 1.01 ? Math.min(CC.max, Math.floor(Number(c.auto) * 100) / 100) : 0, r0 = R(); n.cash -= bet;
+        n.crash = { bet, t: W.now, auto, nz: W.fairNonce != null ? W.fairNonce : undefined }; if (!W.fairAt) n.crash.cp = crashPoint(r0); // the crash point is never stored where the player could read it: it is recomputed from the secret seed
+        touch(W, u); return { msg: 'Round started.', casino: { g: 'crash', start: 1, t: W.now, auto, bet, alive: true } }; }
+      if (!n.crash) fail('Start a round first.'); if (a !== 'cash' && a !== 'peek') fail('Unknown move.');
+      const r = crashResolve(W, u, a === 'cash'); return { msg: r.alive ? '' : r.win ? `Cashed out at ${r.m.toFixed(2)}×. You win ${moneyS(r.net)}.` : `Crashed at ${r.cp.toFixed(2)}×. You lose ${moneyS(r.bet)}.`, casino: { g: 'crash', ...r } };
+    }
     fail('Unknown game.');
   }
+  const bacVal = cs => cs.reduce((t, c) => t + (c.v >= 10 ? 0 : c.v), 0) % 10;
+  function vpRank(h) { const vs = h.map(c => c.v).sort((a, b) => a - b), cnt = {}; for (const v of vs) cnt[v] = (cnt[v] || 0) + 1; const cs = Object.values(cnt).sort((a, b) => b - a), flush = h.every(c => c.s === h[0].s);
+    const uniq = cs.length === 5, wheelHi = uniq && vs.join() === '1,10,11,12,13', straight = uniq && (vs[4] - vs[0] === 4 || wheelHi);
+    if (straight && flush) return wheelHi ? 'royal' : 'sflush'; if (cs[0] === 4) return 'quads'; if (cs[0] === 3 && cs[1] === 2) return 'full'; if (flush) return 'flush'; if (straight) return 'straight'; if (cs[0] === 3) return 'trips'; if (cs[0] === 2 && cs[1] === 2) return 'twopair';
+    if (cs[0] === 2) { const pv = +Object.keys(cnt).find(k => cnt[k] === 2); if (pv === 1 || pv >= 11) return 'jacks'; } return ''; }
+  const crashPoint = r => { const CC = CASINO.crash, x = CC.rtp / (1 - Math.min(r, .999999)); return x < 1 ? 1 : Math.min(CC.max, Math.floor(x * 100) / 100); }; // 6% of rounds crash at once; the chance of reaching m× is 0.94 / m
+  const crashAt = (W, cr) => Math.min(CASINO.crash.max, Math.floor(Math.exp(CASINO.crash.k * Math.max(0, W.now - cr.t) / 1000) * 100) / 100);
+  function crashResolve(W, u, cash) { const n = W.A[u], cr = n.crash, cp = cr.cp != null ? cr.cp : crashPoint(W.fairAt(cr.nz)()), now = crashAt(W, cr), top = Math.min(cr.auto || CASINO.crash.max, CASINO.crash.max);
+    let m = 0; if (top <= cp && now >= top) m = top; else if (cash && now < cp) m = now; else if (now < cp) return { alive: true, m: now, t: cr.t, bet: cr.bet, auto: cr.auto };
+    delete n.crash; const pay = m ? Math.floor(cr.bet * m) : 0; n.cash += cr.bet; const net = casinoSettle(W, u, 'crash', cr.bet, pay, m ? `Cashed out ${m.toFixed(2)}× · crash ${cp.toFixed(2)}×` : `Crashed ${cp.toFixed(2)}×`, cr.nz != null ? [cr.nz] : null);
+    return { alive: false, win: m > 0, m, cp, net, bet: cr.bet }; }
   function bjNext(W, u, R) { const h = W.A[u].bj; h.cur++; if (h.cur >= h.hands.length) return bjEnd(W, u, R); h.p = h.hands[h.cur].p; if (bjVal(h.p) === 21) return bjNext(W, u, R); touch(W, u); return { msg: `Playing hand ${h.cur + 1}.`, casino: { g: 'bj', bj: h, pv: bjVal(h.p) } }; }
   function bjEndSplit(W, u, R) { // settle both hands of a split round against one dealer hand
     const n = W.A[u], h = n.bj; delete n.bj; h.d.push(cardOf(R)); const dNat = bjVal(h.d) === 21;
@@ -2919,7 +2996,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

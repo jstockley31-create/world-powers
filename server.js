@@ -2651,6 +2651,7 @@ async function adminRoute(p, req, res, me) {
         for (const r of Object.keys(n.res || {})) if (!Number.isFinite(+n.res[r]) || n.res[r] < 0) { found.push(`${n.name}: ${r} is ${n.res[r]}`); if (fix) { n.res[r] = Math.max(0, +n.res[r] || 0); ch = true; } }
         for (const f of ['approval', 'stability']) if (Number.isFinite(+n[f]) && (n[f] < 0 || n[f] > 100)) { found.push(`${n.name}: ${f} out of range (${Math.round(n[f])})`); if (fix) { n[f] = Math.max(0, Math.min(100, n[f])); ch = true; } }
         if (n.bloc && !(S.blocs[n.bloc] && (S.blocs[n.bloc].members || []).includes(id))) { found.push(`${n.name}: points at an alliance it is not in`); if (fix) { n.bloc = null; ch = true; } }
+        for (const gk of ['vp', 'craps']) if (n[gk] && n[gk].t && t - n[gk].t > 6 * HOUR) { found.push(`${n.name}: ${gk === 'vp' ? 'video poker' : 'craps'} round stuck for hours`); if (fix) { n.cash = (n.cash || 0) + (n[gk].bet || 0) + (n[gk].odds || 0); n[gk] = null; ch = true; } }
         if (n.bj && n.bj.t && t - n.bj.t > 6 * HOUR) { found.push(`${n.name}: blackjack hand stuck for hours`); if (fix) { n.cash = (n.cash || 0) + (n.bj.bet || 0); n.bj = null; ch = true; } }
         for (const v of Object.keys(n.rel || {})) if (!S.docs['nations/' + v]) { if (fix) { delete n.rel[v]; ch = true; } }
         for (const f of ['troops', 'ships', 'air', 'spies']) if (Number.isFinite(+n[f]) && n[f] < 0) { found.push(`${n.name}: negative ${f} (${Math.round(n[f])})`); if (fix) { n[f] = 0; ch = true; } }
@@ -2964,13 +2965,23 @@ async function handle(req, res) {
     if (p === '/api/dev' || p.startsWith('/api/dev/')) { try { const b = req.method === 'POST' ? await readBody(req, 6 * 1024) : null; if (b) touch(me.id, req); return send(res, 200, devHandle(me, p, req.method, b || {}, new URL(req.url, 'http://x').searchParams)); } catch (e) { return send(res, e.status || 400, { error: e.message || 'Something went wrong.' }); } }
     if (chaosOn() && ['/api/supporter/chest', '/api/supporter/rush', '/api/supporter/instant'].includes(p) && req.method === 'POST') return send(res, 423, { error: 'Supporter perks are paused during Chaos world so you don\'t lose them when the real world comes back. Claim them as soon as it ends.' });
     if (p === '/api/supporter' || p.startsWith('/api/supporter/')) { if (p !== '/api/supporter' && limited('sup:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); touch(me.id, req); if (await SUPP.handle(req, res, p, me)) return; }
+    // Crash: checking on a running round and cashing out. Kept apart from ordinary game actions so a human check or the action limit can never get between a player and the cash-out button.
+    if (p === '/api/casino/crash' && req.method === 'POST') {
+      if (limited('crash:' + me.id, 60, 10e3)) return send(res, 429, { error: 'Slow down.' });
+      const b = await readBody(req, 256), a = b.a === 'cash' ? 'cash' : 'peek'; { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
+      const W = mkWorld(); if (!W.A[me.id] || !W.A[me.id].crash) return send(res, 200, { casino: { g: 'crash', alive: false, none: true }, me: S.docs['nations/' + me.id] || null });
+      const fair = fairOf(me.id); W.fairNonce = fair.nonce; W.fairHash = sha256(fair.seed); W.fairAt = nz => fairRng({ seed: fair.seed, client: fair.client, nonce: nz });
+      let r; try { r = core.exec(W, me.id, { c: 'casino', g: 'crash', a }, Math.random); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+      if (W.casinoEv) casinoRecord(W); commit(W); if (a === 'cash' || !r.casino.alive) touch(me.id, req);
+      return send(res, 200, { ok: true, msg: r.msg, casino: r.casino.alive ? r.casino : { ...r.casino, tot: casinoTotals() }, me: r.casino.alive ? undefined : S.docs['nations/' + me.id] || null });
+    }
     if (p === '/api/casino/fair') { const f = fairOf(me.id);
       if (req.method === 'GET') return send(res, 200, fairView(f));
       const b = await readBody(req, 1024);
-      if (b.op === 'client') { const c = String(b.client || '').trim(); if (!/^[A-Za-z0-9_-]{1,64}$/.test(c)) return send(res, 400, { error: 'Use 1 to 64 letters, numbers, dashes or underscores.' }); const n = S.docs['nations/' + me.id]; if (n && n.bj) return send(res, 400, { error: 'Finish your blackjack hand first.' });
+      if (b.op === 'client') { const c = String(b.client || '').trim(); if (!/^[A-Za-z0-9_-]{1,64}$/.test(c)) return send(res, 400, { error: 'Use 1 to 64 letters, numbers, dashes or underscores.' }); const n = S.docs['nations/' + me.id]; if (n && (n.bj || n.vp || n.craps || n.crash)) return send(res, 400, { error: 'Finish the round you are playing first.' });
         if (f.nonce > (f.from || 0)) { f.prev = [{ seed: f.seed, hash: sha256(f.seed), client: f.client, from: f.from || 0, to: f.nonce - 1, t: Date.now() }, ...(f.prev || [])].slice(0, 50); f.seed = crypto.randomBytes(32).toString('hex'); f.from = f.nonce; } // a new client seed always starts a new server seed, so every revealed period checks out
         f.client = c; persist(); return send(res, 200, fairView(f)); }
-      if (b.op === 'rotate') { const n = S.docs['nations/' + me.id]; if (n && n.bj) return send(res, 400, { error: 'Finish your blackjack hand first.' });
+      if (b.op === 'rotate') { const n = S.docs['nations/' + me.id]; if (n && (n.bj || n.vp || n.craps || n.crash)) return send(res, 400, { error: 'Finish the round you are playing first.' });
         f.prev = [{ seed: f.seed, hash: sha256(f.seed), client: f.client, from: f.from || 0, to: f.nonce - 1, t: Date.now() }, ...(f.prev || [])].slice(0, 50); f.seed = crypto.randomBytes(32).toString('hex'); f.from = f.nonce; persist(); return send(res, 200, fairView(f)); }
       return send(res, 400, { error: 'Unknown operation.' }); }
     if (p.startsWith('/api/spy/')) return spyRoute(p, req, res, me);
@@ -3070,7 +3081,7 @@ async function handle(req, res) {
       if (b.c === 'movecap' && typeof b.name === 'string' && MOD.isProfane(b.name)) return send(res, 400, { error: 'Please choose a different name for your nation.' });
       if (b.c === 'offer' && b.v && S.users[b.v] && sharesNetwork(me.id, b.v)) flag(me.id, `Sent a trade offer to ${(S.users[b.v] || {}).name || 'a player'}, who uses the same network (possible second account)`);
       let r;
-      let fair = null, useRng = rng; if (b.c === 'casino') { fair = fairOf(me.id); W.fairNonce = fair.nonce; W.fairHash = sha256(fair.seed); useRng = fairRng(fair); }
+      let fair = null, useRng = rng; if (b.c === 'casino') { fair = fairOf(me.id); W.fairNonce = fair.nonce; W.fairHash = sha256(fair.seed); W.fairAt = nz => fairRng({ seed: fair.seed, client: fair.client, nonce: nz }); useRng = fairRng(fair); }
       const readyAt = b.c === 'act' && W.A[me.id] ? +((W.A[me.id].cd || {})[String(b.k)] || 0) : 0;
       try { r = core.exec(W, me.id, b, useRng); }
       catch (e) { if (e.user) { actLog(me.id, W, b, false, e.message); return send(res, 400, { error: e.message }); } throw e; }
