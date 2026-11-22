@@ -32,6 +32,14 @@ const MAP_VERSION = 4;
 const START = Date.now();
 // World Council votes: players only (AI nations don't vote), 3 hours, a majority of the votes cast wins (at least 2 yes), and a vote closes early once the result is certain
 const COUNCIL_H = 3, COUNCIL_MIN_YES = 3; // a resolution needs at least 3 yes votes and more yes than no
+// heavier penalties need more: sanctions two thirds of the vote and at least 5 yes, the other penalties at least 4 yes
+const PENALTY_TYPES = ['sanction', 'embargo', 'armsEmb', 'freeze', 'condemn', 'inspect'];
+const minYes = t => t === 'sanction' ? 5 : PENALTY_TYPES.includes(t) ? 4 : COUNCIL_MIN_YES;
+const passes = (t, ys, ns) => ys >= minYes(t) && ys > ns && (t !== 'sanction' || ys * 3 >= (ys + ns) * 2);
+const PENALTY_FEE = .01; // the proposer of a penalty pays 1% of its treasury, refunded if the vote passes
+// bonus laws can pass at most once every 3 days (counted from when the last one ended for the 72-hour free market week)
+const BONUS_LAWS = ['climate', 'arms', 'freetrade', 'peacekeeping', 'health', 'science', 'food', 'tariffs', 'freemarket'];
+const bonusWait = k => { if (!BONUS_LAWS.includes(k)) return 0; const t = ((S.council && S.council.passed) || {})[k] || 0; if (!t) return 0; const R = WP.RESOLUTIONS[k]; return Math.max(72, (R.h || 24) + 48) * HOUR - (Date.now() - t); };
 const HOUR = 36e5;
 const ACTIVE_WINDOW = 2 * HOUR; // nations keep producing for 2 hours after their leader was last seen
 const NOTE_KINDS = ['ready', 'attack', 'war', 'diplo', 'mail', 'election', 'event', 'council', 'covert', 'economy', 'rank', 'mention', 'admin'];
@@ -49,7 +57,7 @@ for (const k of ['meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) 
 const fallenPub = () => S.fallen.slice(0, 30).map(({ msg, ...f }) => f); // the public fallen list never carries the conqueror's last message (that is only for the fallen player)
 const LASTWORDS_MIN = 30, LASTWORDS_MAX = 200; // the conqueror's last message: how long they have to send it, and its length
 for (const k of ['polls', 'finance', 'flags', 'audit', 'reports', 'fallen', 'bugs', 'schedule', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending']) S[k] = S[k] || [];
-const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
+const VOTE_SITES = { gt: 'Gametoor', mm: 'BrowserMMORPG', xt: 'XtremeTop100', m5: 'Top MMO Games', tw: 'Top Web Games', m1: 'MMORPG 100', mp: 'MPOG 100' }, VOTE_GAP = 6 * HOUR; // one bonus per site each time its button lights up again
 const voteBonus = n => Math.min(25e6, Math.max(2e6, Math.round((n.gdp || 0) * .02 / 1e5) * 1e5)); // at least $2M per vote (2% of GDP for bigger nations, up to $25M)
 // nuclear tests are announced ahead of time; at the scheduled moment everyone gets a 30-second countdown, then the blast
 const NT_COUNT = 30e3, oceanPhrase = o => o === 'Hudson Bay' ? 'Hudson Bay' : 'the ' + o;
@@ -553,7 +561,12 @@ function councilCast() { if (!clients.size) return; const own = new Set(S.counci
 function blocRepair() { let fixed = 0; const blocs = S.blocs || {};
   for (const [id, b] of Object.entries(blocs)) b.members = (b.members || []).filter(m => { const n = S.docs['nations/' + m]; if (n && n.bloc && n.bloc !== id && blocs[n.bloc] && (blocs[n.bloc].members || []).includes(m)) { fixed++; return false; } return true; });
   if (fixed) { console.log('Removed', fixed, 'duplicate alliance memberships'); persist(); } }
-function blocsView(uid) { const me = S.docs['nations/' + uid], tap = me && me.tap && me.tap.until > Date.now() ? me.tap.b : null, tapSince = tap ? (me.tap.since || me.tap.until - 6 * HOUR) : 0; const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : tap === id ? (b.wall || []).filter(m => (m.t || 0) >= tapSince) : [], /* a wiretap lets a spy read only what is said after the bug was planted, nothing else */ log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
+// a wiretap is a poor line: the listener catches only some messages, with words missing. Which ones is fixed per listener and message, so re-reading never reveals more.
+function tapHear(uid, wall, since) { const T = core.TAP, h = x => crypto.createHash('sha1').update('tap:' + since + ':' + uid + ':' + x).digest().readUInt32BE(0) / 4294967296, out = [];
+  for (const m of wall) { if ((m.t || 0) < since) continue; const key = (m.t || 0) + ':' + (m.u || ''); if (h(key) >= T.hear) continue;
+    const words = String(m.x || '').split(/(\s+)/); let kept = 0; const x = words.map((w, i) => { if (!w.trim()) return w; if (h(key + ':' + i) < T.drop) return '▒'.repeat(Math.min(6, Math.max(2, w.length))); kept++; return w; }).join('');
+    out.push({ t: m.t, u: m.u, x, tap: 1 }); } return out; }
+function blocsView(uid) { const me = S.docs['nations/' + uid], tap = me && me.tap && me.tap.until > Date.now() ? me.tap.b : null, tapSince = tap ? (me.tap.since || me.tap.until - core.TAP.h * HOUR) : 0; const out = {}; for (const [id, b] of Object.entries(S.blocs)) { const mem = (b.members || []).includes(uid); out[id] = { ...b, wall: mem ? (b.wall || []) : tap === id ? tapHear(uid, b.wall || [], tapSince) : [], /* a wiretap lets a spy read only what is said after the bug was planted, nothing else */ log: mem ? (b.log || []) : [], coSent: mem ? (b.coSent || {}) : {} }; } return out; }
 const crisisView = () => S.crisis ? { ...S.crisis } : null;
 const disView = () => S.dis.filter(d => Date.now() < d.until + 6 * HOUR);
 function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.uid)); }
@@ -561,7 +574,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = u.name;
-  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  return { voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -590,6 +603,7 @@ function effCfg() {
   for (const x of on) { if (x.type === 'xp2') c.xp *= 2; if (x.type === 'income2') c.income *= 2; if (x.type === 'cd50') c.cd *= .5; }
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   if (S.map2) { c.map2 = 1; c.tall = 1; } // the bigger map, and the build-tall bonus that came with it
+  if (S.chaosTimer && S.chaosTimer.at > now && !(S.chaos && S.chaos.on)) c.chaosAt = S.chaosTimer.at; // a heads-up countdown the owner set
   if (S.chaos && S.chaos.on) { const o = S.chaos.o || {}; c.chaos = { end: S.chaos.end, speed: o.speed || 10 }; c.tm = 1 / (o.speed || 10); c.income *= 3; c.protectH = o.noShield ? 0 : c.protectH; c.boost = { label: `💥 Chaos world: weapons unlocked, timers ${o.speed || 10}× faster. Everything resets when it ends`, end: S.chaos.end }; }
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
@@ -803,7 +817,7 @@ setTimeout(() => { if (!S.cbkRevert1) { const cut = Date.UTC(2026, 10, 17, 18, 2
 function councilDaily(W) {
   if (S.config.councilAuto === false) return; const now = Date.now(); if (now - (S.council.lastDaily || 0) < 24 * HOUR) return;
   if (S.council.props.some(p => p.status === 'open' && WP.RESOLUTIONS[p.type] && WP.RESOLUTIONS[p.type].kind === 'global')) return;
-  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(lawWait(k) > 0)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = now;
+  const pool = DAILY_LAWS.filter(k => !((S.council.active[k] || 0) > now) && !(lawWait(k) > 0) && !(bonusWait(k) > 0)); if (!pool.length) return; const type = pool[Math.floor(rng() * pool.length)]; if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = now;
   S.council.lastDaily = now; S.council.props.unshift({ id: rid(), by: null, auto: true, why: 'The law of the day: every nation may vote.', type, target: null, t: now, end: now + COUNCIL_H * HOUR, votes: {}, status: 'open' }); S.council.props = S.council.props.slice(0, 60);
   systemMessage(`⚖ World Council — law of the day: “${WP.RESOLUTIONS[type].n}”. ${WP.RESOLUTIONS[type].d} Vote within ${COUNCIL_H} hours on the World Council page.`); councilCast();
 }
@@ -922,7 +936,7 @@ function councilBribe(uid) {
 const PUNISH = ['sanction', 'embargo', 'armsEmb', 'freeze', 'condemn'];
 const PUNISH_DAILY = [...PUNISH, 'inspect']; // penalty votes a target can face at most once a day (inspections only need a nuclear program, so they skip the aggression check)
 function punishEvidence(W, v) {
-  const n = W.A[v], now = Date.now(); if (!n) return null; if (n.ai) return 'ai';
+  const n = W.A[v], now = Date.now(); if (!n || n.ai) return null; // AI nations are never penalised by the Council
   if ((n.aggr || 0) >= 35) return 'aggression';
   if ((n.out || []).some(e => e.type === 'battle' && e.to && e.to !== v && S.users[e.to] && !BOTS.isBot(e.to) && W.A[e.to] && now - e.t < 48 * HOUR && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === v && x.t < e.t && e.t - x.t < 24 * HOUR)))) return 'attacked a player'; // striking back at someone who hit you first doesn't count
   if ((n.dirtyAt && now - n.dirtyAt < 48 * HOUR) || (typeof n.nuke === 'number' && now - n.nuke < 48 * HOUR) || (S.nukes || []).some(x => x.by === v && !x.retaliation && now - (x.t || 0) < 48 * HOUR) || (S.strikeLog || []).some(x => x.by === v && S.users[x.to] && now - (x.t || 0) < 48 * HOUR)) return 'weapons';
@@ -935,12 +949,13 @@ function councilPropose(uid, b) {
   const type = typeof b.type === 'string' ? b.type : ''; if (!RES_KEYS.includes(type)) throw Object.assign(new Error('Unknown resolution.'), { status: 400 });
   const plea = type === 'lift' && b.target === uid; // a nation under sanctions petitioning for its own sanctions to be lifted
   if (!plea && core.rankOf(n.xp) < 2) throw Object.assign(new Error('You must be at least a Mayor to propose resolutions.'), { status: 400 });
-  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 6 * HOUR) { const h = Math.ceil((6 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 6 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
+  if (plea && Date.now() - ((S.council.plea || {})[uid] || 0) < 12 * HOUR) { const h = Math.ceil((12 * HOUR - (Date.now() - S.council.plea[uid])) / HOUR); throw Object.assign(new Error(`You can petition the Council once every 12 hours. Try again in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   const R = WP.RESOLUTIONS[type]; let target = null;
   if (isTargeted(type)) {
     target = typeof b.target === 'string' ? b.target : ''; if (!Object.prototype.hasOwnProperty.call(W.A, target) || (target === uid && !plea)) throw Object.assign(new Error('Choose another nation as the target.'), { status: 400 });
     const why = resBlocked(W, type, target); if (why) throw Object.assign(new Error(why), { status: 400 });
     // the Council only punishes nations that did something: a group of players can't vote penalties onto a peaceful nation
+    if (PENALTY_TYPES.includes(type) && (W.A[target].ai || BOTS.isBot(target))) throw Object.assign(new Error('The World Council does not vote penalties on AI nations.'), { status: 400 });
     if (PUNISH.includes(type)) { const ev = punishEvidence(W, target); if (!ev) throw Object.assign(new Error(`${W.A[target].name} hasn't attacked another player, used nuclear weapons or been caught spying recently. The Council only punishes aggression.`), { status: 400 }); }
     // a nation can face a player-proposed penalty vote at most once a day, so a group can't keep piling on the same target
     if (PUNISH_DAILY.includes(type)) { const last = S.council.props.filter(p => !p.auto && PUNISH_DAILY.includes(p.type) && p.target === target).sort((a, b) => b.t - a.t)[0]; const gap = last && last.status === 'failed' ? 48 : 24; if (last && Date.now() - last.t < gap * HOUR) { const h = Math.ceil((gap * HOUR - (Date.now() - last.t)) / HOUR); throw Object.assign(new Error(`${W.A[target].name} ${gap === 48 ? 'just survived a penalty vote, so it is protected from new ones for 2 days' : 'already faced a penalty vote today'}. Another can be proposed in ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); } }
@@ -952,6 +967,7 @@ function councilPropose(uid, b) {
   if (type !== 'custom' && open.some(p => p.type === type && p.target === target && (type !== 'pact' || p.scope === b.scope))) throw Object.assign(new Error('That resolution is already being voted on.'), { status: 400 });
   if (type === 'debt' && core.debtRatio(n) >= WP.DEBT_PROPOSE_MAX) throw Object.assign(new Error(`Only nations with debt under ${Math.round(WP.DEBT_PROPOSE_MAX * 100)}% of GDP can propose debt relief. Yours is ${Math.round(core.debtRatio(n) * 100)}%.`), { status: 400 }); // no voting yourself out of your own debt
   if (type === 'debt' && Date.now() - ((S.council.passed || {}).debt || 0) < 72 * HOUR) throw Object.assign(new Error(`Debt relief can only pass once every 72 hours. It can be proposed again in ${Math.ceil((72 * HOUR - (Date.now() - S.council.passed.debt)) / HOUR)} hours.`), { status: 400 });
+  { const bw = bonusWait(type); if (bw > 0) { const tH = Math.ceil(bw / HOUR), d = Math.floor(tH / 24), h = tH % 24; throw Object.assign(new Error(`“${R.n}” can pass at most once every ${Math.max(72, (R.h || 24) + 48) / 24} days. It can be proposed again in ${[d ? `${d} day${d > 1 ? 's' : ''}` : '', h ? `${h} hour${h > 1 ? 's' : ''}` : ''].filter(Boolean).join(' ')}.`), { status: 400 }); } }
   if (WP.RESOLUTIONS[type].kind === 'global' && (S.council.active[type] || 0) > Date.now()) { const h = Math.ceil((S.council.active[type] - Date.now()) / HOUR); throw Object.assign(new Error(`“${R.n}” is already in force for another ${h} hour${h === 1 ? '' : 's'}.`), { status: 400 }); }
   let scope = null, text = null, hours = null;
   if (type === 'pact') { scope = b.scope === 'all' ? 'all' : b.scope === 'ai' ? 'ai' : null; if (!scope) throw Object.assign(new Error('Choose who the pact defends against.'), { status: 400 }); }
@@ -962,9 +978,10 @@ function councilPropose(uid, b) {
     if (MOD.isProfane(text)) throw Object.assign(new Error('Please reword your resolution.'), { status: 400 });
     hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
   }
-  if (!plea) { const cost = b.anon ? 1e7 : 1e6; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
+  let fee = 0;
+  if (!plea) { const cost = b.anon ? 1e7 : 1e6; fee = PENALTY_TYPES.includes(type) ? Math.max(0, Math.round((n.cash - cost) * PENALTY_FEE)) : 0; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost + fee; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
-  const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' };
+  const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' }; if (fee) p.fee = fee;
   if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = p.t; // starts that law's cooldown
   if (b.anon && !plea) p.anon = true; // proposer stays secret: never sent to players (kept only in the saved game data)
   if (scope) p.scope = scope; if (text) { p.text = text; p.hours = hours; } if (plea) p.plea = true;
@@ -987,7 +1004,8 @@ function canStillVote(W, p) { const now = Date.now(); let n = 0; for (const u of
 function decideEarly(W, p) {
   if (p.status !== 'open' || Date.now() >= p.end) return false;
   const pv = netVotes(p), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length, left = canStillVote(W, p);
-  if ((ys >= COUNCIL_MIN_YES && ys > ns + left) || ys + left <= ns || ys + left < COUNCIL_MIN_YES) { p.end = Date.now(); p.early = true; return true; }
+  const need = minYes(p.type), sure = p.type === 'sanction' ? ys >= need && ys * 3 >= (ys + ns + left) * 2 : ys >= need && ys > ns + left, lost = p.type === 'sanction' ? (ys + left) * 3 < (ys + left + ns) * 2 || ys + left < need : ys + left <= ns || ys + left < need;
+  if (sure || lost) { p.end = Date.now(); p.early = true; return true; }
   return false;
 }
 // players on the same network count as one voter: only the first of them to vote counts
@@ -1000,11 +1018,12 @@ function councilResolve(W) {
     const pv = netVotes(p), ys = pv.filter(v => v === 'y').length, ns = pv.filter(v => v === 'n').length;
     const R = WP.RESOLUTIONS[p.type], tn = p.target && W.A[p.target];
     if (p.target && !tn) { p.status = 'failed'; changed = true; continue; }
-    p.status = ys > ns && ys >= COUNCIL_MIN_YES ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
+    p.status = passes(p.type, ys, ns) ? 'passed' : 'failed'; p.result = `${ys}–${ns}${p.early ? ', decided early' : ''}`; changed = true;
     const label = resLabel(p.type, tn && tn.name, p);
     if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
       const until = now + (p.hours || R.h) * HOUR, extra = enactResolution(W, p, tn, until); (S.council.passed = S.council.passed || {})[p.type] = now;
+      if (p.fee && p.by && W.A[p.by]) { W.A[p.by].cash += p.fee; W.changed.add(p.by); if (S.users[p.by]) addNote(p.by, 'council', `Your ${WP.moneyS(p.fee)} penalty deposit was refunded because the vote passed.`); }
       systemMessage(`World Council resolution PASSED (${p.result}): ${label}.${extra ? ' ' + extra : ''}`);
       if (p.target && S.users[p.target]) addNote(p.target, 'council', R.kind === 'protect' ? `The World Council passed a resolution in your favor: ${R.n}.${extra ? ' ' + extra : ''}` : `The World Council passed a resolution against you: ${R.n}.${extra ? ' ' + extra : ''}`);
     } else systemMessage(`World Council resolution failed (${p.result}): ${label}.`);
@@ -1088,7 +1107,7 @@ function councilWatch(W) {
   const open = () => S.council.props.filter(p => p.status === 'open');
   if (open().filter(p => p.auto).length >= 3) return;
   for (const [u, n] of Object.entries(W.A)) {
-    if (open().some(p => p.target === u)) continue;
+    if (open().some(p => p.target === u)) continue; if (n.ai || BOTS.isBot(u)) continue; // AI nations are never put to a penalty vote
     const battles = (n.out || []).filter(e => e.type === 'battle' && e.to && e.to !== u && W.A[e.to] && !BOTS.isBot(e.to) /* only attacks on real players count: fighting AI nations is part of the game */ && !((W.A[e.to].out || []).some(x => x.type === 'battle' && x.to === u && x.t < e.t && e.t - x.t < 24 * HOUR)) && !core.defending(W, u, e.to));
     const atk = { n: battles.filter(e => now - e.t < 6 * HOUR).length, victims: new Set(battles.filter(e => now - e.t < 12 * HOUR).map(e => e.to)).size };
     for (const [type, test] of AUTO_RULES) {
@@ -1172,7 +1191,7 @@ S.countdown = S.countdown || null;
 S.bm = S.bm && Array.isArray(S.bm.list) ? S.bm : { list: [] }; // black market listings (seller ids never leave the server)
 // ---------- poker: Texas Hold'em tables where nations play each other ----------
 const PK = require('./poker.js');
-const PK_TABLES = [['emb1', 'Embassy Table I', 5e4, 1e5, 2e6, 1e7], ['emb2', 'Embassy Table II', 5e4, 1e5, 2e6, 1e7], ['tre1', 'Treasury Table I', 5e5, 1e6, 2e7, 1e8], ['tre2', 'Treasury Table II', 5e5, 1e6, 2e7, 1e8], ['imp1', 'Imperial Table I', 5e6, 1e7, 2e8, 1e9], ['imp2', 'Imperial Table II', 5e6, 1e7, 2e8, 1e9]];
+const PK_TABLES = [['emb1', 'Embassy Table I', 5e4, 1e5, 2e6, 1e7], ['emb2', 'Embassy Table II', 5e4, 1e5, 2e6, 1e7], ['tre1', 'Treasury Table I', 5e5, 1e6, 2e7, 1e8], ['tre2', 'Treasury Table II', 5e5, 1e6, 2e7, 1e8], ['imp1', 'Imperial Table I', 5e6, 1e7, 2e8, 1e9], ['imp2', 'Imperial Table II', 5e6, 1e7, 2e8, 1e9], ['sov1', 'Sovereign Table', 2.5e7, 5e7, 1e9, 5e9]];
 S.poker = S.poker && S.poker.tables ? S.poker : { tables: {}, stats: {}, rake: 0, hands: 0 };
 for (const [id, name, sb, bb, mn, mx] of PK_TABLES) { const t = S.poker.tables[id]; if (!t) S.poker.tables[id] = PK.newTable(id, name, sb, bb, mn, mx); else Object.assign(t, { name, sb, bb, min: mn, max: mx }); }
 const PK_WATCH = new Map(); // uid -> { t, at }: who is looking at which table, for live updates
@@ -1292,132 +1311,138 @@ function seasonTick(W) { const se = S.seasons.cur; if (!se) return; const now = 
 // result with odds set mostly by that score. A game left unfinished counts as a score of 0 after 3 minutes.
 const SPYG = new Map(); const SPY_TTL = 3 * 60e3;
 const spyOptList = () => Object.keys(S.meta).filter(u => S.meta[u] && S.meta[u].prefs && S.meta[u].prefs.spygames === false);
-const CIPHER_HINTS = 4;
-// the general's path through the scope: the same formula is used on the page, so the server can check where he was at every shot
-const snipePos = (q, t) => ({ x: 150 + 105 * Math.sin(t * q.w1 + q.p1), y: 118 + 34 * Math.sin(t * q.w2 + q.p2) });
-const MEMO = { easy: { pairs: 4, show: 4, time: 45, f: .78 }, medium: { pairs: 6, show: 5, time: 60, f: .9 }, hard: { pairs: 8, show: 6, time: 75, f: 1 } };
-const MEMO_ICONS = ['tank', 'jet', 'ship', 'missile', 'radar', 'sub', 'heli', 'sat', 'shield', 'flag', 'map', 'key'];
-const MG_MSGS = ['THE NORTHERN FLEET SAILS AT DAWN AND RETURNS BEFORE THE STORM', 'MEET THE COURIER AT THE OLD BRIDGE WHEN THE CLOCK STRIKES NINE', 'THE HARVEST WAS GOOD AND THE GRAIN SHIPS LEAVE PORT TOMORROW', 'KEEP THE RESERVES HIDDEN IN THE HILLS UNTIL THE SIGNAL IS GIVEN', 'THE AMBASSADOR ARRIVES BY TRAIN AND EXPECTS A QUIET WELCOME', 'MOVE THE GOLD TO THE MOUNTAIN VAULT BEFORE THE FIRST SNOW FALLS', 'THE ENGINEERS FINISH THE TUNNEL NEXT WEEK IF THE WEATHER HOLDS', 'SEND THREE SQUADRONS SOUTH AND HOLD THE REST AT THE CAPITAL'];
-function spyPuzzle(op, W, v, lvl, neutral) {
-  if (op === 'warplans') { const L = MEMO[lvl] ? lvl : 'medium', M = MEMO[L], ic = MEMO_ICONS.slice(); for (let i = ic.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [ic[i], ic[j]] = [ic[j], ic[i]]; }
-    const cards = []; for (const x of ic.slice(0, M.pairs)) cards.push(x, x); for (let i = cards.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [cards[i], cards[j]] = [cards[j], cards[i]]; }
-    return { secret: { cards, lvl: L }, pub: { kind: 'memory', cards, lvl: L, pairs: M.pairs, show: M.show, time: M.time } }; }
-  if (op === 'assassinate') { const r = () => crypto.randomInt(0, 1e6) / 1e6, q = { w1: .45 + r() * .35, w2: .9 + r() * .6, p1: r() * 6.28, p2: r() * 6.28 }; const g = neutral ? { name: 'Range target', stars: 0 } : (W.A[v].gens || []).reduce((b, x) => !b || x.stars > b.stars ? x : b, null);
-    return { secret: q, pub: { kind: 'sniper', ...q, time: 30, bullets: 3, r: 10, gen: g ? { name: g.name, stars: g.stars } : null } }; }
-  if (op === 'heist') { const combo = [], dirs = ['right', 'left', 'right']; while (combo.length < 3) { const x = crypto.randomInt(4, 96); if (combo.every(c => Math.abs(c - x) > 8)) combo.push(x); } return { secret: combo, pub: { kind: 'safe', combo, dirs, time: 50 } }; }
-  // a substitution cipher: every letter is swapped for another; a few letters are given away to get started
-  const plain = neutral ? MG_MSGS[crypto.randomInt(0, MG_MSGS.length)] : core.cipherIntel(W, v), A_ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), sh = A_.slice(); for (let i = sh.length - 1; i > 0; i--) { const j = crypto.randomInt(0, i + 1); [sh[i], sh[j]] = [sh[j], sh[i]]; } if (sh.some((c, i) => c === A_[i])) { for (let i = 0; i < 26; i++) if (sh[i] === A_[i]) { const j = (i + 1) % 26; [sh[i], sh[j]] = [sh[j], sh[i]]; } }
-  const enc = {}; A_.forEach((c, i) => enc[c] = sh[i]); const cipher = plain.split('').map(c => enc[c] || c).join('');
-  const used = [...new Set(plain.replace(/[^A-Z]/g, '').split(''))]; const freq = {}; for (const c of plain) if (enc[c]) freq[c] = (freq[c] || 0) + 1;
-  const hints = used.sort((a, b) => freq[b] - freq[a]).slice(0, 2).concat(used.filter(c => 'AEIOU'.indexOf(c) < 0).sort(() => .5 - Math.random()).slice(0, CIPHER_HINTS - 2)); const give = {}; for (const c of [...new Set(hints)].slice(0, CIPHER_HINTS)) give[enc[c]] = c;
-  return { secret: plain, pub: { kind: 'cipher', cipher, give, time: 150 } };
-}
-function spyScore(g, b, t0) {
-  const secs = (Date.now() - (t0 || g.t0)) / 1000;
-  if (g.op === 'warplans') { const S_ = g.secret, M = MEMO[S_.lvl], flips = Array.isArray(b.flips) ? b.flips.slice(0, 200) : []; let last = M.show - .3, open = null, matched = new Set(), miss = 0;
-    for (const f of flips) { const i = Math.round(+f.i), t = +f.t; if (!(i >= 0 && i < S_.cards.length) || !(t >= last) || t > secs + 1.5) return { skill: 0, why: 'the flips did not add up' }; last = t; if (matched.has(i) || i === open) continue;
-      if (open == null) { open = i; continue; } if (S_.cards[open] === S_.cards[i]) { matched.add(open); matched.add(i); } else miss++; open = null; }
-    const pairs = matched.size / 2, all = pairs === M.pairs; if (all && last < M.show + M.pairs * .9) return { skill: 0, why: 'too fast to be real' }; // a person cannot match every pair this quickly
-    const tf = Math.max(0, Math.min(1, 1 - (last - M.show - M.pairs * 2) / (M.time - M.show)));
-    const skill = all ? Math.max(.3, Math.min(1, (.55 + .45 * tf - .06 * miss) * M.f)) : Math.max(0, pairs / M.pairs * .45 * M.f - .03 * miss);
-    return { skill, why: `${pairs} of ${M.pairs} pairs${all ? ` in ${Math.round(last)} s` : ''}${miss ? ` with ${miss} wrong match${miss > 1 ? 'es' : ''}` : ''} (${S_.lvl})` }; }
-  if (g.op === 'assassinate') { const shots = Array.isArray(b.shots) ? b.shots.slice(0, 3) : []; let last = 0, miss = 0;
-    for (const sh of shots) { const t = +sh.t, x = +sh.x, y = +sh.y; if (!(t >= 1.2) || t > secs + 1.5 || t < last || !isFinite(x) || !isFinite(y)) return { skill: 0, why: 'the shot did not add up' }; last = t;
-      const q = snipePos(g.secret, t), d = Math.hypot(q.x - x, q.y - y); if (d <= 10) { const qual = Math.max(.5, 1 - d / 20); return { skill: Math.max(.2, Math.min(1, qual - .15 * miss)), why: `${d <= 3 ? 'a clean hit' : 'a hit'} with bullet ${miss + 1}${miss ? ` after ${miss} miss${miss > 1 ? 'es' : ''}` : ''}` }; } miss++; }
-    return { skill: 0, why: shots.length ? `all ${shots.length} shot${shots.length > 1 ? 's' : ''} missed` : 'no shot was taken' }; }
-  if (g.op === 'heist') { const ans = Array.isArray(b.combo) ? b.combo.slice(0, 3).map(x => Math.round(+x)) : [], wrong = Math.max(0, Math.min(10, Math.round(+b.wrong || 0)));
-    const right = g.secret.filter((c, i) => ans[i] === c).length; if (right < 3) return { skill: right * .1, why: right ? `${right} of 3 numbers` : 'the vault stayed shut' };
-    if (secs < 4) return { skill: 0, why: 'too fast to be real' }; // a person cannot turn the dial to three numbers this quickly
-    const t = Math.max(0, Math.min(1, 1 - (secs - 10) / 40)); return { skill: Math.max(.25, Math.min(1, .45 + .55 * t - .12 * wrong)), why: `cracked in ${Math.round(secs)} s${wrong ? ` with ${wrong} wrong guess${wrong > 1 ? 'es' : ''}` : ''}` }; }
-  const guess = String(b.text || '').toUpperCase().slice(0, 400), P_ = g.secret; let ok_ = 0, tot = 0; for (let i = 0; i < P_.length; i++) if (/[A-Z]/.test(P_[i])) { tot++; if (guess[i] === P_[i]) ok_++; }
-  const acc = tot ? ok_ / tot : 0; if (acc >= .98 && secs < 6) return { skill: 0, why: 'too fast to be real' };
-  const t = Math.max(0, Math.min(1, 1 - (secs - 25) / 125)); return { skill: Math.max(0, Math.min(1, acc * acc * (.55 + .45 * t))), why: `${Math.round(acc * 100)}% decoded in ${Math.round(secs)} s` };
-}
-function spyResolve(uid, g, sc, force, caught) { const W = mkWorld(); let r;
-  if (core.MGAME.k[g.op]) { const nm_ = u => (S.docs['nations/' + u] || {}).name || 'They', N = WP.COVERT[g.op].n, M_ = v => '$' + Math.round(v).toLocaleString('en-US');
-    if (force === undefined || force === null) { const p_ = core.mgPay(W, uid, g.op, g.prize || 0, sc.skill); r = { ok: p_.won > 0, won: p_.won, xp: p_.xp, msg: p_.won ? `${nm_(g.v)} did not take up the challenge, so you played for the prize alone and won ${M_(p_.won)}${p_.xp ? ` and ${p_.xp} experience` : ''}.` : `${nm_(g.v)} did not take up the challenge, so you played alone. You needed a score of 30 or more to win a prize.` }; }
-    else if (force) { const p_ = core.mgPay(W, uid, g.op, g.prize || 0, sc.skill, sc.skill >= core.MGAME.need ? .5 : 0); r = { ok: p_.won > 0, won: p_.won, xp: p_.xp, msg: p_.won ? `You beat ${nm_(g.v)} and won ${M_(p_.won)}${p_.xp ? ` and ${p_.xp} experience` : ''}.` : `You beat ${nm_(g.v)}, but a score of 30 or more is needed to win a prize.` }; }
-    else { const dsk = (g.duel && g.duel.score && g.duel.score.skill) || 0, tie = dsk <= sc.skill, dp = W.A[g.v] && !tie && dsk >= core.MGAME.need ? core.mgPay(W, g.v, g.op, core.mgPrize(W, g.v, g.op, g.lvl || 'medium'), dsk, .5) : { won: 0, xp: 0 }; g.defWon = dp; g.tie = tie; r = { ok: false, won: 0, xp: 0, msg: tie ? `You and ${nm_(g.v)} tied, so nobody wins the prize.` : `${nm_(g.v)} beat your score. You win nothing this time.` }; }
-    commit(W); return r; } try { r = core.covert(W, uid, g.op, g.v, rng, { paid: true, skill: sc.skill, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : null, force, caught }); } catch (e) { r = { msg: e.message, ok: false }; } commit(W); return r; }
-// SPY DUELS: if the target is online when a mini-game operation starts, they are warned and may defend by playing the same puzzle at the
-// same time. The better score wins: if the defender wins, the operation fails and the agents are identified. A defender who does not
-// answer within 20 seconds is simply not there, and the operation is rolled as usual.
+const MG = require('./minigames.js'); // puzzle generation and scoring for the duel mini-games (seeded, so two players or a ghost get the same puzzle)
+const mgSeed = () => crypto.randomInt(1, 2147483647);
+const mgLvl = l => MG.LVLS.includes(l) ? l : 'medium';
+function spyPuzzle(op, lvl, seed) { return MG.make(op, mgLvl(lvl), seed); }
+function spyScore(g, b, t0) { return MG.score(g.op, g.secret, b, (Date.now() - (t0 || g.t0)) / 1000); }
+// ---------- DUEL RATINGS, GHOSTS ----------
+// Ratings: every player starts at 1000 in each game and gains or loses points in live duels and ghost duels (Elo). The same two players
+// only move each other's rating three times a day. Ghosts: every honest scored run is kept (as a seed and a score), so anyone can race it later.
+S.duels = S.duels && typeof S.duels === 'object' ? S.duels : {}; S.ghosts = S.ghosts && typeof S.ghosts === 'object' ? S.ghosts : {}; S.ghostSeen = S.ghostSeen && typeof S.ghostSeen === 'object' ? S.ghostSeen : {};
+const duelRec = u => S.duels[u] || (S.duels[u] = { r: {}, w: {}, l: {} });
+const duelR = (u, op) => (S.duels[u] && S.duels[u].r[op]) || 1000;
+function duelsView() { const o = {}; for (const [u, d] of Object.entries(S.duels)) if (S.docs['nations/' + u]) o[u] = { r: d.r, w: d.w, l: d.l }; return o; }
+let duelsDirty = false; setInterval(() => { if (duelsDirty) { duelsDirty = false; try { broadcast('duels', duelsView()); } catch (e) {} } }, 3000).unref();
+function duelRate(a, b, op, res, K, oneSided) { // res: 1 = a won, 0 = a lost, .5 = tie. b may be a ghost owner (oneSided: only a moves)
+  const ra = duelR(a, op), rb = b && S.duels[b] ? duelR(b, op) : 1000, ea = 1 / (1 + Math.pow(10, (rb - ra) / 400));
+  const A_ = duelRec(a); A_.r[op] = Math.round(ra + K * (res - ea)); if (res === 1) A_.w[op] = (A_.w[op] || 0) + 1; else if (res === 0) A_.l[op] = (A_.l[op] || 0) + 1;
+  if (!oneSided && b) { const B_ = duelRec(b); B_.r[op] = Math.round(rb + K * ((1 - res) - (1 - ea))); if (res === 0) B_.w[op] = (B_.w[op] || 0) + 1; else if (res === 1) B_.l[op] = (B_.l[op] || 0) + 1; }
+  duelsDirty = true; persist(); return { before: ra, after: A_.r[op] }; }
+function duelPairOk(a, b) { const day = Math.floor(Date.now() / 864e5), A_ = duelRec(a); if (!A_.d || A_.d.day !== day) A_.d = { day, p: {} }; if ((A_.d.p[b] || 0) >= 3) return false; A_.d.p[b] = (A_.d.p[b] || 0) + 1; const B_ = duelRec(b); if (!B_.d || B_.d.day !== day) B_.d = { day, p: {} }; B_.d.p[a] = (B_.d.p[a] || 0) + 1; return true; }
+const ghostKey = (op, lvl) => op + ':' + lvl;
+function ghostSave(u, op, lvl, seed, sc) { if (!(sc.skill >= .3) || !S.users[u] || BOTS.isBot(u)) return; const k = ghostKey(op, lvl), L = S.ghosts[k] || (S.ghosts[k] = []); if (L.some(x => x.seed === seed && x.u === u)) return; L.unshift({ seed, skill: Math.round(sc.skill * 1000) / 1000, why: String(sc.why || '').slice(0, 120), u, t: Date.now() }); S.ghosts[k] = L.slice(0, 16); const seen = S.ghostSeen[u] || (S.ghostSeen[u] = []); seen.unshift(seed); S.ghostSeen[u] = seen.slice(0, 300); }
+function ghostPick(u, op, lvl) { const seen = new Set(S.ghostSeen[u] || []), L = (S.ghosts[ghostKey(op, lvl)] || []).filter(x => x.u !== u && S.docs['nations/' + x.u] && !sharesNetwork(u, x.u) && !seen.has(x.seed));
+  if (L.length) { const x = L[crypto.randomInt(0, L.length)]; return { seed: x.seed, skill: x.skill, why: x.why, u: x.u, name: (S.docs['nations/' + x.u] || {}).name || 'A rival', leader: (S.users[x.u] || {}).name || null }; }
+  return { seed: mgSeed(), skill: Math.round((.42 + crypto.randomInt(0, 2600) / 10000) * 1000) / 1000, why: '', u: null, name: 'Academy instructor', leader: null, house: true }; }
+const MGM = v => '$' + Math.round(v).toLocaleString('en-US');
+const mgName = u => (S.docs['nations/' + u] || {}).name || 'They';
+// settle one finished round. mode: 'solo' (the opponent never played), 'win' / 'lose' / 'tie' against a live opponent, 'gwin' / 'glose' / 'gtie' against a ghost.
+// A friendly round moves ratings only: no fee was taken and nothing is paid.
+function spyResolve(uid, g, sc, mode) {
+  const W = mkWorld(), N = WP.COVERT[g.op].n, opp = g.ghost ? (g.ghost.house ? 'the Academy instructor' : `${g.ghost.name}'s ghost`) : mgName(g.v), need = core.MGAME.need; let r;
+  const pay = floor => g.friendly ? { won: 0, xp: 0 } : core.mgPay(W, uid, g.op, g.prize || 0, sc.skill, floor), got = p_ => p_.won ? ` You won ${MGM(p_.won)}${p_.xp ? ` and ${p_.xp} experience` : ''}.` : '';
+  if (mode === 'solo') { const p_ = pay(0); r = { ok: p_.won > 0 || (g.friendly && sc.skill >= need), won: p_.won, xp: p_.xp, msg: `${opp} did not play, so you played alone.${g.friendly ? ' It was a friendly round.' : p_.won ? got(p_) : ' You needed a score of 30 or more to win a prize.'}` }; }
+  else if (mode === 'win' || mode === 'gwin') { const p_ = pay(sc.skill >= need ? .5 : 0); r = { ok: true, won: p_.won, xp: p_.xp, msg: `You beat ${opp}.${g.friendly ? ' It was a friendly round, so there is no prize.' : p_.won ? got(p_) : ' A score of 30 or more is needed to win a prize.'}` }; }
+  else if (mode === 'tie' || mode === 'gtie') r = { ok: false, won: 0, xp: 0, msg: `You and ${opp} tied${g.friendly ? '.' : ', so nobody wins the prize.'}` };
+  else if (mode === 'glose') r = { ok: false, won: 0, xp: 0, msg: `${opp} beat your score.${g.friendly ? '' : ' You win nothing this time.'}` };
+  else { const dsk = (g.duel && g.duel.score && g.duel.score.skill) || 0; g.defWon = !g.friendly && W.A[g.v] && dsk >= need ? core.mgPay(W, g.v, g.op, core.mgPrize(W, g.v, g.op, g.lvl || 'medium'), dsk, .5) : { won: 0, xp: 0 }; r = { ok: false, won: 0, xp: 0, msg: `${opp} beat your score.${g.friendly ? '' : ' You win nothing this time.'}` }; }
+  commit(W); return r; }
+// SPY DUELS: a challenge goes to a player who is online; if they accept, both play the same puzzle at the same time and the better score wins.
 const DUEL_ANSWER = 20e3, SPYR = new Map(), DUELBY = new Map(); const SPYPR = new Map(); // practice rounds, one per player
 // a duel against a player who is online waits for them to accept: 30 seconds, then it is called off (and costs the challenger nothing)
-const DUEL_WAIT = 30e3, SPYP = new Map(); // invite id -> { by, v, op, at }
+const DUEL_WAIT = 30e3, SPYP = new Map(); // invite id -> { by, v, op, lvl, friendly, at }
 const spyPubOf = g => g.pub || null;
 const spyOnline = v => [...clients].some(c => c.uid === v) && S.users[v] && !BOTS.isBot(v);
 function spyCallOff(id, why) { const P = SPYP.get(id); if (!P) return; SPYP.delete(id); sendTo(P.by, 'spyno', { id, msg: why }); sendTo(P.v, 'spyduelgone', { id }); }
-setInterval(() => { const now = Date.now(); for (const [id, P] of SPYP) if (now - P.at > DUEL_WAIT) spyCallOff(id, `${(S.docs['nations/' + P.v] || {}).name || 'They'} did not accept within 30 seconds. The operation was called off and cost you nothing.`); }, 2000).unref();
-const duelNames = { warplans: 'a memory duel', heist: 'a vault-cracking duel', cipher: 'a code-breaking duel', assassinate: 'a shooting duel' };
-function duelOpen(uid, g, pub) { const online = [...clients].some(c => c.uid === g.v) && S.users[g.v] && !BOTS.isBot(g.v); if (!online) return; g.duel = { state: 'invited', at: Date.now() }; DUELBY.set(g.id, uid);
-  sendTo(g.v, 'spyduel', { id: g.id, op: g.op, what: duelNames[g.op], game: pub, answer: DUEL_ANSWER }); }
-function duelSettle(uid, g) { // both scores are in (or the defender never showed up): decide and tell both sides
+setInterval(() => { const now = Date.now(); for (const [id, P] of SPYP) if (now - P.at > DUEL_WAIT) spyCallOff(id, `${(S.docs['nations/' + P.v] || {}).name || 'They'} did not accept within 30 seconds. The challenge was called off and cost you nothing.`); }, 2000).unref();
+const duelNames = MG.DUEL_NAMES;
+const mgOut = (uid, g, sc, r) => ({ ok: true, success: !!r.ok, msg: r.msg, score: Math.round(sc.skill * 100), why: sc.why, won: r.won || 0, friendly: !!g.friendly, duel: r.duel || null, rating: r.rating || null, op: g.op, lvl: g.lvl, v: g.ghost ? 'ghost' : g.v, ...MG.reveal(g.op, g.secret), own: S.docs['nations/' + uid] });
+function duelSettle(uid, g) { // both scores are in (or the other player never showed up): decide and tell both sides
   const att = g.attScore, def = g.duel && g.duel.score; let r;
-  if (def && g.duel.state === 'done') { const won = att.skill > def.skill; r = spyResolve(uid, g, att, won, won ? undefined : true);
-    { const cn = (S.docs['nations/' + uid] || {}).name || 'The challenger', a100 = Math.round(att.skill * 100), d100 = Math.round(def.skill * 100), prizeGame = !!core.MGAME.k[g.op], dw = g.defWon || { won: 0, xp: 0 };
-      sendTo(g.v, 'spyduelres', { win: !won && !g.tie, own: S.docs['nations/' + g.v], msg: prizeGame ? (won ? `${cn} won the duel (their score ${a100}, yours ${d100}). It cost you nothing.` : g.tie ? `You tied with ${cn} (${d100} each), so nobody wins the prize.` : dw.won ? `You won the duel against ${cn}! Your score ${d100} beat theirs (${a100}). Prize: $${Math.round(dw.won).toLocaleString('en-US')}${dw.xp ? ` and ${dw.xp} experience` : ''}.` : `You beat ${cn} (${d100} to ${a100}), but a score of 30 or more is needed to win a prize.`) : won ? `🕵 The enemy agents beat your counter-intelligence (their score ${a100}, yours ${d100}) and got away.` : `🛡 You stopped them! Your score ${d100} beat theirs (${a100}). The agents were from ${cn}.` }); }
-    r.duel = { you: Math.round(att.skill * 100), them: Math.round(def.skill * 100), won }; }
-  else r = spyResolve(uid, g, att);
-  DUELBY.delete(g.id); SPYG.delete(uid); SPYR.set(uid, { id: g.id, at: Date.now(), out: { ok: true, success: !!r.ok, msg: r.msg, score: Math.round(att.skill * 100), why: att.why, plain: g.op === 'cipher' && att.skill > .3 ? g.secret : undefined, duel: r.duel || null, own: S.docs['nations/' + uid] } }); }
+  ghostSave(uid, g.op, g.lvl, g.seed, att);
+  if (def && g.duel.state === 'done') { const tie = Math.round(att.skill * 100) === Math.round(def.skill * 100), won = !tie && att.skill > def.skill; ghostSave(g.v, g.op, g.lvl, g.seed, def);
+    r = spyResolve(uid, g, att, tie ? 'tie' : won ? 'win' : 'lose'); const rated = duelPairOk(uid, g.v), rt = rated ? duelRate(uid, g.v, g.op, tie ? .5 : won ? 1 : 0, 24) : null;
+    const cn = mgName(uid), a100 = Math.round(att.skill * 100), d100 = Math.round(def.skill * 100), dw = g.defWon || { won: 0, xp: 0 }, dr = rated ? duelR(g.v, g.op) : null;
+    sendTo(g.v, 'spyduelres', { win: !won && !tie, own: S.docs['nations/' + g.v], op: g.op, lvl: g.lvl, v: uid, you: d100, them: a100, rating: dr,
+      msg: won ? `${cn} won the duel (their score ${a100}, yours ${d100}). It cost you nothing.` : tie ? `You tied with ${cn} (${d100} each)${g.friendly ? '.' : ', so nobody wins the prize.'}` : `You won the duel against ${cn}! Your score ${d100} beat theirs (${a100}).${g.friendly ? ' It was a friendly round.' : dw.won ? ` Prize: ${MGM(dw.won)}${dw.xp ? ` and ${dw.xp} experience` : ''}.` : ' A score of 30 or more is needed to win a prize.'}` });
+    r.duel = { you: a100, them: d100, won, tie, name: mgName(g.v) }; if (rt) r.rating = rt; }
+  else r = spyResolve(uid, g, att, 'solo');
+  DUELBY.delete(g.id); SPYG.delete(uid); SPYR.set(uid, { id: g.id, at: Date.now(), out: mgOut(uid, g, att, r) }); }
+function ghostSettle(uid, g, sc) { const gh = g.ghost, a100 = Math.round(sc.skill * 100), g100 = Math.round(gh.skill * 100), tie = a100 === g100, won = !tie && sc.skill > gh.skill;
+  ghostSave(uid, g.op, g.lvl, g.seed, sc); { const seen = S.ghostSeen[uid] || (S.ghostSeen[uid] = []); if (!seen.includes(g.seed)) { seen.unshift(g.seed); S.ghostSeen[uid] = seen.slice(0, 300); } }
+  const r = spyResolve(uid, g, sc, tie ? 'gtie' : won ? 'gwin' : 'glose'); r.rating = duelRate(uid, gh.u, g.op, tie ? .5 : won ? 1 : 0, 12, true);
+  r.duel = { you: a100, them: g100, won, tie, name: gh.house ? 'Academy instructor' : `${gh.name}'s ghost`, ghost: true };
+  if (gh.u && won === false && !tie && S.users[gh.u] && limited('ghostnote:' + gh.u, 3, 6 * HOUR) === false) addNote(gh.u, 'covert', `Your ghost beat ${mgName(uid)} at ${WP.COVERT[g.op].n} (${g100} to ${a100}).`);
+  SPYG.delete(uid); return mgOut(uid, g, sc, r); }
 setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) { if (!g.attScore) continue; const d = g.duel; if (!d) continue;
     if (d.state === 'invited' && now - d.at > DUEL_ANSWER) { d.state = 'gone'; duelSettle(uid, g); } else if (d.state === 'playing' && now - d.t0 > (g.pubTime + 8) * 1000) { d.state = 'gone'; duelSettle(uid, g); } }
   for (const [u, x] of SPYR) if (now - x.at > 10 * 60e3) SPYR.delete(u); }, 1000).unref();
-setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) if (now - g.t0 > SPY_TTL) { SPYG.delete(uid); try { spyResolve(uid, g, { skill: 0 }); addNote(uid, 'covert', core.MGAME.k[g.op] ? 'Your duel timed out before you finished, so it ended with no prize.' : 'Your agents waited too long for orders and the operation fell apart.'); } catch (e) {} } }, 15000).unref();
+setInterval(() => { const now = Date.now(); for (const [uid, g] of SPYG) if (now - g.t0 > SPY_TTL + (g.pubTime || 0) * 1000) { if (g.duel && g.duel.state === 'done' && !g.attScore) { g.attScore = { skill: 0, why: 'did not finish' }; try { duelSettle(uid, g); } catch (e) {} continue; } SPYG.delete(uid); DUELBY.delete(g.id); try { addNote(uid, 'covert', 'Your duel timed out before you finished, so it ended with no prize.'); } catch (e) {} } }, 15000).unref();
 async function spyRoute(p, req, res, me) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Use POST.' });
   if (finaleLock()) return send(res, 423, FINALE_LOCK_MSG); { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
-  const b = await readBody(req, 4096); touch(me.id, req);
+  const b = await readBody(req, 8192); touch(me.id, req);
+  const isOp = op => MG.OPS.includes(op), busy = () => { const old = SPYG.get(me.id); return old && Date.now() - old.t0 < SPY_TTL; };
   // PRACTICE: the same puzzles, free, against nobody. Nothing is spent, nothing happens in the world, and no cooldown starts.
   if (p === '/api/spy/practice') { if (limited('spyp:' + me.id, 12, 60e3)) return send(res, 429, { error: 'Take a short break, then practice again.' });
-    const op = String(b.op || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
+    const op = String(b.op || ''); if (!isOp(op)) return send(res, 400, { error: 'Unknown game.' }); const lvl = mgLvl(b.lvl);
     if (!S.docs['nations/' + me.id]) return send(res, 400, { error: 'Found a nation first.' });
-    const pz = spyPuzzle(op, mkWorld(), me.id, lvl, true), id = rid();
-    SPYPR.set(me.id, { id, op, secret: pz.secret, t0: Date.now() }); return send(res, 200, { ok: true, id, game: pz.pub, practice: true }); }
+    const pz = spyPuzzle(op, lvl, mgSeed()), id = rid();
+    SPYPR.set(me.id, { id, op, lvl, secret: pz.secret, t0: Date.now() }); return send(res, 200, { ok: true, id, game: pz.pub, practice: true }); }
   if (p === '/api/spy/practicedone') { const g = SPYPR.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That practice round is over.' }); SPYPR.delete(me.id);
-    const sc = spyScore(g, b, g.t0); return send(res, 200, { ok: true, practice: true, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' ? g.secret : undefined }); }
-  if (p === '/api/spy/start') { if (limited('spy:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down.' });
-    const op = String(b.op || ''), v = String(b.v || ''); if (!['heist', 'cipher', 'assassinate', 'warplans'].includes(op)) return send(res, 400, { error: 'Unknown operation.' }); const lvl = ['easy', 'medium', 'hard'].includes(b.lvl) ? b.lvl : 'medium';
-    const old = SPYG.get(me.id); if (old && Date.now() - old.t0 < SPY_TTL) return send(res, 400, { error: 'Finish the operation you already started first.' });
+    const sc = spyScore(g, b, g.t0); return send(res, 200, { ok: true, practice: true, score: Math.round(sc.skill * 100), why: sc.why, op: g.op, lvl: g.lvl, ...MG.reveal(g.op, g.secret) }); }
+  // GHOST DUEL: race another player's recorded run of the same puzzle (or the Academy instructor when there is none you haven't seen). Half the usual prize.
+  if (p === '/api/spy/ghost') { if (limited('spy:' + me.id, 8, 60e3)) return send(res, 429, { error: 'Slow down.' });
+    const op = String(b.op || ''); if (!isOp(op)) return send(res, 400, { error: 'Unknown game.' }); const lvl = mgLvl(b.lvl), friendly = !!b.friendly;
+    if (busy()) return send(res, 400, { error: 'Finish the game you already started first.' });
+    if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of duels. Turn them back on from your Intelligence page to play.' });
+    if (!S.docs['nations/' + me.id]) return send(res, 400, { error: 'Found a nation first.' });
+    { const g_ = hcGate(me.id, false); if (g_) return send(res, g_.jail ? 423 : 428, g_); }
+    const W = mkWorld(); let st = { prize: 0, fee: 0 }; if (!friendly) { try { st = core.mgBegin(W, me.id, op, lvl, null, true); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; } commit(W); }
+    const gh = ghostPick(me.id, op, lvl), pz = spyPuzzle(op, lvl, gh.seed), id = crypto.randomBytes(6).toString('hex');
+    SPYG.set(me.id, { id, op, v: null, lvl, seed: gh.seed, prize: st.prize, friendly, ghost: gh, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time, pub: pz.pub }); SPYR.delete(me.id);
+    return send(res, 200, { ok: true, id, game: pz.pub, ghost: { name: gh.name, leader: gh.leader, score: Math.round(gh.skill * 100), house: !!gh.house }, friendly, prize: st.prize, own: S.docs['nations/' + me.id] }); }
+  if (p === '/api/spy/start') { if (limited('spy:' + me.id, 8, 60e3)) return send(res, 429, { error: 'Slow down.' });
+    const op = String(b.op || ''), v = String(b.v || ''); if (!isOp(op)) return send(res, 400, { error: 'Unknown game.' }); const lvl = mgLvl(b.lvl), friendly = !!b.friendly;
+    if (busy()) return send(res, 400, { error: 'Finish the game you already started first.' });
     if (prefsOf(me.id).spygames === false) return send(res, 400, { error: 'You opted out of spy duels. Turn them back on from your Intelligence page to challenge anyone.' });
-    if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${(S.docs['nations/' + v] || {}).name || 'That nation'} has opted out of spy duels, so you cannot challenge them.` });
-    if (v === me.id || !S.docs['nations/' + v]) return send(res, 400, { error: 'Choose another nation to challenge.' });
+    if (S.users[v] && prefsOf(v).spygames === false) return send(res, 400, { error: `${mgName(v)} has opted out of spy duels, so you cannot challenge them.` });
+    if (v === me.id || !S.docs['nations/' + v] || !S.docs['nations/' + me.id]) return send(res, 400, { error: 'Choose another nation to challenge.' });
+    if (!(spyOnline(v) && Date.now() - ((S.docs['online/' + v] || {}).t || 0) < 2 * 60e3)) return send(res, 400, { error: `${mgName(v)} is not online right now. You can only challenge players who were online in the last 2 minutes. Try a ghost duel instead.` });
     if (sharesNetwork(me.id, v)) return send(res, 400, { error: 'You can\'t challenge an account on the same network as yours.' });
     { const g_ = hcGate(me.id, false); if (g_) return send(res, g_.jail ? 423 : 428, g_); }
-    if (v !== me.id && spyOnline(v)) { // they are online: ask them first
-      for (const [id, P] of SPYP) if (P.by === me.id) return send(res, 400, { error: `You are already waiting for ${(S.docs['nations/' + P.v] || {}).name || 'another nation'} to accept.` });
-      if (limited('spyinv:' + me.id + ':' + v, 3, 5 * 60e3)) return send(res, 429, { error: 'You have challenged that nation several times just now. Try again in a few minutes.' });
-      let W0 = mkWorld(); try { core.mgCheck(W0, me.id, op, v, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
-      const id = crypto.randomBytes(6).toString('hex'); SPYP.set(id, { by: me.id, v, op, lvl, at: Date.now() });
-      sendTo(v, 'spyduel', { id, op, what: duelNames[op], by: (S.docs['nations/' + me.id] || {}).name, prize: core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
-      return send(res, 200, { ok: true, pending: true, id, wait: DUEL_WAIT, name: (S.docs['nations/' + v] || {}).name || 'They' }); }
-    const W = mkWorld(); let st; try { st = core.mgBegin(W, me.id, op, lvl, v); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
-    const pz = spyPuzzle(op, W, v, lvl, true); commit(W); const id = crypto.randomBytes(6).toString('hex'); const g = { id, op, v, lvl, prize: st.prize, t0: Date.now(), secret: pz.secret, pubTime: pz.pub.time }; SPYG.set(me.id, g); SPYR.delete(me.id);
-    try { duelOpen(me.id, g, pz.pub); } catch (e) {}
-    return send(res, 200, { ok: true, id, game: pz.pub, duel: !!g.duel, own: S.docs['nations/' + me.id] }); }
-  if (p === '/api/spy/finish') { const g = SPYG.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That operation is over.' });
+    for (const [id, P] of SPYP) if (P.by === me.id) return send(res, 400, { error: `You are already waiting for ${mgName(P.v)} to accept.` });
+    for (const [, g2] of SPYG) if (g2.v === v && g2.duel && g2.duel.state !== 'gone' && Date.now() - g2.t0 < SPY_TTL) return send(res, 400, { error: `${mgName(v)} is in another duel right now. Try again in a minute.` });
+    if (limited('spyinv:' + me.id + ':' + v, 4, 5 * 60e3)) return send(res, 429, { error: 'You have challenged that nation several times just now. Try again in a few minutes.' });
+    const W0 = mkWorld(); if (!friendly) { try { core.mgCheck(W0, me.id, op, v, lvl); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; } }
+    const id = crypto.randomBytes(6).toString('hex'); SPYP.set(id, { by: me.id, v, op, lvl, friendly, at: Date.now() });
+    sendTo(v, 'spyduel', { id, op, lvl, friendly, what: duelNames[op], by: mgName(me.id), byLeader: (S.users[me.id] || {}).name || null, prize: friendly ? 0 : core.mgPrize(W0, v, op, lvl), pending: true, answer: DUEL_WAIT });
+    return send(res, 200, { ok: true, pending: true, id, wait: DUEL_WAIT, name: mgName(v) }); }
+  if (p === '/api/spy/finish') { const g = SPYG.get(me.id); if (!g || g.id !== String(b.id || '')) return send(res, 400, { error: 'That game is over.' });
     if (g.attScore) return send(res, 200, { ok: true, pending: true });
-    const sc0 = spyScore(g, b); if (g.duel && ['invited', 'playing', 'done'].includes(g.duel.state)) { g.attScore = sc0; if (g.duel.state === 'done') duelSettle(me.id, g); const done = SPYR.get(me.id); return send(res, 200, done && done.id === g.id ? done.out : { ok: true, pending: true, score: Math.round(sc0.skill * 100), why: sc0.why }); }
-    SPYG.delete(me.id); const sc = sc0; const r = spyResolve(me.id, g, sc); actLog(me.id, mkWorld(), { c: 'covert', op: g.op, v: g.v, skill: Math.round(sc.skill * 100) }, true, r.msg);
-    return send(res, 200, { ok: true, success: !!r.ok, msg: r.msg, score: Math.round(sc.skill * 100), why: sc.why, plain: g.op === 'cipher' && sc.skill > .3 ? g.secret : undefined, own: S.docs['nations/' + me.id] }); }
+    const sc0 = spyScore(g, b); try { actLog(me.id, mkWorld(), { c: 'minigame', op: g.op, lvl: g.lvl, vs: g.ghost ? 'ghost' : g.v, skill: Math.round(sc0.skill * 100) }, true, sc0.why); } catch (e) {}
+    if (g.ghost) return send(res, 200, ghostSettle(me.id, g, sc0));
+    g.attScore = sc0; if (!g.duel || g.duel.state === 'done' || g.duel.state === 'gone') duelSettle(me.id, g); const done = SPYR.get(me.id);
+    return send(res, 200, done && done.id === g.id ? done.out : { ok: true, pending: true, score: Math.round(sc0.skill * 100), why: sc0.why }); }
   if (p === '/api/spy/result') { const x = SPYR.get(me.id); if (x && x.id === String(b.id || '')) return send(res, 200, x.out); return send(res, 200, { ok: true, pending: true }); }
-  // a pending duel: the defender accepts or declines, the challenger can cancel or check
+  // a pending duel: the challenged player accepts or declines, the challenger can cancel or check
   if (p === '/api/spy/accept' || p === '/api/spy/decline' || p === '/api/spy/cancel' || p === '/api/spy/status') { const id = String(b.id || ''), P = SPYP.get(id);
     if (p === '/api/spy/status') { if (P && P.by === me.id) return send(res, 200, { ok: true, state: 'pending', left: Math.max(0, DUEL_WAIT - (Date.now() - P.at)) }); const g = SPYG.get(me.id); if (g && g.id === id) return send(res, 200, { ok: true, state: 'go', game: spyPubOf(g), own: S.docs['nations/' + me.id] }); return send(res, 200, { ok: true, state: 'off' }); }
-    if (p === '/api/spy/cancel') { if (P && P.by === me.id) spyCallOff(id, 'You called the operation off.'); return send(res, 200, { ok: true }); }
+    if (p === '/api/spy/cancel') { if (P && P.by === me.id) spyCallOff(id, 'You called the challenge off.'); return send(res, 200, { ok: true }); }
     if (!P || P.v !== me.id || Date.now() - P.at > DUEL_WAIT) return send(res, 400, { error: 'Too late: that challenge is over.' });
-    if (p === '/api/spy/decline') { spyCallOff(id, `${(S.docs['nations/' + me.id] || {}).name || 'They'} declined. The operation was called off and cost you nothing.`); return send(res, 200, { ok: true }); }
+    if (p === '/api/spy/decline') { spyCallOff(id, `${mgName(me.id)} declined. The challenge was called off and cost you nothing.`); return send(res, 200, { ok: true }); }
+    if (SPYG.get(me.id) && Date.now() - SPYG.get(me.id).t0 < SPY_TTL) return send(res, 400, { error: 'Finish the game you already started first.' });
     SPYP.delete(id); sendTo(P.v, 'spyduelgone', { id });
-    const W = mkWorld(); let st; try { st = core.mgBegin(W, P.by, P.op, P.lvl, P.v); } catch (e) { const why = e && e.user ? e.message : 'Something went wrong.'; sendTo(P.by, 'spyno', { id, msg: 'Your operation could not start: ' + why }); return send(res, 400, { error: 'The operation was called off.' }); }
-    const pz = spyPuzzle(P.op, W, P.v, P.lvl, true); commit(W); const now = Date.now();
-    const g = { id, op: P.op, v: P.v, lvl: P.lvl, prize: st.prize, t0: now, secret: pz.secret, pubTime: pz.pub.time, pub: pz.pub, duel: { state: 'playing', at: now, t0: now } }; SPYG.set(P.by, g); SPYR.delete(P.by); DUELBY.set(id, P.by);
+    const W = mkWorld(); let st = { prize: 0 }; if (!P.friendly) { try { st = core.mgBegin(W, P.by, P.op, P.lvl, P.v); } catch (e) { const why = e && e.user ? e.message : 'Something went wrong.'; sendTo(P.by, 'spyno', { id, msg: 'Your challenge could not start: ' + why }); return send(res, 400, { error: 'The challenge was called off.' }); } commit(W); }
+    const seed = mgSeed(), pz = spyPuzzle(P.op, P.lvl, seed), now = Date.now();
+    const g = { id, op: P.op, v: P.v, lvl: P.lvl, seed, prize: st.prize, friendly: !!P.friendly, t0: now, secret: pz.secret, pubTime: pz.pub.time, pub: pz.pub, duel: { state: 'playing', at: now, t0: now } }; SPYG.set(P.by, g); SPYR.delete(P.by); DUELBY.set(id, P.by);
     sendTo(P.by, 'spygo', { id, game: pz.pub, own: S.docs['nations/' + P.by] });
-    return send(res, 200, { ok: true, id, game: pz.pub, op: P.op }); }
-  // the defender's side of a duel
-  if (p === '/api/spy/defstart' || p === '/api/spy/defend') { const uid = DUELBY.get(String(b.id || '')), g = uid && SPYG.get(uid); if (!g || g.v !== me.id || !g.duel) return send(res, 400, { error: 'Too late: that operation is already over.' });
-    if (p === '/api/spy/defstart') { if (g.duel.state !== 'invited') return send(res, 400, { error: 'Too late: that operation is already over.' }); g.duel.state = 'playing'; g.duel.t0 = Date.now(); return send(res, 200, { ok: true }); }
-    if (g.duel.state !== 'playing') return send(res, 400, { error: 'Too late: that operation is already over.' }); g.duel.score = spyScore(g, b, g.duel.t0); g.duel.state = 'done'; if (g.attScore) duelSettle(uid, g);
-    return send(res, 200, { ok: true, score: Math.round(g.duel.score.skill * 100), why: g.duel.score.why }); }
+    return send(res, 200, { ok: true, id, game: pz.pub, op: P.op, lvl: P.lvl, friendly: !!P.friendly }); }
+  // the challenged player's side of a duel
+  if (p === '/api/spy/defend') { const uid = DUELBY.get(String(b.id || '')), g = uid && SPYG.get(uid); if (!g || g.v !== me.id || !g.duel) return send(res, 400, { error: 'Too late: that duel is already over.' });
+    if (g.duel.state !== 'playing') return send(res, 400, { error: 'Too late: that duel is already over.' }); g.duel.score = spyScore(g, b, g.duel.t0); g.duel.state = 'done'; if (g.attScore) duelSettle(uid, g);
+    return send(res, 200, { ok: true, score: Math.round(g.duel.score.skill * 100), why: g.duel.score.why, ...MG.reveal(g.op, g.secret) }); }
   return send(res, 404, { error: 'Not found.' });
 }
 
@@ -1518,7 +1543,7 @@ function freshRestore(by, why) {
 // Cheat watch are never touched.
 const CHAOS_FILE = path.join(DATA_DIR, 'chaos-realworld.json');
 const CHAOS_KEYS = [...FRESH_KEYS, 'scoreHist', 'casino'];
-const CHAOS_OPT = { mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [1, 2], nukeMax: 2, chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
+const CHAOS_OPT = { army: { troops: 5e5, air: 2000, ships: 300 }, mins: [15, 30, 60, 120, 180], speed: [4, 10, 20, 30], nukes: [1, 2], nukeMax: 2, chest: { small: 5e11, big: 5e12, huge: 5e13 }, res: { small: 2e5, big: 2e6, huge: 2e7 } };
 const CHAOS_XP = 12000; // the highest rank any weapon needs (Sovereign)
 const chaosOn = () => !!(S.chaos && S.chaos.on);
 const CHAOS_LOCK = { error: 'Chaos world is running. Anything changed in the world now would be lost when the real world comes back. End Chaos world first (Admin → Chaos world).' };
@@ -1548,6 +1573,7 @@ function chaosArm(n, o) { // what every nation gets in the chaos copy
   if (o.unlock) { n.tech = Math.max(n.tech || 0, 400); n.xp = Math.max(n.xp || 0, CHAOS_XP); }
   n.cash = Math.max(n.cash || 0, CHAOS_OPT.chest[o.chest]); n.res = n.res || {}; for (const r of ['food', 'oil', 'steel', 'goods']) n.res[r] = Math.max(n.res[r] || 0, CHAOS_OPT.res[o.chest]);
   n.spies = Math.max(n.spies || 0, 200); n.cd = {}; n.regroup = 0; n.debt = 0;
+  const A = CHAOS_OPT.army; n.troops = Math.max(n.troops || 0, A.troops); n.air = Math.max(n.air || 0, A.air); n.ships = Math.max(n.ships || 0, A.ships); // a minimum army, so a new nation is not left with nothing (bigger armies are kept as they are)
   if (o.nukes > 0) chaosNukes(n, o.nukes);
   if (o.noShield) n.shield = 0;
 }
@@ -1608,6 +1634,19 @@ function chaosEnd(by, why) {
 }
 // every 10 minutes during Chaos world: an airdrop for every nation (and the war chest is topped up if the admin chose unlimited money)
 const CHAOS_DROPS = [['💰', 'a war chest', n => { n.cash = (n.cash || 0) + CHAOS_OPT.chest[S.chaos.o.chest] * .25; }], ['⏱', 'an instant reset: every cooldown is ready now', n => { n.cd = {}; n.regroup = 0; }], ['🕵️', '100 extra agents', n => { n.spies = (n.spies || 0) + 100; }], ['🪖', '250,000 extra troops', n => { n.troops = (n.troops || 0) + 250000; }], ['✈', '2,000 extra aircraft', n => { n.air = (n.air || 0) + 2000; }], ['🚢', '300 extra warships', n => { n.ships = (n.ships || 0) + 300; }]];
+// HEADS-UP COUNTDOWN: the owner announces "Chaos world starts in N minutes". Everyone sees a countdown; reminders go out near the end;
+// at zero it starts by itself with the settings saved with the timer (or just announces, if the owner chose to start it by hand).
+const CHAOS_WARN = [60, 30, 15, 10, 5, 1];
+const czMins = m => m >= 60 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minute${m === 1 ? '' : 's'}`;
+function chaosTimerSet(by, mins, o, auto) { const m = Math.max(1, Math.min(24 * 60, Math.round(+mins) || 0)); S.chaosTimer = { at: Date.now() + m * 60e3, by, o, auto: !!auto, said: CHAOS_WARN.filter(x => x >= m) }; persist(); broadcast('config', effCfg());
+  const t = `💥 Chaos world starts in ${czMins(m)}! Every weapon unlocked, huge war chests, fast timers. Nothing in it is permanent: the real world comes back exactly as it was.`; systemMessage(t); broadcast('announce', { text: `Chaos world starts in ${czMins(m)}` }); audit(by, 'Chaos world countdown', `${czMins(m)}${auto ? ', starts by itself' : ', manual start'}`); }
+function chaosTimerClear(by, tell) { if (!S.chaosTimer) return; S.chaosTimer = null; persist(); broadcast('config', effCfg()); if (tell) { systemMessage('💥 The Chaos world countdown was called off.'); audit(by, 'Chaos world countdown', 'called off'); } }
+function chaosTimerLoop() { const T = S.chaosTimer; if (!T) return; const now = Date.now(); if (S.chaos && S.chaos.on) { S.chaosTimer = null; persist(); return; }
+  const left = (T.at - now) / 60e3; T.said = T.said || []; for (const w of CHAOS_WARN) if (left <= w && left > 0 && !T.said.includes(w)) { T.said.push(w); if (left > w - 1) { systemMessage(`💥 Chaos world starts in ${czMins(w)}!`); broadcast('announce', { text: `Chaos world starts in ${czMins(w)}` }); } persist(); }
+  if (now < T.at) return; S.chaosTimer = null; persist(); broadcast('config', effCfg());
+  if (!T.auto) { systemMessage('💥 The Chaos world countdown has finished. It starts as soon as the admin presses the button.'); return; }
+  try { chaosBegin(mkWorld(), T.by, T.o); } catch (e) { systemMessage('💥 Chaos world could not start just now. The admin has been told.'); audit('System', 'Chaos world countdown', 'could not start: ' + (e.message || e)); logErr('Chaos countdown start failed: ' + (e.stack || e)); } }
+setInterval(chaosTimerLoop, 2000).unref();
 function chaosLoop() {
   if (!S.chaos || !S.chaos.on) return;
   const now = Date.now();
@@ -1644,7 +1683,7 @@ function chaosBuy(uid, b) {
   S.chaos.donor = uid; persist(); systemMessage(`💛 ${who} started this Chaos world with a donation. Thank you!`); audit(who, 'Chaos world started by a supporter', `${o.mins} min, ×${o.speed}, ${o.nukes} nukes, ${o.chest} war chest`);
   return { ok: true, mins: o.mins, msg: `💥 Chaos world is on for ${o.mins} minutes! Everyone has been told. Thank you for supporting World Powers.` };
 }
-const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now(), donor: c && c.donor ? (S.users[c.donor] || {}).name || '?' : null, buyOn: S.config.chaosBuy !== false, gapLeft: chaosInfo().nextAt }; };
+const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { st = chaosStandings(mkWorld()).slice(0, 15); } catch (e) {} return { on: !!(c && c.on), timer: S.chaosTimer && S.chaosTimer.at > Date.now() ? { at: S.chaosTimer.at, by: S.chaosTimer.by, auto: !!S.chaosTimer.auto, mins: S.chaosTimer.o && S.chaosTimer.o.mins } : null, t: c && c.t, end: c && c.end, by: c && c.by, o: c && c.o, nations: c && c.nations, drops: c && c.drops, nukesGiven: c && c.nukesGiven, standings: st, last: S.chaosLast || null, maxEnd: chaosMaxEnd() === Infinity ? 0 : chaosMaxEnd(), saved: fs.existsSync(CHAOS_FILE), now: Date.now(), donor: c && c.donor ? (S.users[c.donor] || {}).name || '?' : null, buyOn: S.config.chaosBuy !== false, gapLeft: chaosInfo().nextAt }; };
 
 // a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
 function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
@@ -2284,6 +2323,11 @@ async function adminRoute(p, req, res, me) {
       try { chaosBegin(mkWorld(), me.name, o); } catch (e) { return send(res, e.status || 500, { error: e.message }); }
       return send(res, 200, { ok: true, view: chaosView() });
     }
+    if (b.op === 'timer') { if (chaosOn()) return send(res, 400, { error: 'Chaos world is already running.' }); const mins = Math.round(+b.after); if (!(mins >= 1 && mins <= 1440)) return send(res, 400, { error: 'Choose between 1 minute and 24 hours.' });
+      const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 2, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
+      if (Date.now() + mins * 60e3 + 60e3 > chaosMaxEnd()) return send(res, 400, { error: 'That is too close to the end of the season.' });
+      chaosTimerSet(me.name, mins, o, b.auto !== false); return send(res, 200, { ok: true, view: chaosView() }); }
+    if (b.op === 'timeroff') { chaosTimerClear(me.name, true); return send(res, 200, { ok: true, view: chaosView() }); }
     if (b.op === 'speed') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const sp = +b.speed; if (!CHAOS_OPT.speed.includes(sp)) return send(res, 400, { error: 'Choose 4, 10, 20 or 30.' });
       const old = S.chaos.o.speed || 10; if (sp !== old) { chaosRetime(old, sp); S.chaos.o.speed = sp; persist(); broadcast('config', effCfg()); systemMessage(`💥 Chaos world is now ${sp}× faster!`); audit(me.name, 'Chaos world speed', `${old}× → ${sp}×`); }
       return send(res, 200, { ok: true, view: chaosView() }); }
@@ -2749,7 +2793,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/clear-chat': { for (const k of Object.keys(S.docs)) if (k.startsWith('chat/')) setDoc('chat', k.slice(5), null); audit(me.name, 'Cleared chat'); return send(res, 200, { ok: true }); }
     case '/api/admin/event-start': { const k = String(b.key || ''); if (!WP.EVENTS[k]) return send(res, 400, { error: 'Unknown event.' }); if (S.event) endEvent(true); startEvent(k); audit(me.name, 'Started world event', WP.EVENTS[k].n); return send(res, 200, { ok: true }); }
     case '/api/admin/event-end': { if (S.event) { const n = WP.EVENTS[S.event.key].n; endEvent(); audit(me.name, 'Ended world event', n); } return send(res, 200, { ok: true }); }
-    case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
+    case '/api/admin/council-cancel': { const pr = S.council.props.find(x => x.id === b.prop && x.status === 'open'); if (pr) { pr.status = 'cancelled'; if (pr.fee && pr.by && S.docs['nations/' + pr.by]) { S.docs['nations/' + pr.by].cash += pr.fee; sendNation(pr.by); addNote(pr.by, 'council', `An admin cancelled your vote, so your ${WP.moneyS(pr.fee)} penalty deposit was refunded.`); } persist(); councilCast(); audit(me.name, 'Cancelled council vote', WP.RESOLUTIONS[pr.type].n); } return send(res, 200, { ok: true }); }
     case '/api/admin/setrogue': { // make a nation a rogue state until a set time (e.g. to restore status that ended early because of a bug)
       const id = String(b.id || ''), W = mkWorld(), n = W.A[id], now = Date.now(), until = Math.round(+b.until); if (!n) return send(res, 404, { error: 'That nation was not found.' });
       if (!isFinite(until) || until < now + 60e3 || until > now + 7 * 864e5) return send(res, 400, { error: 'Pick an end time between now and 7 days from now.' });
@@ -3091,7 +3135,7 @@ async function handle(req, res) {
     if (p === '/api/prefs' && req.method === 'POST') {
       const b = await readBody(req, 2048); const pr = prefsOf(me.id); for (const k of NOTE_KINDS) if (typeof b[k] === 'boolean') pr[k] = b[k];
       // spy mini-games: a player may opt out (nobody can use the vault, cipher or sniper on them, and they cannot use them either). Once a day, so it cannot be flipped to dodge an attack.
-      if (typeof b.spygames === 'boolean' && b.spygames !== pr.spygames) { const m = meta(me.id), left = (m.spyOptT || 0) + 24 * HOUR - Date.now(); if (left > 0) return send(res, 400, { error: `You can change this again in ${Math.ceil(left / HOUR)} hour${Math.ceil(left / HOUR) === 1 ? '' : 's'}.`, prefs: pr }); if (SPYG.has(me.id)) return send(res, 400, { error: 'Finish your spy operation first.', prefs: pr }); pr.spygames = b.spygames; m.spyOptT = Date.now(); setTimeout(() => broadcast('spyopt', spyOptList()), 0); }
+      if (typeof b.spygames === 'boolean' && b.spygames !== pr.spygames) { const m = meta(me.id); if (limited('spyopt:' + me.id, 6, 60e3)) return send(res, 429, { error: 'Slow down a little.', prefs: pr }); if (SPYG.has(me.id)) return send(res, 400, { error: 'Finish your spy operation first.', prefs: pr }); pr.spygames = b.spygames; m.spyOptT = Date.now(); setTimeout(() => broadcast('spyopt', spyOptList()), 0); }
       meta(me.id).prefs = pr; persist(); return send(res, 200, { ok: true, prefs: pr });
     }
     if (p === '/api/push/subscribe' && req.method === 'POST') {
