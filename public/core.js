@@ -895,17 +895,17 @@ function Core(PD, CARDS) {
   // ---------- NATION DEVELOPMENT: ministries, infrastructure, storage, processing, civil defence, counter-intelligence, reserves, trade routes ----------
   // Every bonus is small and capped, and every price is the higher of a floor and a multiple of the nation's own tax income, so it stays a real choice for small and large nations alike.
   const UPG = {
-    min: { max: 10, floor: 5e6, inc: .5, grow: 1.5, list: {
+    min: { max: 10, floor: 1e8, inc: 60, grow: 1.5, list: {
       treasury: { n: 'Treasury', ic: '🏦', f: .01, d: 'tax revenue' }, defense: { n: 'Defense', ic: '🛡', f: .01, d: 'attack and defence strength' }, interior: { n: 'Interior', ic: '🏛', f: .03, d: 'lower chance that far provinces break away' },
       foreign: { n: 'Foreign Affairs', ic: '🤝', f: .03, d: 'less aggression from your attacks', route: .05 }, science: { n: 'Science', ic: '🔬', f: .015, d: 'cheaper research' } } },
-    lvl: { max: 5, floor: 2e7, inc: 1.5, grow: 1.8, list: {
+    lvl: { max: 5, floor: 5e8, inc: 150, grow: 1.8, list: {
       store: { n: 'Warehouses and strategic reserve', ic: '📦', depot: .3, protect: .08, imp: .05 }, refine: { n: 'Refineries and processing', ic: '⚗', oil: 150, yield: .7, food: 2000, pop: .0002, share: .02 },
       civil: { n: 'Civil defence', ic: '🚨', f: .06 }, ci: { n: 'Counter-intelligence bureau', ic: '🕵', succ: .03, caught: .2 } } },
-    infra: { floor: 5e7, inc: 6, list: {
+    infra: { floor: 2e9, inc: 600, list: {
       grid: { n: 'National power grid', ic: '⚡', h: 4, steel: 3000, goods: 1500, f: .06, d: 'Production of every resource +6%.' }, rail: { n: 'Rail network', ic: '🚆', h: 6, steel: 5000, goods: 1000, f: .08, d: 'Army upkeep −8%.' },
       uni: { n: 'Universities', ic: '🎓', h: 8, steel: 1000, goods: 4000, f: .08, d: 'Research costs 8% less.' }, ports: { n: 'Deep-water ports', ic: '⚓', h: 6, steel: 4000, goods: 2000, f: .25, imp: .2, coast: true, d: 'Trade routes pay 25% more and your daily import limit is 20% higher. Needs a coast.' } } },
-    route: { max: 3, pay: 1, cap: 4, floor: 1e7, inc: 2 },
-    reserve: { capF: .5, cash: 60, upkeep: 1.5, cdMin: 10, callMin: 30 } };
+    route: { max: 3, pay: 1, cap: 4, floor: 25e7, inc: 120 },
+    reserve: { capF: .5, cash: 100, upkeep: 1.5, cdMin: 10, callMin: 30 } };
   const upOf = n => (n && n.up) || {}, minL = (n, k) => clamp((upOf(n).min || {})[k] || 0, 0, UPG.min.max), lvlL = (n, k) => clamp((upOf(n).lvl || {})[k] || 0, 0, UPG.lvl.max), hasInfra = (n, k) => !!(upOf(n).infra || {})[k];
   const upCost = (W, u, grp, k) => { const n = W.A[u], G = UPG[grp], l = grp === 'min' ? minL(n, k) : lvlL(n, k); return Math.round(Math.max(G.floor, taxIncome(W, u) * G.inc) * Math.pow(G.grow, l) / 1e5) * 1e5; };
   const progCost = (W, u) => Math.round(Math.max(UPG.infra.floor, taxIncome(W, u) * UPG.infra.inc) / 1e6) * 1e6;
