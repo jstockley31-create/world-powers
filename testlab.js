@@ -65,7 +65,7 @@ function newGen() {
   strat = {};
 }
 const cfgNow = () => ({ ...(snap.cfg || {}), noAdmin: !!snap.fresh });
-const snapN = (W, u) => { const n = W.A[u]; if (!n) return null; return { score: C.score(W, u), gdp: n.gdp || 0, cash: n.cash || 0, prov: C.hexesOf(W, u).length, tech: n.tech || 0, xp: n.xp || 0, rev: n.rev || 0, debt: n.debt || 0 }; };
+const snapN = (W, u) => { const n = W.A[u]; if (!n) return null; return { score: C.score(W, u), gdp: n.gdp || 0, cash: n.cash || 0, prov: C.hexesOf(W, u).length, tech: n.tech || 0, xp: n.xp || 0, rev: n.rev || 0 }; };
 
 // ---------- running commands and checking them ----------
 function crash(c, e) { stats.crashes++; find('red', 'Crash', 'crash:' + c + ':' + String(e && e.message).slice(0, 80), `The engine crashed on the "${c}" command`, `${e && e.message}\n${String(e && e.stack || '').split('\n').slice(1, 4).join(' | ')}`, 'A command must fail with a message, never crash. Send this to support.'); }
@@ -100,8 +100,6 @@ function invariants(W, why) {
 // ---------- the players ----------
 const others = (W, u) => Object.keys(W.A).filter(v => v !== u && C.hexesOf(W, v).length);
 const testers = (W, u) => Object.keys(ctl).filter(v => v !== u && W.A[v] && C.hexesOf(W, v).length);
-const CMP = new Set(['grinder', 'taxer', 'banker', 'builder', 'diplomat', 'trader']); // compared with each other: kept out of the fighting
-const foes = (W, u) => testers(W, u).filter(v => !CMP.has(ctl[v])).concat(others(W, u).filter(v => !ctl[v]));
 const mine = (W, u) => C.hexesOf(W, u).map(Number);
 function basics(W, u) { // what every sensible player does
   const n = W.A[u]; if (!n) return;
@@ -111,7 +109,7 @@ function basics(W, u) { // what every sensible player does
 }
 function ops(W, u, keys) { for (const k of keys) { const t = C.expandTargets(W, u); run(W, u, { c: 'act', k, arg: k === 'expand' && t.length ? pick(t) : undefined }); } }
 const ALL_OPS = WP.ACTS.map(a => a.k);
-function warOn(W, u) { const ws = C.wars(W, u).filter(v => !CMP.has(ctl[v])); if (ws.length) return pick(ws); const t = foes(W, u); const v = pick(t); if (v) run(W, u, { c: 'dip', kind: 'war', v }); return C.wars(W, u)[0]; }
+function warOn(W, u) { const ws = C.wars(W, u); if (ws.length) return pick(ws); const t = testers(W, u).concat(others(W, u)); const v = pick(t); if (v) run(W, u, { c: 'dip', kind: 'war', v }); return C.wars(W, u)[0]; }
 function attackAll(W, u, v, tries) {
   const hs = C.hexesOf(W, v).map(Number).sort(() => R() - .5).slice(0, 12);
   let done = 0; for (const h of hs) { if (done >= tries) break; if (C.canAttack(W, u, h)) continue; const me = W.A[u]; let x = Math.floor((me.troops || 0) * (.2 + R() * .6)), p = null;
@@ -127,7 +125,7 @@ const BRAINS = {
     else { run(W, u, { c: 'tax', t: Math.max(5, 30 - Math.floor((now - t0Gen) / (15 * MIN)) % 26) }); ops(W, u, ['tax']); }
     ops(W, u, ALL_OPS.filter(k => k !== 'tax')); basics(W, u); },
   warmonger(W, u) { ops(W, u, ['recruit', 'navy', 'air', 'research', 'fort', 'drill', 'tax', 'prod', 'expand']); const v = warOn(W, u); if (v) { attackAll(W, u, v, 3); for (const kind of ['missile', 'air']) run(W, u, { c: 'strike', v, kind, target: pick(['mil', 'stock', 'infra']), n: kind === 'missile' ? C.maxMissiles(W.A[u]) : Math.floor((W.A[u].air || 0) * .5) }); for (const k of Object.keys(C.HEAVY)) run(W, u, { c: 'heavy', v, k }); run(W, u, { c: 'dirty', v }); } if (R() < .02) { const ws = C.wars(W, u); if (ws.length) run(W, u, { c: 'dip', kind: 'peace', v: pick(ws) }); } run(W, u, { c: 'mun', q: 200 + Math.floor(R() * 800) }); basics(W, u); },
-  nuker(W, u) { ops(W, u, ['research', 'tax', 'prod', 'infra', 'expand', 'recruit']); for (const c of ['dome', 'domeup', 'nuke', 'warhead']) run(W, u, { c }); run(W, u, { c: 'ntest', delay: 0 }); run(W, u, { c: 'autofire', on: R() < .5 }); const v = warOn(W, u); if (v && W.A[u].warhead && W.A[v]) run(W, u, { c: 'launch', v, h: W.A[v].cap }); if (R() < .0004) run(W, u, { c: 'disarm' }); basics(W, u); },
+  nuker(W, u) { ops(W, u, ['research', 'tax', 'prod', 'infra', 'expand', 'recruit']); for (const c of ['dome', 'domeup', 'nuke', 'warhead']) run(W, u, { c }); run(W, u, { c: 'ntest', delay: 0 }); run(W, u, { c: 'autofire', on: R() < .5 }); const v = warOn(W, u); if (v && W.A[u].warhead && W.A[v]) run(W, u, { c: 'launch', v, h: W.A[v].cap }); if (R() < .005) run(W, u, { c: 'disarm' }); basics(W, u); },
   trader(W, u) { ops(W, u, ['tax', 'prod', 'research', 'expand', 'infra']); const n = W.A[u];
     for (const r of Object.keys(WP.RES)) { const q = 50 + Math.floor(R() * 5000), c0 = n.cash, a0 = Object.keys(n.ach || {}).length, x0 = n.xp; const b = run(W, u, { c: 'market', r, q, buy: true }); if (b) { const s = run(W, u, { c: 'market', r, q, buy: false }); if (s && Object.keys(n.ach || {}).length === a0 && C.rankOf(n.xp) === C.rankOf(x0)) { const net = n.cash - c0; arb.trades++; arb.profit += net; arb.worst = Math.max(arb.worst, net); if (net > 1) find('red', 'Market', 'arb:' + r, 'Buying and selling straight back makes money', `${r}: +${WP.money(net)} on ${q} units.`, 'The spread must always cost something.'); } } }
     if (R() < .05) run(W, u, { c: 'autobuy', r: pick(Object.keys(WP.RES)), on: true, q: 1000, below: 1e6 }); const t = pick(testers(W, u)); if (t && R() < .1) run(W, u, { c: 'offer', v: t, give: { cash: 1e6 }, want: { food: 100 } }); basics(W, u); },
@@ -143,7 +141,7 @@ const BRAINS = {
     const n = W.A[u]; if (!n.bloc) run(W, u, { c: 'bloc', op: 'create', name: 'Test Alliance ' + gen, tag: 'TST' }); else { for (const w of t.slice(0, 3)) run(W, u, { c: 'bloc', op: 'invite', v: w }); run(W, u, { c: 'bloc', op: 'give', amt: 1e6 }); run(W, u, { c: 'bloc', op: 'proj', k: pick(Object.keys(WP.BPROJ || { market: 1 })) }); }
     for (const w of t) { const o = W.A[w]; if (o && (o.offIn || []).length) run(W, w, { c: 'offerok', id: o.offIn[0].id || o.offIn[0] }); }
     basics(W, u); },
-  spy(W, u) { ops(W, u, ['spies', 'tax', 'prod', 'research', 'expand']); const v = pick(foes(W, u)); if (v) { const L = Object.keys(WP.COVERT).filter(k => !WP.COVERT[k].skill); run(W, u, { c: 'covert', op: pick(L), v }); } basics(W, u); },
+  spy(W, u) { ops(W, u, ['spies', 'tax', 'prod', 'research', 'expand']); const v = pick(testers(W, u).concat(others(W, u))); if (v) for (const op of Object.keys(WP.COVERT)) run(W, u, { c: 'covert', op, v }); basics(W, u); },
   banker(W, u) { ops(W, u, ['tax', 'prod', 'expand', 'research']); const n = W.A[u]; if (R() < .5) run(W, u, { c: 'bonds', amt: (n.gdp || 1e6) * (.5 + R()) }); else run(W, u, { c: 'bonds', amt: (n.debt || 0) * R() + 1, repay: true }); run(W, u, { c: 'bonds', amt: -5e9 }); run(W, u, { c: 'bonds', amt: 1e30, repay: true }); basics(W, u); },
   builder(W, u) { ops(W, u, ALL_OPS); const hs = mine(W, u);
     if (hs.length) { run(W, u, { c: 'develop', h: pick(hs) }); if (R() < .05) run(W, u, { c: 'outpost', h: pick(hs) }); if (R() < .01 && hs.length > 3) run(W, u, { c: 'movecap', h: pick(hs), name: W.A[u].name }); }
@@ -171,7 +169,7 @@ function step() {
 }
 function hourly(W) {
   for (const u of Object.keys(ctl)) { const n = W.A[u], b = base[u], s = snapN(W, u); const k = ctl[u];
-    strat[k] = { kind: k, desc: ARCH[k], name: n ? n.name : '(fell)', alive: !!(n && s && s.prov), score: s ? Math.round(s.score) : 0, gdp: s ? Math.round(s.gdp) : 0, cash: s ? Math.round(s.cash) : 0, debt: s ? Math.round(s.debt) : 0, prov: s ? s.prov : 0, tech: s ? s.tech : 0, xp: s ? Math.round(s.xp) : 0, rank: n ? C.rankName(n) : '', growth: b && s && b.score > 0 ? Math.round(s.score / b.score * 10) / 10 : null, taxMode: k === 'taxer' ? taxMode : undefined };
+    strat[k] = { kind: k, desc: ARCH[k], name: n ? n.name : '(fell)', alive: !!(n && s && s.prov), score: s ? Math.round(s.score) : 0, gdp: s ? Math.round(s.gdp) : 0, cash: s ? Math.round(s.cash) : 0, prov: s ? s.prov : 0, tech: s ? s.tech : 0, xp: s ? Math.round(s.xp) : 0, rank: n ? C.rankName(n) : '', growth: b && s && b.score > 0 ? Math.round(s.score / b.score * 10) / 10 : null, taxMode: k === 'taxer' ? taxMode : undefined };
     if (n) { const tl = taxLog[k] || (taxLog[k] = []); tl.push({ rev: n.rev || 0, gdp: n.gdp || 1 }); if (tl.length > 48) tl.shift(); } }
 }
 function endGen(W) {
@@ -182,10 +180,9 @@ function endGen(W) {
   const gS = strat.grinder && strat.grinder.alive ? strat.grinder.score : 0;
   for (const s of fresh) if (gS > 0 && s.score > gS * 1.6 && !['grinder', 'builder', 'diplomat'].includes(s.kind)) find('amber', 'Fairness', 'outrun:' + s.kind, `The ${s.kind} strategy beat normal play by a wide margin in a test week`, `${s.name}: score ${s.score.toLocaleString()} vs ${gS.toLocaleString()} for normal play (×${(s.score / gS).toFixed(1)}).`, 'Look at what this player type does for a loophole.');
   const g = strat.grinder, tx = strat.taxer; const ratio = k => { const l = taxLog[k] || []; return l.length ? l.reduce((a, x) => a + x.rev / x.gdp, 0) / l.length : 0; };
-  // a tax trick only counts if the whole nation comes out ahead: more score and more money (net of debt) than the steady 20% player, who plays the same way otherwise
-  const nw = s => (s.cash || 0) - (s.debt || 0);
-  if (g && tx && g.alive && tx.alive && gS > 0) { const sc = tx.score / g.score, mo = nw(tx) - nw(g); if (sc > 1.15 && mo > 0) find('red', 'Fairness', 'tax:' + taxMode, `The "${taxMode}" tax trick beats a steady 20% rate`, `Score ${tx.score.toLocaleString()} vs ${g.score.toLocaleString()} (×${sc.toFixed(2)}), money net of debt ${WP.money(nw(tx))} vs ${WP.money(nw(g))}. Tax revenue per GDP ${(ratio('taxer') * 100).toFixed(0)}% vs ${(ratio('grinder') * 100).toFixed(0)}%.`, 'Tax tricks should never beat a steady rate.'); else find('ok', 'Fairness', 'taxok:' + taxMode, `The "${taxMode}" tax trick does not beat a steady rate`, `Score ×${sc.toFixed(2)} of normal play; money net of debt ${WP.money(nw(tx))} vs ${WP.money(nw(g))}.`, ''); }
-  if (strat.banker && gS > 0 && strat.banker.alive && strat.banker.score > gS * 1.5) find('amber', 'Fairness', 'banker', 'Living on debt beat normal play in a test week', `Banker score ${strat.banker.score.toLocaleString()} vs normal play ${gS.toLocaleString()}.`, 'Check whether borrowing is too cheap.');
+  if (g && tx && ratio('grinder') > 0 && ratio('taxer') > ratio('grinder') * 1.15) find('red', 'Fairness', 'tax:' + taxMode, `The "${taxMode}" tax trick earns more than a normal 20% rate`, `Tax revenue relative to GDP: ${(ratio('taxer') * 100).toFixed(2)}% vs ${(ratio('grinder') * 100).toFixed(2)}% for normal play.`, 'Tax tricks should never beat a steady rate.');
+  else if (g && tx) find('ok', 'Fairness', 'taxok:' + taxMode, `The "${taxMode}" tax trick does not beat normal play`, `Revenue/GDP ${(ratio('taxer') * 100).toFixed(2)}% vs ${(ratio('grinder') * 100).toFixed(2)}% normal.`, '');
+  if (strat.banker && g && strat.banker.score > g.score * 1.5) find('amber', 'Fairness', 'banker', 'Living on debt beat normal play in a test week', `Banker score ${strat.banker.score.toLocaleString()} vs grinder ${g.score.toLocaleString()}.`, 'Check whether borrowing is too cheap.');
   { const cw = Object.values(cas).reduce((a, c) => a + c.wagered, 0), cn = Object.values(cas).reduce((a, c) => a + c.net, 0), cb = Object.values(cas).reduce((a, c) => a + c.bets, 0); if (cb >= 2000 && cw > 0 && cn / cw > .05) find('amber', 'Casino', 'gamblerrich', 'The casino paid the gambler more than 5% over what it bet in a test week', `${cb.toLocaleString()} bets, ${WP.money(cw)} wagered, ${WP.money(cn)} won.`, 'Usually luck over one week. If it shows up week after week, the casino needs a closer look.'); }
   for (const [k, c] of Object.entries(casinoAll)) if (c.bets >= 20000) { const rtp = 1 + c.net / c.wagered; if (rtp > 1.0) find('red', 'Casino', 'rtp:' + k, `${k} pays out more than it takes`, `Over ${c.bets.toLocaleString()} bets players got back ${(rtp * 100).toFixed(1)}% of what they bet.`, 'A casino game must keep a house edge.'); }
   history.push({ gen, t: Date.now(), days: GEN_DAYS, strat: Object.values(strat).map(s => ({ kind: s.kind, score: s.score, alive: s.alive })), crashes: stats.crashes });
