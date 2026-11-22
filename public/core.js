@@ -611,6 +611,27 @@ function Core(PD, CARDS) {
 
   // ---------- economy ----------
   const budget = n => ({ ...DEFBUDGET, ...(n.budget || {}) });
+  // ---- money ledger: where a nation's treasury came from and went, per day (UTC), kept for 8 days. Private to the owner.
+  // Every change to the treasury is filed under a heading; whatever nobody filed is caught by finSync and filed under the heading it is given.
+  const FIN = { days: 8,
+    i: { tax: 'Taxes you collected', taxauto: 'Automatic tax income', prov: 'Outlying provinces', market: 'Market sales', trade: 'Aid, deals and gifts received', loans: 'Bonds issued (borrowed)', casino: 'Casino winnings', attacks: 'War loot', covert: 'Spy operations', rewards: 'Rewards, missions and bonuses', develop: 'Trade routes', tribute: 'Tribute from vassals', exped: 'Expeditions', projects: 'Project refunds', nuclear: 'Nuclear and Golden Dome', military: 'Selling military units', expand: 'Expansion', ops: 'Operations and decisions', council: 'World Council', auto: 'Events and other automatic income', other: 'Other income' },
+    o: { bud_mil: 'Budget: military', bud_health: 'Budget: health', bud_edu: 'Budget: education', bud_infra: 'Budget: infrastructure', bud_other: 'Budget: other', dome: 'Golden Dome upkeep', units: 'Elite unit upkeep', warcost: 'Cost of being at war', interest: 'Interest on debt', nuclear: 'Nuclear program, inspections and Dome', military: 'Recruiting and building forces', attacks: 'Attacks and strikes', research: 'Research', develop: 'Development and upgrades', expand: 'Expansion and new provinces', market: 'Market purchases', trade: 'Aid, deals and donations sent', loans: 'Debt repaid', casino: 'Casino losses', projects: 'Megaprojects', covert: 'Spy operations', ops: 'Operations, decisions and laws', council: 'World Council and fines', admin: 'Administration over capacity', tribute: 'Tribute to your overlord', exped: 'Expeditions', tax: 'Taxes', auto: 'Events and other automatic costs', other: 'Other spending' } };
+  function finAdd(W, n, cat, amt) { // amt: + money in, - money out
+    if (!n || n.ai || !amt || !isFinite(amt)) return; const f = n.fin || (n.fin = { d: {} }); f.d = f.d || {};
+    const k = Math.floor(((W && W.now) || Date.now()) / 864e5), day = f.d[k] || (f.d[k] = { i: {}, o: {} }), side = amt > 0 ? day.i : day.o;
+    side[cat] = (side[cat] || 0) + Math.abs(amt);
+    const ks = Object.keys(f.d); if (ks.length > FIN.days) for (const x of ks.sort((a, b) => a - b).slice(0, ks.length - FIN.days)) delete f.d[x];
+    if (f.c != null) f.c += amt;
+  }
+  function finSync(W, n, cat) { // file whatever moved the treasury since the last look
+    if (!n || n.ai) return; const f = n.fin || (n.fin = { d: {} }), c = n.cash || 0;
+    if (f.c != null && isFinite(f.c) && Math.abs(c - f.c) >= 1) finAdd(W, n, cat || 'other', c - f.c);
+    f.c = c;
+  }
+  const FIN_ACT = { tax: 'tax', recruit: 'military', navy: 'military', air: 'military', train: 'military', fort: 'military', research: 'research', expand: 'expand', infra: 'develop' };
+  const FIN_CMD = { decide: 'ops', attack: 'attacks', strike: 'attacks', heavy: 'attacks', dirty: 'attacks', launch: 'attacks', nuke: 'nuclear', ntest: 'nuclear', warhead: 'nuclear', disarm: 'nuclear', dome: 'nuclear', domeup: 'nuclear', domefix: 'nuclear', mun: 'military', reserve: 'military', pu: 'military', law: 'ops', gov: 'ops', cosmetic: 'ops', flag: 'ops', color: 'ops', exped: 'exped', wonder: 'projects', uwonder: 'projects', grand: 'projects', mission: 'rewards',
+    offer: 'trade', offerok: 'trade', offerno: 'trade', offercancel: 'trade', aid: 'trade', relief: 'trade', games: 'trade', crisis: 'trade', bloc: 'trade', dip: 'trade', market: 'market', autobuy: 'market', bonds: 'loans', covert: 'covert', casino: 'casino', outpost: 'expand', outpostrm: 'expand', office: 'expand', release: 'expand', independence: 'expand', freevassal: 'expand', develop: 'develop', movecap: 'develop', upg: 'develop', program: 'develop', route: 'develop', refine: 'develop' };
+  const finCat = c => (c && (c.c === 'act' ? FIN_ACT[String(c.k)] || 'ops' : FIN_CMD[c.c])) || 'other';
   const debtRatio = n => (n.debt || 0) / Math.max(1, n.gdp || 1);
   // the credit rating drives the cost of borrowing, how much lenders allow, and investor confidence (GDP), approval and stability
   const CREDIT = { defaultH: 72,
@@ -2120,14 +2141,16 @@ function Core(PD, CARDS) {
   function tickOnce(W, u, rng) {
     const n = W.A[u], hs = hexesOf(W, u), p = production(W, u), c = consumption(n), g = GOV[n.gov], w = wars(W, u).length, b = budget(n);
     for (const r in p) n.res[r] += p[r] - c[r];
-    n.cash += hs.filter(h => ['P', 'D'].includes(P[h].t) && h != n.cap).length * 2000 * W.cfg.income;
+    n.cash += hs.filter(h => ['P', 'D'].includes(P[h].t) && h != n.cap).length * 2000 * W.cfg.income; finSync(W, n, 'prov');
     // government budget
-    const spend = spendPerTick(n), domeK = domeUpkeep(W, n); n.cash -= spend + domeK; n.spent = (n.spent || 0) * .993 + spend + domeK; n.rev = (n.rev || 0) * .993;
+    const spend = spendPerTick(n), domeK = domeUpkeep(W, n); n.cash -= spend + domeK; { const bs = (b.mil || 0) + (b.health || 0) + (b.edu || 0) + (b.infra || 0) || 1; for (const k of ['mil', 'health', 'edu', 'infra']) finAdd(W, n, 'bud_' + k, -spend * (b[k] || 0) / bs); finAdd(W, n, 'dome', -domeK); finSync(W, n, 'bud_other'); } n.spent = (n.spent || 0) * .993 + spend + domeK; n.rev = (n.rev || 0) * .993;
     // part of the tax take arrives on its own (about enough to cover normal spending); the Collect Taxes operation brings in the rest
-    const autoTax = taxIncome(W, u) * AUTO_TAX; n.cash += autoTax; n.rev += autoTax;
+    const autoTax = taxIncome(W, u) * AUTO_TAX; n.cash += autoTax; n.rev += autoTax; finSync(W, n, 'taxauto');
     // prestige units and wars cost money every hour
     const puK = puUpkeepH(W, n) / 6; if (puK > 0) { if (n.cash >= puK) { n.cash -= puK; n.spent += puK; } else { const k = Object.keys(n.pu).filter(x => PUNITS[x]).sort((a, b) => PUNITS[b].up - PUNITS[a].up)[0]; if (k) { n.pu[k]--; if (!n.pu[k]) delete n.pu[k]; note(W, u, 'war', `${PUNITS[k].ic} Your treasury could not pay the upkeep, so a ${PUNITS[k].n} was scrapped.`); log(n, `A ${PUNITS[k].n} was scrapped: the treasury could not pay its upkeep.`, W); } } }
+    finSync(W, n, 'units');
     const warK = warCostH(W, u) / 6; if (warK > 0) { const pay = Math.max(0, Math.min(warK, n.cash)); n.cash -= pay; if (warK > pay) n.debt = (n.debt || 0) + (warK - pay); n.spent += warK; n.warSpent = (n.warSpent || 0) + warK; }
+    finSync(W, n, 'warcost');
     const milFund = spend * b.mil / 100, need = upkeep(W, n), ratio = need > 0 ? milFund / need : 2;
     if (ratio >= 1) n.morale = clamp(n.morale + Math.min(2, (ratio - 1) * 4 + .5), 0, 100);
     else { n.morale = clamp(n.morale - 6 * (1 - ratio), 0, 100); if (n.morale < 30) { n.troops = Math.floor(n.troops * (1 - .02 * (1 - ratio))); } }
@@ -2135,7 +2158,7 @@ function Core(PD, CARDS) {
     const drift = (k, tgt, rate) => { n[k] = n[k] + (clamp(tgt, 0, 100) - n[k]) * rate; };
     drift('health', pctGdp('health') * 12 + fxAdd(n, 'health') + W.m.health, .03); drift('edu', pctGdp('edu') * 15 + fxAdd(n, 'edu'), .03); drift('iq', pctGdp('infra') * 14 + soft(n.infra, 10) * 2, .03);
     // interest and bankruptcy
-    const interest = n.debt * interestRate(W, n) / 100 / TICKS_PER_YEAR; if (interest > 0) { if (n.cash >= interest) n.cash -= interest; else n.debt += interest; }
+    const interest = n.debt * interestRate(W, n) / 100 / TICKS_PER_YEAR; if (interest > 0) { if (n.cash >= interest) n.cash -= interest; else n.debt += interest; } finSync(W, n, 'interest');
     if (n.debt > n.gdp * 2 || n.cash < -n.gdp * .2) {
       n.debt = Math.round(n.debt * .6); n.cash = Math.max(0, n.cash); n.stability = clamp(n.stability - 35, 0, 100); n.approval = clamp(n.approval - 25, 0, 100); n.gdp *= .8; n.infl = clamp(n.infl + 20, -2, 80); n.morale = clamp((n.morale || 50) - 15, 0, 100); n.defaulted = W.now; // defaulting is a disaster, never a cheap way out of debt
       news(W, u, `${n.name} has defaulted on its national debt. Its economy is in crisis.`); note(W, u, 'economy', `Your government has gone bankrupt and defaulted on its debt. Only 40% was written off, the economy crashed, and lenders will not lend for ${CREDIT.defaultH} hours.`);
@@ -2170,6 +2193,7 @@ function Core(PD, CARDS) {
     if (rogue(W, n)) { n.approval = clamp(n.approval - .1, 0, 100); n.stability = clamp(n.stability - .1, 0, 100); }
     if (n.stability < 25 && rng() < .05) { const lst = Object.keys(n.hexes).map(Number).filter(h => h != n.cap && owner(W, h) === u); if (lst.length) { const h = lst[Math.floor(rng() * lst.length)]; breakAway(W, u, h, 'fell to separatists, who declared independence'); } }
     if (n.gov !== 'dem' && n.stability < 12 && n.approval < 20 && rng() < .06) { const ks = Object.keys(GOV).filter(k => k !== n.gov); n.gov = ks[Math.floor(rng() * ks.length)]; n.cash *= .7; n.troops = Math.floor(n.troops * .85); n.stability = 45; n.approval = 50; if (n.gov === 'dem') n.nextElection = W.now + tq(W, W.cfg.electionH * HOUR); news(W, u, `Revolution in ${n.name}. The new regime is a ${GOV[n.gov].n}.`); note(W, u, 'economy', `Revolution! Your nation is now a ${GOV[n.gov].n}.`); }
+    finSync(W, n, 'auto');
   }
   function election(W, u, rng) {
     const n = W.A[u];
@@ -2228,31 +2252,32 @@ function Core(PD, CARDS) {
     return false;
   }
   function tick(W, u, active, rng) {
-    const n = W.A[u]; let changed = false;
+    const n = W.A[u]; let changed = false; finSync(W, n);
     const k = Math.floor((W.now - n.lastTick) / TICK);
     if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); else if ((n.aggr || 0) > 0) n.aggr = Math.max(0, n.aggr - k * W.m.aggrDecay); /* aggression keeps cooling while the leader is offline */ n.lastTick += k * TICK; changed = true; }
     if (W.now - n.nextCard > 3 * HOUR) n.nextCard = W.now - 3 * HOUR;
     if (rogueCheck(W, u)) changed = true;
     if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + tq(W, INSPECT.everyH * HOUR); changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + tq(W, INSPECT.everyH * HOUR); n.iaeaPaid = fee;
-      log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } }
-    if (expedResolve(W, u, rng)) changed = true;
+      log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } } finSync(W, n, 'nuclear');
+    if (expedResolve(W, u, rng)) changed = true; finSync(W, n, 'exped');
     if (n.gp && Object.keys(n.gp).length && grandResolve(W, u, rng)) changed = true;
-    if (autoBuyTick(W, u)) changed = true;
-    if (n.up && upTick(W, u)) changed = true;
+    finSync(W, n, 'projects'); if (autoBuyTick(W, u)) changed = true; finSync(W, n, 'market');
+    if (n.up && upTick(W, u)) changed = true; finSync(W, n, 'develop');
     if (n.dome && n.empT && domeDecay(W, u, rng)) changed = true;
     if (n.dome && n.empT && n.empT <= W.now) { delete n.empT; delete n.empAt; delete n.empRoll; if (n.dome.ready <= W.now) note(W, u, 'economy', `🛡 Your Golden Dome is back online after the EMP strike.`); changed = true; }
     if (n.dome && n.dome.up && n.dome.up.ready <= W.now) { n.dome.lvl = n.dome.up.lvl; delete n.dome.up; note(W, u, 'economy', `🛡 Your Golden Dome is now level ${n.dome.lvl}: it stops ${Math.round(domeMis(n) * 100)}% of missiles and has a ${Math.round(domeNuke(n) * 100)}% chance against a nuclear missile.`); changed = true; }
     if (offersExpire(W, u)) changed = true;
-    if (n.frozen && n.frozen.until <= W.now) { const a = n.frozen.amt || 0; n.cash += a; n.frozen = null; log(n, `The asset freeze has ended: ${money(a)} returned to your treasury.`, W); note(W, u, 'council', `The World Council asset freeze has ended. ${money(a)} is back in your treasury.`); changed = true; }
+    if (n.frozen && n.frozen.until <= W.now) { const a = n.frozen.amt || 0; n.cash += a; n.frozen = null; log(n, `The asset freeze has ended: ${money(a)} returned to your treasury.`, W); note(W, u, 'council', `The World Council asset freeze has ended. ${money(a)} is back in your treasury.`); changed = true; } finSync(W, n, 'council');
     if (k > 0) { mState(W, u); achCheck(W, u); }
     if (n.chain && W.now >= n.chain.at && n.cards.length < 4) { n.cards.push({ id: rid(), i: 'ch:' + n.chain.k }); delete n.chain; changed = true; }
     if (k > 0 && n.conq) for (let i = 0; i < Math.min(k, 12); i++) if (rebels(W, u, rng)) changed = true;
     if (k > 0 && active) for (let i = 0; i < Math.min(k, 12); i++) if (neglect(W, u, rng)) changed = true;
-    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { if (overTick(W, u, rng)) changed = true; if (farLands(W, u, rng)) changed = true; if (tributeTick(W, u)) changed = true; if (active && rushTick(W, u, rng)) changed = true; } if (outpostTidy(W, u)) changed = true; if (k > 0 && comebackTick(W, u)) changed = true;
+    if (k > 0) for (let i = 0; i < Math.min(k, 12); i++) { finSync(W, n, 'auto'); if (overTick(W, u, rng)) changed = true; finSync(W, n, 'admin'); if (farLands(W, u, rng)) changed = true; if (tributeTick(W, u)) changed = true; if (active && rushTick(W, u, rng)) changed = true; } if (outpostTidy(W, u)) changed = true; if (k > 0) { finSync(W, n, 'auto'); if (comebackTick(W, u)) changed = true; finSync(W, n, 'rewards'); }
     if (!n.ai && n.stability < REBEL.st && hexesOf(W, u).length >= REBEL.minProv && W.now - (n.rebWarn || 0) > 12 * HOUR) { n.rebWarn = W.now; note(W, u, 'attack', `⚠ Unrest is spreading: with stability below ${REBEL.st}, outlying provinces may declare independence. Raise stability (Address the Nation, budget, laws) and keep troops in your provinces.`); changed = true; }
     while (W.now >= n.nextCard) { if (n.cards.length < 3 && active) addCard(W, u, rng); n.nextCard += 40 * MIN; changed = true; }
     if (n.gov === 'dem' && n.nextElection && W.now >= n.nextElection) { election(W, u, rng); changed = true; }
     for (const h of Object.keys(n.hexes)) if (owner(W, h) !== u) { delete n.hexes[h]; changed = true; }
+    finSync(W, n, 'auto');
     if (changed) touch(W, u);
     return changed;
   }
@@ -2741,7 +2766,7 @@ function Core(PD, CARDS) {
     note(W, u, 'war', `${w[0]} Rapid redeployment! ${w[1]}: ${w[2]} Timers cleared: ${what.join(', ')}.`); touch(W, u); return true;
   }
   function tributeTick(W, u) { const n = W.A[u]; if (!n || !n.overlord) return false; const o = W.A[n.overlord]; if (!o) { delete n.overlord; delete n.vassalT; return true; }
-    const cash = Math.max(0, Math.round(taxIncome(W, u) * VASSAL.tax)); n.cash -= cash; o.cash += cash; const p = production(W, u); for (const r in p) { const x = Math.min(Math.floor(Math.max(0, p[r]) * VASSAL.res), Math.floor(Math.max(0, n.res[r] || 0))); if (x > 0) { n.res[r] -= x; o.res[r] = (o.res[r] || 0) + x; } }
+    const cash = Math.max(0, Math.round(taxIncome(W, u) * VASSAL.tax)); finSync(W, o); n.cash -= cash; o.cash += cash; finSync(W, o, 'tribute'); finSync(W, n, 'tribute'); const p = production(W, u); for (const r in p) { const x = Math.min(Math.floor(Math.max(0, p[r]) * VASSAL.res), Math.floor(Math.max(0, n.res[r] || 0))); if (x > 0) { n.res[r] -= x; o.res[r] = (o.res[r] || 0) + x; } }
     o.tribute = (o.tribute || 0) + cash; touch(W, n.overlord); return true; }
   // far-flung provinces (over 3,000 km from the capital) slip away now and then, more often when stability is low
   // war and aggression stir up the provinces: +25% per war (up to 3) and up to +100% at 100 aggression, so a warmonger's far-flung land rebels far more often
@@ -3001,7 +3026,10 @@ function Core(PD, CARDS) {
   }
   // every command passes through here so daily missions and achievements can follow along
   function exec(W, u, cmd, rng) {
-    const pre = cmd && cmd.c === 'attack' ? owner(W, Number(cmd.h)) : null, r = exec0(W, u, cmd, rng), c = cmd || {}, n = W.A[u]; if (!n || c.c === 'found') return r;
+    for (const v in W.A) finSync(W, W.A[v]);
+    const pre = cmd && cmd.c === 'attack' ? owner(W, Number(cmd.h)) : null, r = exec0(W, u, cmd, rng), c = cmd || {}, n = W.A[u];
+    { const fc = finCat(c), oc = ['attacks', 'trade', 'covert', 'market'].includes(fc) ? fc : 'other'; for (const v in W.A) finSync(W, W.A[v], v === u ? fc : oc); }
+    if (!n || c.c === 'found') return r;
     try {
       const t = n.tally = n.tally || {};
       if (c.c === 'act') { mTrack(W, u, 'ops', 1); blocGoal(W, u, 'ops'); if (['tax', 'prod', 'research', 'expand', 'recruit', 'infra'].includes(c.k)) mTrack(W, u, c.k, 1); }
@@ -3015,7 +3043,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };

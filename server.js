@@ -862,7 +862,7 @@ const bmErr = (m, st = 400) => Object.assign(new Error(m), { status: st });
 const bmRisk = (base, max, value) => base + (max - base) * Math.min(1, value / BM.riskValue);
 const bmFine = value => Math.round(Math.max(BM.fineMin, Math.min(BM.fineMax, value * BM.fine)));
 function bmShut(W, n) { if (!n) return ''; if (core.rogue(W, n)) return 'rogue'; if ((n.embargo || 0) > W.now) return 'embargo'; if ((n.blockade || 0) > W.now) return 'blockade'; return ''; }
-function bmCharge(n, amt) { const pay = Math.min(amt, Math.max(0, n.cash || 0)); n.cash = (n.cash || 0) - pay; if (amt > pay) n.debt = (n.debt || 0) + (amt - pay); return amt > pay ? amt - pay : 0; } // a fine larger than the treasury becomes debt
+function bmCharge(n, amt) { const pay = Math.min(amt, Math.max(0, n.cash || 0)); core.finSync(null, n); n.cash = (n.cash || 0) - pay; core.finSync(null, n, 'council'); if (amt > pay) n.debt = (n.debt || 0) + (amt - pay); return amt > pay ? amt - pay : 0; } // a fine larger than the treasury becomes debt
 function bmView(uid) {
   const W = mkWorld(), n = W.A[uid], now = Date.now(), why = bmShut(W, n);
   return { listings: S.bm.list.filter(x => x.exp > now && x.q > 0).sort((a, b) => a.price / WP.RES[a.r].p - b.price / WP.RES[b.r].p).map(x => ({ id: x.id, r: x.r, q: x.q, price: x.price, t: x.t, exp: x.exp, mine: x.seller === uid })),
@@ -912,8 +912,8 @@ function bmBuy(uid, b) {
     if (seller) addNote(x.seller, 'economy', `🕶 A buyer of your black-market ${x.r} was caught: ${q.toLocaleString('en-US')} ${x.r} was seized and you were not paid. You were not identified.`);
     return { ok: false, caught: true, msg: `Intercepted! The shipment was seized and you were fined ${WP.money(fine)}${owed ? ` (${WP.money(owed)} went on your debt)` : ''}. The world has been told.` };
   }
-  n.cash -= value; n.res[x.r] = (n.res[x.r] || 0) + q; W.changed.add(uid);
-  if (seller) { seller.cash = (seller.cash || 0) + value; W.changed.add(x.seller); core.log(seller, `🕶 Black market: sold ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)} to an unnamed buyer.`, W); }
+  core.finSync(W, n); n.cash -= value; core.finSync(W, n, 'market'); n.res[x.r] = (n.res[x.r] || 0) + q; W.changed.add(uid);
+  if (seller) { core.finSync(W, seller); seller.cash = (seller.cash || 0) + value; core.finSync(W, seller, 'market'); W.changed.add(x.seller); core.log(seller, `🕶 Black market: sold ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)} to an unnamed buyer.`, W); }
   commit(W); persist(); bmCast(); if (seller) addNote(x.seller, 'economy', `🕶 Your black-market listing sold ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)}.`);
   return { ok: true, msg: `Bought ${q.toLocaleString('en-US')} ${x.r} for ${WP.money(value)}. It slipped past customs.` };
 }
@@ -928,8 +928,8 @@ function councilBribe(uid) {
   if (nukedRecently(uid, now)) throw Object.assign(new Error('No amount of money will buy the Council within 72 hours of a nuclear strike.'), { status: 400 });
   const price = core.bribePrice(W, n); if ((n.cash || 0) < price) throw Object.assign(new Error(`The Council's price is ${WP.money(price)}. Your treasury doesn't cover it.`), { status: 400 });
   const wasRogue = core.rogue(W, n);
-  n.cash -= price; n.bribes = [...core.bribeRecent(n, now), now];
-  const back = n.frozen ? n.frozen.amt || 0 : 0; n.cash += back; n.frozen = null; n.embargo = 0; n.armsEmb = 0; n.condemned = 0;
+  core.finSync(null, n); n.cash -= price; n.bribes = [...core.bribeRecent(n, now), now];
+  const back = n.frozen ? n.frozen.amt || 0 : 0; n.cash += back; core.finSync(null, n, 'council'); n.frozen = null; n.embargo = 0; n.armsEmb = 0; n.condemned = 0;
   if (wasRogue) { n.rogue = 0; delete n.rogueT; } n.aggr = Math.min(n.aggr || 0, 30); W.changed.add(uid);
   for (const pr of (S.council && S.council.props) || []) if (pr.status === 'open' && pr.type === 'lift' && pr.target === uid) { pr.status = 'failed'; pr.result = 'withdrawn: they paid the Council instead'; pr.end = now; } // its own petition is no longer needed
   core.news(W, uid, `💰 ${n.name} bribed the World Council to lift its ${wasRogue ? 'rogue-state status' : 'sanctions'} (${WP.moneyS(price)}).`);
@@ -984,7 +984,7 @@ function councilPropose(uid, b) {
     hours = [24, 48, 72].includes(+b.hours) ? +b.hours : 48;
   }
   let fee = 0;
-  if (!plea) { const cost = b.anon ? 1e7 : 1e6; fee = PENALTY_TYPES.includes(type) ? Math.max(0, Math.round((n.cash - cost) * PENALTY_FEE)) : 0; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); n.cash -= cost + fee; W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
+  if (!plea) { const cost = b.anon ? 1e7 : 1e6; fee = PENALTY_TYPES.includes(type) ? Math.max(0, Math.round((n.cash - cost) * PENALTY_FEE)) : 0; if (n.cash < cost) throw Object.assign(new Error(b.anon ? 'An anonymous resolution costs $10,000,000.' : 'Submitting a resolution costs $1,000,000.'), { status: 400 }); core.finSync(null, n); n.cash -= cost + fee; core.finSync(null, n, 'council'); W.changed.add(uid); commit(W); } // $1M, or $10M to stay anonymous
   else (S.council.plea = S.council.plea || {})[uid] = Date.now();
   const p = { id: rid(), by: uid, type, target, t: Date.now(), end: Date.now() + COUNCIL_H * HOUR, votes: { [uid]: 'y' }, status: 'open' }; if (fee) p.fee = fee;
   if (LAW_CD[type]) (S.council.lastLaw = S.council.lastLaw || {})[type] = p.t; // starts that law's cooldown
@@ -1028,7 +1028,7 @@ function councilResolve(W) {
     if (p.status === 'passed' && p.target && resBlocked(W, p.type, p.target)) { p.status = 'failed'; p.result += ', no longer applies'; }
     if (p.status === 'passed') {
       const until = now + (p.hours || R.h) * HOUR, extra = enactResolution(W, p, tn, until); (S.council.passed = S.council.passed || {})[p.type] = now;
-      if (p.fee && p.by && W.A[p.by]) { W.A[p.by].cash += p.fee; W.changed.add(p.by); if (S.users[p.by]) addNote(p.by, 'council', `Your ${WP.moneyS(p.fee)} penalty deposit was refunded because the vote passed.`); }
+      if (p.fee && p.by && W.A[p.by]) { core.finSync(W, W.A[p.by]); W.A[p.by].cash += p.fee; core.finSync(W, W.A[p.by], 'council'); W.changed.add(p.by); if (S.users[p.by]) addNote(p.by, 'council', `Your ${WP.moneyS(p.fee)} penalty deposit was refunded because the vote passed.`); }
       systemMessage(`World Council resolution PASSED (${p.result}): ${label}.${extra ? ' ' + extra : ''}`);
       if (p.target && S.users[p.target]) addNote(p.target, 'council', R.kind === 'protect' ? `The World Council passed a resolution in your favor: ${R.n}.${extra ? ' ' + extra : ''}` : `The World Council passed a resolution against you: ${R.n}.${extra ? ' ' + extra : ''}`);
     } else systemMessage(`World Council resolution failed (${p.result}): ${label}.`);
@@ -1045,7 +1045,7 @@ function enactResolution(W, p, tn, until) {
     case 'sanction': tn.aggr = Math.max(tn.aggr || 0, 80); core.rogueCheck(W, v); ch(v); return '';
     case 'embargo': tn.embargo = Math.max(tn.embargo || 0, until); ch(v); return '';
     case 'armsEmb': tn.armsEmb = Math.max(tn.armsEmb || 0, until); ch(v); return '';
-    case 'freeze': { const amt = Math.max(0, Math.floor((tn.cash || 0) * .25)); tn.cash -= amt; tn.frozen = { amt: ((tn.frozen && tn.frozen.amt) || 0) + amt, until: Math.max((tn.frozen && tn.frozen.until) || 0, until) }; ch(v); return `${WP.moneyS(amt)} of ${tn.name}'s treasury is frozen for ${R_H(p)} hours.`; }
+    case 'freeze': { const amt = Math.max(0, Math.floor((tn.cash || 0) * .25)); core.finSync(null, tn); tn.cash -= amt; core.finSync(null, tn, 'council'); tn.frozen = { amt: ((tn.frozen && tn.frozen.amt) || 0) + amt, until: Math.max((tn.frozen && tn.frozen.until) || 0, until) }; ch(v); return `${WP.moneyS(amt)} of ${tn.name}'s treasury is frozen for ${R_H(p)} hours.`; }
     case 'condemn': tn.approval = Math.max(0, tn.approval - 10); tn.stability = Math.max(0, tn.stability - 8); tn.aggr = Math.min(100, (tn.aggr || 0) + 20); tn.condemned = Math.max(tn.condemned || 0, until); core.rogueCheck(W, v); ch(v); return '';
     case 'inspect': { const had = tn.warhead && !core.warheadReady(W, tn); if (had) tn.warhead = null; tn.inspected = Math.max(tn.inspected || 0, until); ch(v); return had ? `Inspectors dismantled the warhead ${tn.name} was assembling.` : `Inspectors will monitor ${tn.name}'s program for ${R_H(p)} hours.`; }
     case 'ceasefire': { tn.ceasefire = Math.max(tn.ceasefire || 0, until); ch(v); const foes = core.wars(W, v); for (const f of foes) if (S.users[f]) addNote(f, 'council', `A World Council ceasefire with ${tn.name} is in force for ${R_H(p)} hours. No battles or strikes until it ends.`); return `No fighting between ${tn.name} and ${foes.map(f => W.A[f].name).join(', ')} for ${R_H(p)} hours.`; }
@@ -1056,10 +1056,10 @@ function enactResolution(W, p, tn, until) {
         const d = W.A[u]; if (vote !== 'y' || u === v || !d || core.rogue(W, d)) continue;
         if (S.users[u] && S.users[v] && sharesNetwork(u, v)) { flag(u, `Voted for World Council aid to ${tn.name}, which uses the same network (possible second account); no aid was sent from this account`); continue; }
         const c = Math.max(0, Math.min(2e6, Math.floor((d.cash || 0) * .01))), f = Math.max(0, Math.min(300, Math.floor(((d.res || {}).food || 0) * .05)));
-        if (!c && !f) continue; d.cash -= c; d.res.food -= f; cash += c; food += f; donors++; ch(u);
+        if (!c && !f) continue; core.finSync(null, d); d.cash -= c; core.finSync(null, d, 'council'); d.res.food -= f; cash += c; food += f; donors++; ch(u);
         if (S.users[u]) addNote(u, 'council', `Your nation sent ${WP.moneyS(c)} and ${f} food in humanitarian aid to ${tn.name}.`);
       }
-      tn.cash += cash; tn.res.food = (tn.res.food || 0) + food; tn.health = Math.min(100, (tn.health || 50) + 10); tn.stability = Math.min(100, tn.stability + 6); ch(v);
+      core.finSync(null, tn); tn.cash += cash; core.finSync(null, tn, 'council'); tn.res.food = (tn.res.food || 0) + food; tn.health = Math.min(100, (tn.health || 50) + 10); tn.stability = Math.min(100, tn.stability + 6); ch(v);
       return `${donors} nation${donors === 1 ? '' : 's'} sent ${WP.moneyS(cash)} and ${WP.num(food)} food.`;
     }
     case 'lift': {
@@ -1071,7 +1071,7 @@ function enactResolution(W, p, tn, until) {
       let total = 0; for (const [u, n] of Object.entries(W.A)) if ((n.debt || 0) > 0) { const f = Math.min(n.debt, (p.debts ? p.debts[u] || 0 : n.debt)) * .2; if (!(f > 0)) continue; n.debt -= f; total += f; ch(u); if (S.users[u]) addNote(u, 'council', `Debt relief: ${WP.moneyS(f)} of your national debt was forgiven.`); }
       S.council.active.debt = until; return `${WP.moneyS(total)} of debt was forgiven worldwide.`;
     }
-    case 'health': { for (const [u, n] of Object.entries(W.A)) { const c = Math.max(0, Math.floor((n.cash || 0) * .005)); n.cash -= c; ch(u); } S.council.active.health = until; return 'Every nation contributed 0.5% of its treasury.'; }
+    case 'health': { for (const [u, n] of Object.entries(W.A)) { const c = Math.max(0, Math.floor((n.cash || 0) * .005)); core.finSync(null, n); n.cash -= c; core.finSync(null, n, 'council'); ch(u); } S.council.active.health = until; return 'Every nation contributed 0.5% of its treasury.'; }
     case 'pact': {
       const members = Object.keys(p.votes).filter(u => p.votes[u] === 'y' && W.A[u]);
       (S.council.pacts = S.council.pacts || []).push({ id: p.id, scope: p.scope, members, until, t: now });
@@ -1215,7 +1215,7 @@ function pkLobby(uid) { const mine = pkSeatOf(uid); return { tables: Object.valu
 const pkTimers = {};
 function pkPush(t) { if (pkTimers[t.id]) return; pkTimers[t.id] = setTimeout(() => { delete pkTimers[t.id]; const now = Date.now(), to = new Set(t.seats.filter(Boolean).map(s => s.u)); for (const [u, w] of PK_WATCH) if (w.t === t.id && now - w.at < 90e3) to.add(u); for (const u of to) sendTo(u, 'poker', { t: t.id, v: pkView(t, u) }); }, 40); }
 // chips go back to the nation's treasury
-function pkCashOut(t, i, why) { const s = t.seats[i]; if (!s) return 0; const amt = s.stack; s.stack = 0; const n = S.docs['nations/' + s.u]; if (n && amt > 0) { n.cash = (n.cash || 0) + amt; setDoc('nations', s.u, n); } if (why) addNote(s.u, 'diplo', `🃏 ${why}: ${WP.moneyS(amt)} from your chips went back to your treasury.`); return amt; }
+function pkCashOut(t, i, why) { const s = t.seats[i]; if (!s) return 0; const amt = s.stack; s.stack = 0; const n = S.docs['nations/' + s.u]; if (n && amt > 0) { core.finSync(null, n); n.cash = (n.cash || 0) + amt; core.finSync(null, n, 'casino'); setDoc('nations', s.u, n); } if (why) addNote(s.u, 'diplo', `🃏 ${why}: ${WP.moneyS(amt)} from your chips went back to your treasury.`); return amt; }
 function pkStand(t, i, why) { const s = t.seats[i]; if (!s) return; const H = t.hand, live = H && !H.done && H.p[i] && !H.p[i].folded;
   if (live && !H.p[i].allin) PK.foldOut(t, i, Date.now());
   pkCashOut(t, i, why); if (H && !H.done && H.p[i] && !H.p[i].folded) s.leaving = true; else t.seats[i] = null; }
@@ -1250,13 +1250,13 @@ async function pokerRoute(p, req, res, me) {
       if (!(buy >= t.min && buy <= t.max)) return fail_(`The buy-in at this table is ${WP.moneyS(t.min)} to ${WP.moneyS(t.max)}.`);
       if ((n.cash || 0) < buy) return fail_('You do not have that much in your treasury.');
       const mate = t.seats.find(s => s && sharesNetwork(me.id, s.u)); if (mate) return fail_('Someone on your network is already at this table. Friends on the same connection cannot play at the same table.');
-      n.cash -= buy; setDoc('nations', me.id, n); t.seats[seat] = { u: me.id, stack: buy, sitOut: false, missed: 0, joined: now };
+      core.finSync(null, n); n.cash -= buy; core.finSync(null, n, 'casino'); setDoc('nations', me.id, n); t.seats[seat] = { u: me.id, stack: buy, sitOut: false, missed: 0, joined: now };
       if (!t.hand && t.next < now + 2500) t.next = now + 2500; return done(); }
     case 'act': { if (i < 0) return fail_('You are not at this table.'); try { PK.act(t, i, String(b.a), b.amt, now); t.seats[i].missed = 0; } catch (e) { return fail_(e.message); } return done(); }
     case 'leave': { if (i < 0) return fail_('You are not at this table.'); pkStand(t, i, null); return done(); }
     case 'topup': { if (i < 0) return fail_('You are not at this table.'); const s = t.seats[i], H = t.hand; if (H && !H.done && H.p[i] && !H.p[i].folded) return fail_('Add chips between hands.');
       const amt = Math.floor(+b.amt); if (!(amt > 0)) return fail_('Enter an amount.'); if (s.stack + amt > t.max) return fail_(`You can have at most ${WP.moneyS(t.max)} at this table.`); if ((n.cash || 0) < amt) return fail_('You do not have that much in your treasury.');
-      n.cash -= amt; setDoc('nations', me.id, n); s.stack += amt; return done(); }
+      core.finSync(null, n); n.cash -= amt; core.finSync(null, n, 'casino'); setDoc('nations', me.id, n); s.stack += amt; return done(); }
     case 'sitout': { if (i < 0) return fail_('You are not at this table.'); const s = t.seats[i]; if (b.on) s.sitOut = true; else { if (s.stack < t.bb) return fail_('Add chips first: you need at least the big blind.'); s.sitOut = false; s.missed = 0; s.outSince = 0; if (!t.hand && t.next < now + 2500) t.next = now + 2500; } return done(); }
     default: return fail_('Unknown poker action.');
   }
@@ -1288,13 +1288,13 @@ function seasonFinish(W, by) { const se = S.seasons.cur; if (!se || se.status !=
   // prizes for the top 10, permanent titles and badges, and a badge for everyone who took part
   const ord = i => ['1st', '2nd', '3rd'][i] || `${i + 1}th`, place = ['Champion', '2nd place', '3rd place'];
   const badge = (n, b) => { n.badges = [...(n.badges || []).filter(x => !(x.s === se.n && x.k === b.k && x.t === b.t)), { s: se.n, ...b }].slice(-60); };
-  top.slice(0, 10).forEach((x, i) => { const n = W.A[x.u]; if (!n) return; const cash = Math.max(0, +((se.prizes || [])[i]) || 0), xp = Math.max(0, +((se.xp || [])[i]) || 0); if (cash) n.cash += cash; if (xp) n.xp = (n.xp || 0) + xp;
+  top.slice(0, 10).forEach((x, i) => { const n = W.A[x.u]; if (!n) return; const cash = Math.max(0, +((se.prizes || [])[i]) || 0), xp = Math.max(0, +((se.xp || [])[i]) || 0); if (cash) { core.finSync(W, n); n.cash += cash; core.finSync(W, n, 'rewards'); } if (xp) n.xp = (n.xp || 0) + xp;
     if (se.titles !== false && i < 3) n.titles = [...(n.titles || []), { s: se.n, t: `${se.name} ${place[i]}`, r: i + 1 }].slice(-30);
     badge(n, i === 0 ? { k: 'champion', ic: '🏆', t: `${se.name} Champion` } : i === 1 ? { k: 'second', ic: '🥈', t: `${se.name} 2nd place` } : i === 2 ? { k: 'third', ic: '🥉', t: `${se.name} 3rd place` } : { k: 'top10', ic: '🎖', t: `${se.name} top 10 (${ord(i)})` });
     n.log = [{ t: now, x: `🏆 ${se.name} is over: you finished ${ord(i)}!${cash ? ` Prize: $${Math.round(cash).toLocaleString('en-US')}.` : ''}${xp ? ` +${xp} XP.` : ''}${i === 0 ? ' You can now use the champion\'s gold flag frame and the champion map colours (Government page → Flag).' : ''}` }, ...(n.log || [])].slice(0, 120); W.changed.add(x.u);
     if (S.users[x.u]) addNote(x.u, 'event', `🏆 ${se.name}: you finished ${ord(i)}!${cash ? ` +$${Math.round(cash).toLocaleString('en-US')}` : ''}${xp ? ` +${xp} XP` : ''}${i === 0 ? '. Champion rewards unlocked: gold flag frame and champion map colours.' : '.'}`); });
   for (const c of cats) { const n = W.A[c.u]; if (!n) continue; if (se.titles !== false) n.titles = [...(n.titles || []), { s: se.n, t: `${c.award} of ${se.name}` }].slice(-30); badge(n, { k: 'award', ic: '🏅', t: `${c.award} of ${se.name}` });
-    const aw = (se.award || {})[c.k] || {}; if (aw.cash) n.cash += aw.cash; if (aw.xp) n.xp = (n.xp || 0) + aw.xp; if ((aw.cash || aw.xp) && S.users[c.u]) addNote(c.u, 'event', `🏅 ${c.award} of ${se.name}!${aw.cash ? ` +$${Math.round(aw.cash).toLocaleString('en-US')}` : ''}${aw.xp ? ` +${aw.xp} XP` : ''}`); W.changed.add(c.u); }
+    const aw = (se.award || {})[c.k] || {}; if (aw.cash) { core.finSync(W, n); n.cash += aw.cash; core.finSync(W, n, 'rewards'); } if (aw.xp) n.xp = (n.xp || 0) + aw.xp; if ((aw.cash || aw.xp) && S.users[c.u]) addNote(c.u, 'event', `🏅 ${c.award} of ${se.name}!${aw.cash ? ` +$${Math.round(aw.cash).toLocaleString('en-US')}` : ''}${aw.xp ? ` +${aw.xp} XP` : ''}`); W.changed.add(c.u); }
   // everyone who played during the season gets the participation badge
   let veterans = 0; for (const u of Object.keys(W.A)) { const n = W.A[u]; if (!seasonEligible(W, se, u) || n.ai || !S.users[u]) continue; if (((S.meta[u] || {}).lastSeen || 0) < se.start) continue; badge(n, { k: 'played', ic: '🎗', t: `Played ${se.name}` }); veterans++; W.changed.add(u); }
   const entry = { season: se.n, name: se.name, start: se.start, end: now, metric: se.metric, metricName: M.n, who: se.who, champion: top[0] ? pick(top[0]) : null, top: top.map((x, i) => ({ r: i + 1, ...pick(x) })), awards: cats.map(({ u, ...c }) => c), players: table.length, veterans, prizes: (se.prizes || []).slice(0, 10), recorded: now };
@@ -1692,7 +1692,7 @@ const chaosView = () => { const c = S.chaos; let st = []; if (c && c.on) try { s
 
 // a prize for a real nation: paid now if it exists, otherwise kept until the player founds one
 function seasonGrant(u, g) { const d = S.docs['nations/' + u]; if (!d) { const m = meta(u); m.seasonPending = [...(m.seasonPending || []), g].slice(-20); return false; } applyGrant(d, g); return true; }
-function applyGrant(n, g) { if (g.cash) n.cash = (n.cash || 0) + g.cash; if (g.xp) n.xp = (n.xp || 0) + g.xp; for (const t of g.titles || []) n.titles = [...(n.titles || []), t].slice(-30);
+function applyGrant(n, g) { if (g.cash) { core.finSync(null, n); n.cash = (n.cash || 0) + g.cash; core.finSync(null, n, 'rewards'); } if (g.xp) n.xp = (n.xp || 0) + g.xp; for (const t of g.titles || []) n.titles = [...(n.titles || []), t].slice(-30);
   for (const b of g.badges || []) n.badges = [...(n.badges || []).filter(x => !(x.s === b.s && x.k === b.k && x.t === b.t)), b].slice(-60); if (g.log) n.log = [{ t: Date.now(), x: g.log }, ...(n.log || [])].slice(0, 120); }
 function seasonPendingApply(u) { const m = S.meta[u], d = S.docs['nations/' + u]; if (!m || !d || !(m.seasonPending || []).length) return; for (const g of m.seasonPending) applyGrant(d, g); const k = m.seasonPending.length; m.seasonPending = []; addNote(u, 'event', `🏆 ${k} season reward${k > 1 ? 's were' : ' was'} waiting for your new nation and ${k > 1 ? 'have' : 'has'} been added.`); sendNation(u); persist(); }
 function seasonFinishFresh(W, by) {
@@ -2230,13 +2230,13 @@ function inviteReward(W, id) {
   const u = S.users[id]; if (!u || !u.ref || u.refDone) return; u.refDone = true; const inv = u.ref, im = meta(inv);
   if (sharesNetwork(id, inv)) { flag(id, `Invited by ${(S.users[inv] || {}).name} from the same network — no invite reward given`); return; }
   if ((im.invites || 0) >= INVITE.max || !W.A[id]) return;
-  W.A[id].cash += INVITE.welcome; addNote(id, 'economy', `Welcome bonus: ${WP.moneyS(INVITE.welcome)} for joining through ${S.docs['nations/' + inv] ? pubName(inv) : 'a friend'}'s invite.`);
+  core.finSync(W, W.A[id]); W.A[id].cash += INVITE.welcome; core.finSync(W, W.A[id], 'rewards'); addNote(id, 'economy', `Welcome bonus: ${WP.moneyS(INVITE.welcome)} for joining through ${S.docs['nations/' + inv] ? pubName(inv) : 'a friend'}'s invite.`);
   im.invites = (im.invites || 0) + 1; u.refPaid = true;
-  if (W.A[inv]) { const amt = invitePay(W, inv).found; W.A[inv].cash += amt; W.changed.add(inv); addNote(inv, 'economy', `A new leader joined through your invite and founded ${W.A[id].name}. You received ${WP.moneyS(amt)}. A bigger bonus follows when they reach ${WP.RANKS[INVITE.rank][1]}.`); }
+  if (W.A[inv]) { const amt = invitePay(W, inv).found; core.finSync(W, W.A[inv]); W.A[inv].cash += amt; core.finSync(W, W.A[inv], 'rewards'); W.changed.add(inv); addNote(inv, 'economy', `A new leader joined through your invite and founded ${W.A[id].name}. You received ${WP.moneyS(amt)}. A bigger bonus follows when they reach ${WP.RANKS[INVITE.rank][1]}.`); }
 }
 function inviteRank(W, id) { // second part: the invited player has reached Governor
   const u = S.users[id]; if (!u || !u.ref || !u.refPaid || u.refRank || !W.A[id] || rankIdx(W.A[id].xp) < INVITE.rank) return; u.refRank = true; const inv = u.ref;
-  if (!W.A[inv] || sharesNetwork(id, inv)) return; const amt = invitePay(W, inv).rank; W.A[inv].cash += amt; W.changed.add(inv);
+  if (!W.A[inv] || sharesNetwork(id, inv)) return; const amt = invitePay(W, inv).rank; core.finSync(W, W.A[inv]); W.A[inv].cash += amt; core.finSync(W, W.A[inv], 'rewards'); W.changed.add(inv);
   addNote(inv, 'economy', `${W.A[id].name}, who joined through your invite, reached ${WP.RANKS[INVITE.rank][1]}. You received ${WP.moneyS(amt)}.`); persist();
 }
 // ---------- admin ----------
@@ -2642,7 +2642,7 @@ async function adminRoute(p, req, res, me) {
     if (cash > 1e12 || xp > 1e6 || Object.values(res_).some(v => v > 1e9)) return send(res, 400, { error: 'That is more than the safety limit ($1T cash, 1M XP, 1B of a resource per player).' });
     let ids; if (b.to === 'all') ids = Object.keys(S.users).filter(id => !S.users[id].banned && S.docs['nations/' + id]); else { const id = String(b.to || ''); if (!S.users[id] || !S.docs['nations/' + id]) return send(res, 404, { error: 'That player has no nation.' }); ids = [id]; }
     const parts = [cash ? WP.moneyS(cash) : '', ...Object.entries(res_).map(([r, v]) => `${WP.num(v)} ${r === 'mun' ? 'munitions' : r}`), xp ? `${WP.num(xp)} XP` : ''].filter(Boolean).join(', ');
-    for (const id of ids) { const n = S.docs['nations/' + id]; n.cash = (n.cash || 0) + cash; n.xp = (n.xp || 0) + xp; n.res = n.res || {}; for (const [r, v] of Object.entries(res_)) n.res[r] = (n.res[r] || 0) + v; setDoc('nations', id, n); addNote(id, 'diplo', `🎁 Gift from the administrators: ${parts}.${note ? ' ' + note : ''}`); }
+    for (const id of ids) { const n = S.docs['nations/' + id]; core.finSync(null, n); n.cash = (n.cash || 0) + cash; core.finSync(null, n, 'rewards'); n.xp = (n.xp || 0) + xp; n.res = n.res || {}; for (const [r, v] of Object.entries(res_)) n.res[r] = (n.res[r] || 0) + v; setDoc('nations', id, n); addNote(id, 'diplo', `🎁 Gift from the administrators: ${parts}.${note ? ' ' + note : ''}`); }
     audit(me.name, b.to === 'all' ? `Gave every player (${ids.length})` : 'Gave a player', b.to === 'all' ? null : (S.users[ids[0]] || {}).name, parts + (note ? ` — “${note}”` : ''));
     if (b.to === 'all' && b.announce) systemMessage(`🎁 Every leader received ${parts} from the administrators.${note ? ' ' + note : ''}`);
     return send(res, 200, { ok: true, n: ids.length, parts });
@@ -3203,7 +3203,7 @@ async function handle(req, res) {
       if (!m.voteS.gt && m.voteT && !bb.site) m.voteS.gt = m.voteT; // an old page that does not say which site: count it as Gametoor
       const wait = (m.voteS[site] || 0) + VOTE_GAP - now;
       if (wait > 0) return send(res, 200, { ok: false, site, voteS: m.voteS, next: m.voteS[site] + VOTE_GAP, msg: `Thanks for voting! Your ${VOTE_SITES[site]} bonus is ready again in ${Math.floor(wait / HOUR)}h ${Math.floor(wait % HOUR / 60e3)}m.` });
-      const amt = voteBonus(n); n.cash = (n.cash || 0) + amt; m.voteS[site] = now; m.voteT = now; (n.log = n.log || []).unshift({ t: now, x: `Thank you for voting for World Powers on ${VOTE_SITES[site]}: +${WP.moneyS(amt)} bonus.` }); n.log = n.log.slice(0, 60);
+      const amt = voteBonus(n); core.finSync(null, n); n.cash = (n.cash || 0) + amt; core.finSync(null, n, 'rewards'); m.voteS[site] = now; m.voteT = now; (n.log = n.log || []).unshift({ t: now, x: `Thank you for voting for World Powers on ${VOTE_SITES[site]}: +${WP.moneyS(amt)} bonus.` }); n.log = n.log.slice(0, 60);
       setDoc('nations', me.id, n); stat('votes'); persist(); return send(res, 200, { ok: true, amt, site, voteS: m.voteS, next: now + VOTE_GAP, msg: `Thanks for voting on ${VOTE_SITES[site]}! +${WP.moneyS(amt)} has been added to your treasury.` });
     }
     if (p === '/api/bm' && req.method === 'GET') return send(res, 200, bmView(me.id));
