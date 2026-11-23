@@ -583,6 +583,15 @@ function snapshot(uid) {
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
+// the Rising Power: a loud announcement when one rises (however it rose), and a reminder every few hours while it stands
+const BOSS_REMIND_H = 3;
+function bossAnnounce(W, id) { const n = W.A[id]; if (!n) return; S.bossAnn = id; S.bossRem = Date.now();
+  systemMessage(`⚠️ WORLD THREAT: ${n.name} has become the RISING POWER, an AI superpower armed by foreign backers. It will grow, go nuclear and attack players. ⚔️ Attacking it costs NO aggression, and a war with it is FREE: no war upkeep, no GDP or stability hit. Every nation should fight it: declare war, hit its provinces and take its capital to bring it down. The whole world wins when it falls!`);
+  broadcast('announce', { text: `⚠️ ${n.name} is the Rising Power! Attacking it costs no aggression. The whole world should fight it.` }); }
+function bossWatch(W) { const id = Object.keys(W.A).find(k => BOTS.isBot(k) && W.A[k].ai && W.A[k].ai.boss); if (!id) { if (S.bossAnn) S.bossAnn = null; return; }
+  if (S.bossAnn !== id) return bossAnnounce(W, id);
+  if (Date.now() - (S.bossRem || 0) < BOSS_REMIND_H * HOUR) return; S.bossRem = Date.now(); const n = W.A[id], prov = core.hexesOf(W, id).length, fighting = Object.keys(W.A).filter(u => !BOTS.isBot(u) && core.atWar(W, u, id)).length;
+  systemMessage(`⚔️ The Rising Power ${n.name} still stands with ${prov} province${prov === 1 ? '' : 's'}. ${fighting ? `${fighting} nation${fighting === 1 ? ' is' : 's are'} at war with it.` : 'No one is fighting it yet!'} Attacking it costs NO aggression. Join the fight and bring it down together.`); }
 function systemMessage(text) { const doc = S.docs['chat/_system'] || { m: [] }; doc.m = [{ t: Date.now(), x: String(text).slice(0, 2000) }, ...(doc.m || [])].slice(0, 40); setDoc('chat', '_system', doc); }
 
 // ---------- notifications (in-game bell + phone/desktop push) ----------
@@ -1509,7 +1518,7 @@ setInterval(() => { const se = S.seasons && S.seasons.cur, now = Date.now(); if 
 // the real world comes back exactly as it was saved and the prizes are paid into each player's real nation.
 // Accounts, chat, mail, notes, the Hall of Fame, casino records and admin data are never touched.
 const FRESH_FILE = path.join(DATA_DIR, 'season-realworld.json');
-const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'overPause', 'overPauseSet', 'mkt'];
+const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'bossAnn', 'bossRem', 'overPause', 'overPauseSet', 'mkt'];
 function freshSave(se) {
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m && (m.fallen || m.rem)) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
@@ -1800,6 +1809,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) { const active = BOTS.isBot(u) || now - ((S.meta[u] || {}).lastSeen || 0) < ACTIVE_WINDOW; core.tick(W, u, active, rng); }
     manageBots(W);
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
+    try { bossWatch(W); } catch (e) { logErr('bossWatch: ' + e.message); }
     try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
     pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
@@ -2478,7 +2488,7 @@ async function adminRoute(p, req, res, me) {
     if (!ids.some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
     S.bossFell = 0;
     const W = mkWorld(), b = BOTS.raiseBoss(W, W.cfg, '', true); if (!b) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
-    commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
+    commit(W); persist(); bossAnnounce(W, b);
     audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
   }
   if (p === '/api/admin/casino' && req.method === 'GET') { // Admin page → Casino
@@ -2600,7 +2610,7 @@ async function adminRoute(p, req, res, me) {
       if (S.config.noAI) return send(res, 400, { error: 'All AI is turned off. Turn AI back on (Game settings) first.' }); 
       S.bossFell = 0;
       const W2 = mkWorld(), nb = BOTS.raiseBoss(W2, W2.cfg, want, true); if (!nb) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
-      commit(W2); persist(); systemMessage(`⚠ ${W2.A[nb].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
+      commit(W2); persist(); bossAnnounce(W2, nb);
       audit(me.name, 'Raised the Rising Power', W2.A[nb].name); return send(res, 200, { ok: true, name: W2.A[nb].name });
     }
     if (!id) return send(res, 400, { error: 'There is no Rising Power right now.' });

@@ -135,7 +135,7 @@ module.exports = function makeBots(core, WP, rng) {
     const b = want && bots.includes(want) ? want : pool.sort((a, c) => (['warlord', 'expansionist'].includes(W.A[c].ai.p) - ['warlord', 'expansionist'].includes(W.A[a].ai.p)) || core.score(W, c) - core.score(W, a))[0];
     W.A[b].ai.boss = true; core.touch(W, b);
     core.news(W, b, `⚠ ${W.A[b].name} is rising as a superpower. Foreign arms dealers are pouring money and weapons into its military.`);
-    for (const h of humans(W)) core.note(W, h, 'war', `⚠ ${W.A[b].name} has become the Rising Power: an AI superpower that will grow with the strongest nations, build nuclear weapons and attack players. Stopping it will take the world working together.`);
+    for (const h of humans(W)) core.note(W, h, 'war', `⚠ ${W.A[b].name} has become the Rising Power: an AI superpower that will grow with the strongest nations, build nuclear weapons and attack players. Attacking it costs NO aggression, so declare war and help the world bring it down.`);
     return b;
   }
   function bossAssist(W, u, cfg) {

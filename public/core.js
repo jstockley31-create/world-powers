@@ -677,7 +677,7 @@ function Core(PD, CARDS) {
     const n = W.A[u], b = budget(n);
     const pc = 187.5 * (1 + soft(n.tech, 10) * .04) * (1 + soft(n.infra, 10) * .05) * (.7 + (n.edu == null ? 50 : n.edu) / 100 * .6) * (.85 + (n.health == null ? 50 : n.health) / 100 * .3)
       * (1 + tradeVal(W, u) * .03) * (1 + soft(devTotal(W, u), 20) * DEV.gdp) * fxMul(n, 'gdp') * (1 - (n.unemp == null ? 6 : n.unemp) / 100) * (.8 + n.stability / 500) * (1 - Math.max(0, (n.infl || 0) - 5) / 100)
-      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).length) * CREDIT.gdp[rating(W, n)] * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * taxDrag(n) * (1 + TALL.gdp * tallLvl(W, u)) * W.m.gdp;
+      * (sanctioned(n) ? .85 : 1) * (rogue(W, n) ? .85 : 1) * (radOn(W, n) ? .94 : 1) * nukeF(W, n, .6, .85, .95) * Math.pow(.96, wars(W, u).filter(v => !(W.A[v] && W.A[v].ai && W.A[v].ai.boss)).length) * CREDIT.gdp[rating(W, n)] * (.92 + (n.iq == null ? 50 : n.iq) / 100 * .16) * taxDrag(n) * (1 + TALL.gdp * tallLvl(W, u)) * W.m.gdp;
     return n.pop * pc;
   }
   // development aid: nations far behind the world leader earn up to +50% tax revenue, shrinking as they catch up
@@ -2174,7 +2174,7 @@ function Core(PD, CARDS) {
   }
   // ---------- passive simulation (every 10 real minutes) ----------
   function tickOnce(W, u, rng) {
-    const n = W.A[u], hs = hexesOf(W, u), p = production(W, u), c = consumption(n), g = GOV[n.gov], w = wars(W, u).length, b = budget(n);
+    const n = W.A[u], hs = hexesOf(W, u), p = production(W, u), c = consumption(n), g = GOV[n.gov], w = wars(W, u).filter(v => !(W.A[v] && W.A[v].ai && W.A[v].ai.boss)).length, b = budget(n);
     for (const r in p) n.res[r] += p[r] - c[r];
     n.cash += hs.filter(h => ['P', 'D'].includes(P[h].t) && h != n.cap).length * 2000 * W.cfg.income; finSync(W, n, 'prov');
     // government budget
@@ -2832,7 +2832,7 @@ function Core(PD, CARDS) {
     o.tribute = (o.tribute || 0) + cash; touch(W, n.overlord); return true; }
   // far-flung provinces (over 3,000 km from the capital) slip away now and then, more often when stability is low
   // war and aggression stir up the provinces: +25% per war (up to 3) and up to +100% at 100 aggression, so a warmonger's far-flung land rebels far more often
-  const unrestF = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 1; return 1 + Math.min(3, wars(W, u).length) * .25 + Math.min(100, Math.max(0, n.aggr || 0)) / 100; };
+  const unrestF = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 1; return 1 + Math.min(3, wars(W, u).filter(v => !(W.A[v] && W.A[v].ai && W.A[v].ai.boss)).length) * .25 + Math.min(100, Math.max(0, n.aggr || 0)) / 100; };
   function farLands(W, u, rng) {
     const n = W.A[u]; if (!n || (n.ai && n.ai.boss) || !P[n.cap]) return false; if (overPaused(W)) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; } const held = hexesOf(W, u); if (held.length < OVER.farMin) return false;
     const far = held.filter(h => h != n.cap && !(n.outposts && n.outposts[h]) && !legacy(n, h) && kmBetween(h, n.cap) > OVER.farKm); if (!far.length) { if (n.farWarn) { delete n.farWarn; touch(W, u); } return false; }
@@ -3013,7 +3013,7 @@ function Core(PD, CARDS) {
   }
   const puUpkeepH = (W, n) => Math.round(Object.entries((n && n.pu) || {}).reduce((a, [k, c]) => a + (PUNITS[k] ? PUNITS[k].up * c : 0), 0) * ((W && W.m && W.m.upkeep) || 1));
   const warCostH = (W, u) => { const n = W.A[u]; if (!n || n.ai) return 0; let t = 0; const c = Math.min(WARCOST.base + (n.troops || 0) * WARCOST.troop + (n.ships || 0) * WARCOST.ship + (n.air || 0) * WARCOST.air, Math.max(WARCOST.floor, (n.gdp || 0) * WARCOST.gdpCap));
-    for (const v of wars(W, u)) t += (R(W, u, v).war || 0) >= (R(W, v, u).war || 0) ? c : c * WARCOST.defender; return Math.round(t); };
+    for (const v of wars(W, u)) if (!(W.A[v] && W.A[v].ai && W.A[v].ai.boss)) t += (R(W, u, v).war || 0) >= (R(W, v, u).war || 0) ? c : c * WARCOST.defender; return Math.round(t); };
   function cosmetic(W, u, slot, k) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(COSMETICS, slot)) fail('Unknown item.'); n.cos = n.cos || {}; n.cosOwn = n.cosOwn || {}; const C_ = COSMETICS[slot];
     if (k == null || k === '') { delete n.cos[slot]; touch(W, u); return { msg: `${C_.n} hidden. You still own it and can show it again for free.` }; }
