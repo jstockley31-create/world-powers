@@ -176,6 +176,14 @@ STATIC['/sw.js'] = loadFile('sw.js', JS, 'no-cache');
 STATIC['/landing-land.js'] = loadFile('landing-land.js', JS, 'public, max-age=604800');
 STATIC['/prov.js'] = loadFile('prov.js', JS, 'public, max-age=31536000, immutable'); STATIC['/prov2.js'] = loadFile('prov2.js', JS, 'public, max-age=31536000, immutable'); const GAME2 = loadFile('index2.html', HTML, 'no-cache'), gameFile = () => S.map2 ? GAME2 : GAME; // index2.html is index.html loading the bigger map // the URL carries a version number, so browsers keep it until the map changes
 STATIC['/og.jpg'] = loadFile('og.jpg', 'image/jpeg', 'public, max-age=604800');
+// the new-player tutorial video: served with byte ranges, which phones (Safari especially) need to play a video
+const TUTV = (() => { try { const buf = fs.readFileSync(path.join(__dirname, 'public', 'tutorial.mp4')); return { buf, etag: '"t' + crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16) + '"' }; } catch (e) { return null; } })();
+function serveVideo(req, res) { const v = TUTV, n = v.buf.length, h = { ...secHeaders(req), 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=86400', ETag: v.etag };
+  if (req.headers['if-none-match'] === v.etag) { res.writeHead(304, h); return res.end(); }
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || ''); if (!m) { res.writeHead(200, { ...h, 'Content-Length': n }); return res.end(v.buf); }
+  let a = m[1] === '' ? Math.max(0, n - (+m[2] || 0)) : +m[1], b = m[1] !== '' && m[2] !== '' ? Math.min(+m[2], n - 1) : n - 1;
+  if (!(a <= b) || a >= n) { res.writeHead(416, { ...h, 'Content-Range': `bytes */${n}` }); return res.end(); }
+  res.writeHead(206, { ...h, 'Content-Range': `bytes ${a}-${b}/${n}`, 'Content-Length': b - a + 1 }); res.end(v.buf.subarray(a, b + 1)); }
 for (const f of ['banner-240x100.png', 'banner-468x60.png', 'banner-728x90.png']) STATIC['/' + f] = loadFile(f, 'image/png', 'public, max-age=86400'); // banners for voting and link sites
 for (const f of ['inter-latin.woff2', 'inter-latin-ext.woff2', 'cinzel-700.woff2', 'jbmono-500.woff2']) STATIC['/fonts/' + f] = loadFile('fonts/' + f, 'font/woff2', 'public, max-age=31536000, immutable');
 STATIC['/fonts/fonts.css'] = loadFile('fonts/fonts.css', 'text/css; charset=utf-8', 'public, max-age=86400');
@@ -2944,6 +2952,7 @@ async function handle(req, res) {
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? gameFile() : LANDING);
     if (req.method === 'GET' && p === '/donate/paypal') { const d = /^https:\/\/[^\s"'<>]+$/i.test(S.config.donateUrl || '') ? S.config.donateUrl : WP.DEFCFG.donateUrl; res.writeHead(302, { Location: d, 'Cache-Control': 'no-store' }); return res.end(); } // the plain donation link (paypal.me)
     if (req.method === 'GET' && p === '/play') return serveStatic(req, res, gameFile());
+    if (req.method === 'GET' && p === '/tutorial.mp4' && TUTV) return serveVideo(req, res);
     if (req.method === 'GET' && STATIC[p]) return serveStatic(req, res, STATIC[p]);
     if (req.method === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
     if (req.method === 'GET' && p === '/api/nukes') return send(res, 200, { nukes: S.nukes.slice(0, 50) });
