@@ -184,12 +184,32 @@ const NUKEACC = { perDay: 1 / 25, warheadX: 1.5, gapD: 7, h: 48, pop: .05, food:
 // giving up nuclear weapons: the world (and your own people) celebrate. No new program for 7 days afterwards.
 const DISARM = { ap: 12, st: 6, aggr: 20, warheadAp: 6, boost: { ap: 6, st: 4, h: 48 }, worldAp: 2, xp: 100, refund: .2, banD: 7 };
 const EXPEDS = {
-  mountains: { n: 'Mountain survey', d: 'Steel deposits and rare minerals — or an avalanche.', h: 3, cost: { cash: 2.5e5, food: 120, oil: 60 }, res: 'steel' },
-  desert: { n: 'Desert prospecting', d: 'Oil fields under the sand — or a sandstorm.', h: 3, cost: { cash: 2.5e5, food: 150, oil: 40 }, res: 'oil' },
-  jungle: { n: 'Jungle expedition', d: 'Lost cities, artifacts and exotic goods — and real dangers.', h: 5, cost: { cash: 4e5, food: 250, oil: 80 }, res: 'goods' },
-  ocean: { n: 'Deep-sea expedition', d: 'Sunken treasure. Needs a coastal province.', h: 6, cost: { cash: 6e5, food: 150, oil: 200 }, res: 'cash', coast: true },
-  arctic: { n: 'Arctic research station', d: 'A real chance of a scientific breakthrough (+1 tech level).', h: 8, cost: { cash: 8e5, food: 300, oil: 250 }, res: 'tech' }
+  mountains: { n: 'Mountain survey', d: 'Steel deposits and rare minerals — or an avalanche.', h: 3, cost: { cash: 2.5e5, food: 120, oil: 60 }, cx: 3, res: 'steel', share: .3,
+    boom: 'an avalanche buried the camp', leg: ['Mother lode', 'a mountain of pure iron ore'], arts: ['Crystal Skull of the Peaks', 'Dwarf-King\'s Hammer'],
+    ev: [['A glittering seam sits behind an unstable ice shelf.', 'Dig in', 'Mark it and move on'], ['A storm is rolling in over the pass.', 'Push through the storm', 'Wait it out']] },
+  desert: { n: 'Desert prospecting', d: 'Oil fields under the sand — or a sandstorm.', h: 3, cost: { cash: 2.5e5, food: 150, oil: 40 }, cx: 3, res: 'oil', share: .3,
+    boom: 'a sandstorm swallowed the caravan', leg: ['Gusher', 'an oil field that shot a column of crude into the sky'], arts: ['Sun Disc of the Pharaohs', 'Caravan Master\'s Astrolabe'],
+    ev: [['The drillers hit a pressure pocket: a bigger well, or a blowout.', 'Drill deeper', 'Cap it'], ['A shortcut runs straight through bandit country.', 'Take the shortcut', 'Go the long way round']] },
+  jungle: { n: 'Jungle expedition', d: 'Lost cities, artifacts and exotic goods — and real dangers.', h: 5, cost: { cash: 4e5, food: 250, oil: 80 }, cx: 5, res: 'goods', share: .3,
+    boom: 'fever and flash floods wiped out the team', leg: ['Lost city of gold', 'a lost city with streets of gold'], arts: ['Jade Mask of the Serpent King', 'Golden Idol'],
+    ev: [['The team found a sealed temple door covered in warnings.', 'Break the seal', 'Leave it sealed'], ['A local guide offers a fast path through the swamp.', 'Follow the guide', 'Stick to the map']] },
+  ocean: { n: 'Deep-sea expedition', d: 'Sunken treasure. Needs a coastal province.', h: 6, cost: { cash: 6e5, food: 150, oil: 200 }, cx: 6, res: 'cash', share: 0, coast: true,
+    boom: 'a storm sank the salvage ship', leg: ['Treasure galleon', 'a treasure galleon packed with gold'], arts: ['Trident of the Deep', 'Pirate King\'s Compass'],
+    ev: [['Sonar picks up a second wreck in deeper, colder water.', 'Dive deeper', 'Stick to the first wreck'], ['A rival salvage ship is racing you to the wreck.', 'Race them', 'Back off']] },
+  arctic: { n: 'Arctic research station', d: 'Research samples and a real chance of a scientific breakthrough.', h: 8, cost: { cash: 8e5, food: 300, oil: 250 }, cx: 8, res: 'tech', share: .3,
+    boom: 'the ice shelf collapsed under the station', leg: ['Frozen discovery', 'an ancient lab frozen in the ice'], arts: ['Meteorite Core', 'Mammoth Ivory Codex'],
+    ev: [['A strange signal is coming from deep under the ice.', 'Drill down to it', 'Log it and stay safe'], ['A whiteout is coming, with a week of work still to do.', 'Keep working', 'Shelter in the station']] }
 };
+// how bold the expedition is: careful = small steady gains, daring = big wins and big losses. All three pay back more than they cost on average.
+const EXRISK = {
+  careful: { n: 'Careful', d: .04, e: .14, m: .9, leg: .5, tr: .005, xp: 15, tech: .08 },
+  standard: { n: 'Standard', d: .09, e: .16, m: 1.05, leg: 1, tr: .01, xp: 25, tech: .14 },
+  daring: { n: 'Daring', d: .2, e: .15, m: 1.24, leg: 2, tr: .03, xp: 40, tech: .22 }
+};
+// value unit: an expedition costs about 0.2% of GDP per hour away, so it matters at every size of nation
+const EXP = { unit: .002, min: 2e6, push: { m: 1.35, d: .1 }, evChance: .55, refund: .4, rich: .15, art: .06, leg: .02, legLvl: .004, legX: 6, lvlD: .08, lvlM: .05, artM: .01, maxLvl: 5 };
+const ARTS = Object.entries(EXPEDS).flatMap(([k, E]) => E.arts.map((a, i) => ({ id: k + i, k, n: a })));
+
 const MISSIONS = {
   tax: { n: 'Collect taxes 8 times', goal: 8 }, prod: { n: 'Boost production 5 times', goal: 5 }, ops: { n: 'Run 15 operations', goal: 15 },
   research: { n: 'Fund research once', goal: 1 }, expand: { n: 'Expand your borders once', goal: 1 }, decide: { n: 'Make 2 decisions', goal: 2 },
@@ -2342,27 +2362,54 @@ function Core(PD, CARDS) {
   }
 
   // ================= expeditions =================
-  function expedition(W, u, k) {
+  const expUnit = n => Math.max(EXP.min, (n.gdp || 0) * EXP.unit);
+  const expLvl = (n, k) => Math.min(EXP.maxLvl, Math.floor(Math.log2(((n.expd || {})[k] || 0) + 1)));
+  const expArts = n => Object.keys(n.arts || {}).length;
+  function expedCost(W, u, k) { const n = W.A[u], E = EXPEDS[k]; return { ...E.cost, cash: Math.round(Math.max(E.cost.cash, expUnit(n) * E.cx)) }; }
+  function expedOdds(W, u, k, risk, push) { // chances shown to the player before launch
+    const n = W.A[u], R = EXRISK[risk] || EXRISK.standard, L = expLvl(n, k), d = Math.min(.6, (R.d + (push ? EXP.push.d : 0)) * (1 - EXP.lvlD * L));
+    return { lose: d, empty: R.e, win: 1 - d - R.e, mult: R.m * (1 + EXP.lvlM * L) * (1 + EXP.artM * expArts(n)) * (push ? EXP.push.m : 1), leg: R.leg * (EXP.leg + EXP.legLvl * L), lvl: L };
+  }
+  // ================= expeditions =================
+  function expedition(W, u, k, risk) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(EXPEDS, k)) fail('Unknown destination.'); const E = EXPEDS[k];
+    risk = has(EXRISK, risk) ? risk : 'standard';
     if (rankOf(n.xp) < 1) fail('Expeditions need the rank of Elder.'); if (n.exped) fail(`Your expedition returns in ${fmtT(n.exped.end - W.now)}.`);
     if (E.coast && !hasCoast(W, u)) fail('A deep-sea expedition needs a coastal province.');
-    const c = E.cost; for (const r in c) if ((r === 'cash' ? n.cash : n.res[r] || 0) < c[r]) fail(`This expedition needs ${money(c.cash)}${Object.keys(c).filter(r => r !== 'cash').map(r => `, ${num(c[r])} ${r}`).join('')}.`);
+    const c = expedCost(W, u, k); for (const r in c) if ((r === 'cash' ? n.cash : n.res[r] || 0) < c[r]) fail(`This expedition needs ${money(c.cash)}${Object.keys(c).filter(r => r !== 'cash').map(r => `, ${num(c[r])} ${r}`).join('')}.`);
     for (const r in c) { if (r === 'cash') n.cash -= c[r]; else n.res[r] -= c[r]; }
-    n.exped = { k, t: W.now, end: W.now + tq(W, E.h * HOUR) }; log(n, `An expedition has set out: ${E.n}. It returns in ${E.h} hours.`, W); touch(W, u); mTrack(W, u, 'exped', 1);
+    n.exped = { k, risk, c: c.cash, t: W.now, end: W.now + tq(W, E.h * HOUR) }; log(n, `An expedition has set out: ${E.n} (${EXRISK[risk].n.toLowerCase()}). It returns in ${E.h} hours.`, W); touch(W, u); mTrack(W, u, 'exped', 1);
     return { msg: `Expedition launched — back in ${E.h} hours.` };
   }
+  function expedPick(W, u, v) { // the halfway decision
+    const n = W.A[u], x = n && n.exped; if (!x || !x.ev || x.ev.pick) fail('There is no decision waiting.'); if (W.now >= x.end) fail('Your expedition is already on its way home.');
+    x.ev.pick = v === 'push' ? 'push' : 'safe'; const E = EXPEDS[x.k], e = E.ev[x.ev.i] || E.ev[0]; touch(W, u);
+    log(n, `Expedition orders sent: ${x.ev.pick === 'push' ? e[1] : e[2]}.`, W); return { msg: x.ev.pick === 'push' ? `${e[1]}! Bigger rewards, bigger risk.` : `${e[2]}. Playing it safe.` };
+  }
   function expedResolve(W, u, rng) {
-    const n = W.A[u], x = n.exped; if (!x || W.now < x.end) return false; n.exped = null; const E = EXPEDS[x.k]; if (!E) return true;
-    const scale = 1 + rankOf(n.xp) * .4, roll = rng(); let txt;
-    const resAmt = Math.round((300 + rng() * 500) * scale);
-    if (roll < .08) { n.troops = Math.max(0, n.troops - Math.round(30 + rng() * 60)); n.approval = clamp(n.approval - 3, 0, 100); txt = `Disaster: the ${E.n.toLowerCase()} was lost. The nation mourns.`; }
-    else if (roll < .22) txt = `The ${E.n.toLowerCase()} returned empty-handed.`;
-    else if (E.res === 'tech' && roll > .82) { n.tech = (n.tech || 0) + 1; txt = `Breakthrough! The ${E.n.toLowerCase()} advanced your nation to tech level ${n.tech}.`; }
-    else if (roll > .9) { n.approval = clamp(n.approval + 5, 0, 100); n.stability = clamp(n.stability + 3, 0, 100); gainXP(W, u, 40); txt = `Discovery! The ${E.n.toLowerCase()} uncovered a priceless artifact — national pride soars (+5 approval, +3 stability, +40 XP).`; }
-    else if (E.res === 'cash') { const v = Math.round(Math.max(3e5, (n.gdp || 0) * .02) * (.6 + rng())); n.cash += v; txt = `Treasure! The ${E.n.toLowerCase()} recovered ${money(v)}.`; }
-    else if (E.res === 'tech') { const v = Math.round(resAmt * .6); n.res.goods += v; txt = `The ${E.n.toLowerCase()} brought back research samples worth ${num(v)} goods.`; }
-    else { const big = roll > .75, v = big ? resAmt * 2 : resAmt; n.res[E.res] += v; txt = `${big ? 'Rich find!' : 'Success.'} The ${E.n.toLowerCase()} brought back ${num(v)} ${E.res}.`; }
-    n.tally = n.tally || {}; n.tally.exped = (n.tally.exped || 0) + 1; gainXP(W, u, 15);
+    const n = W.A[u], x = n.exped; if (!x) return false; const E = EXPEDS[x.k]; if (!E) { n.exped = null; return true; }
+    if (!x.evDone && x.c && W.now >= x.t + (x.end - x.t) / 2 && W.now < x.end) { x.evDone = 1; if (rng() < EXP.evChance) { const i = Math.floor(rng() * E.ev.length); x.ev = { i, pick: null }; note(W, u, 'economy', `🧭 ${E.n}: ${E.ev[i][0]} Choose on the Projects page before it returns: "${E.ev[i][1]}" or "${E.ev[i][2]}".`); } return true; }
+    if (W.now < x.end) return false; n.exped = null;
+    const legacy = !x.c, risk = has(EXRISK, x.risk) ? x.risk : 'standard', R = EXRISK[risk], push = !!(x.ev && x.ev.pick === 'push');
+    const paid = x.c || E.cost.cash, O = expedOdds(W, u, x.k, risk, push), lc = E.n.toLowerCase(), roll = rng(); let txt, art = null;
+    const giveArt = () => { const own = n.arts || {}, pool = ARTS.filter(a => a.k === x.k && !own[a.id]); if (!pool.length) return null; const a = pool[Math.floor(rng() * pool.length)]; n.arts = { ...own, [a.id]: W.now }; return a; };
+    const pay = v => { v = Math.round(v); const sh = E.share, rv = E.res === 'tech' ? 'goods' : E.res; let parts = [];
+      if (sh && RES[rv]) { const amt = Math.round(v * sh / RES[rv].p); n.res[rv] = (n.res[rv] || 0) + amt; parts.push(`${num(amt)} ${rv}`); v -= Math.round(amt * RES[rv].p); }
+      n.cash += v; parts.push(money(v)); return parts.join(' and '); };
+    if (roll < O.lose) { const tl = Math.round((n.troops || 0) * R.tr * (push ? 1.5 : 1)); n.troops = Math.max(0, (n.troops || 0) - tl); n.approval = clamp(n.approval - 3, 0, 100);
+      txt = `💀 Disaster: ${E.boom}. The ${lc} was lost${tl ? ` along with ${num(tl)} troops` : ''}. The nation mourns.`; }
+    else if (roll < O.lose + O.empty) { const r = Math.round(paid * EXP.refund); n.cash += r; txt = `The ${lc} came back empty-handed. Selling off the gear got back ${money(r)}.`; }
+    else if (!legacy && rng() < O.leg) { const v = paid * EXP.legX * O.mult, got = pay(v); art = giveArt(); n.approval = clamp(n.approval + 5, 0, 100); gainXP(W, u, 60);
+      let tl = 0; if (E.res === 'tech') { tl = Math.max(2, Math.round((n.tech || 0) * .02)); n.tech = (n.tech || 0) + tl; }
+      txt = `🌟 LEGENDARY FIND: ${E.leg[0]}! The ${lc} discovered ${E.leg[1]}: ${got}${tl ? `, and ${tl} tech levels` : ''}${art ? `, plus the ${art.n}` : ''}. +5 approval, +60 XP.`;
+      pushOut(W, u, { type: 'news', x: `🌟 ${n.name}'s ${lc} has made a legendary find: ${E.leg[0].toLowerCase()}!` }); W.news.push(`🌟 ${n.name}'s ${lc} has made a legendary find: ${E.leg[0].toLowerCase()}!`); }
+    else { const rich = rng() < EXP.rich, v = legacy ? Math.max(paid * 1.3, (300 + rng() * 500) * 100) : paid * O.mult * (.8 + rng() * .8) * (rich ? 2 : 1), got = pay(v);
+      if (!legacy && rng() < EXP.art) { art = giveArt(); if (art) { n.approval = clamp(n.approval + 3, 0, 100); n.stability = clamp(n.stability + 2, 0, 100); gainXP(W, u, 40); } }
+      let tech = ''; if (E.res === 'tech' && rng() < R.tech * (push ? 1.5 : 1)) { n.tech = (n.tech || 0) + 1; tech = ` Breakthrough: tech level ${n.tech}!`; }
+      txt = `${rich ? '💰 Rich find!' : '✅ Success.'} The ${lc} brought back ${got}.${tech}${art ? ` They also found the ${art.n} (+3 approval, +2 stability, +40 XP).` : ''}`; }
+    n.tally = n.tally || {}; n.tally.exped = (n.tally.exped || 0) + 1; n.expd = { ...(n.expd || {}), [x.k]: ((n.expd || {})[x.k] || 0) + 1 }; gainXP(W, u, R.xp);
+    const L = expLvl(n, x.k); if (L > O.lvl) txt += ` Your teams are now level ${L} at ${E.n.toLowerCase()}s: safer trips and better finds.`;
+    if (art && expArts(n) === ARTS.length) txt += ' You now own every artifact in the world!';
     log(n, txt, W); note(W, u, 'economy', txt); achCheck(W, u); return true;
   }
 
@@ -2987,7 +3034,7 @@ function Core(PD, CARDS) {
       case 'warhead': return buildWarhead(W, u);
       case 'law': return setLaw(W, u, String(c.k), !!c.on);
       case 'wonder': return wonder(W, u, String(c.k), !!c.abandon);
-      case 'exped': return expedition(W, u, String(c.k));
+      case 'exped': return c.op === 'pick' ? expedPick(W, u, String(c.v)) : expedition(W, u, String(c.k), String(c.risk || ''));
       case 'mission': return claimMission(W, u, c.i);
       case 'offer': return offer(W, u, String(c.v), c.give, c.want);
       case 'release': return releaseProv(W, u, c.h);
@@ -3058,7 +3105,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
