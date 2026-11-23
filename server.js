@@ -708,8 +708,7 @@ function crisisStart(key, hours, diff, by) {
     if (S.config.noAI) throw Object.assign(new Error('All AI is turned off, so there is no Rising Power. Turn AI back on first.'), { status: 400 });
     boss = Object.keys(W.A).find(u => W.A[u].ai && W.A[u].ai.boss) || null;
     if (!boss) { if (!Object.keys(W.A).some(k => BOTS.isBot(k))) throw Object.assign(new Error('There are no AI nations to become the Rising Power.'), { status: 400 });
-      S.bossFell = 0; S.config.aiBoss = true; W = mkWorld(); boss = BOTS.raiseBoss(W, W.cfg, ''); if (!boss) throw Object.assign(new Error('Could not raise a Rising Power right now.'), { status: 400 }); commit(W); W = mkWorld(); }
-    S.config.aiBoss = true;
+      S.bossFell = 0; W = mkWorld(); boss = BOTS.raiseBoss(W, W.cfg, '', true); if (!boss) throw Object.assign(new Error('Could not raise a Rising Power right now.'), { status: 400 }); commit(W); W = mkWorld(); }
   }
   S.crisis = { id: rid(), key, diff, start: now, end: now + hours * HOUR, goal: core.crisisGoal(W, diff), pool: 0, botPool: 0, contrib: {}, choice: {}, by: by || null };
   if (boss) { S.crisis.boss = boss; S.crisis.bossName = W.A[boss].name; S.crisis.bossProv0 = core.hexesOf(W, boss).length; }
@@ -2477,8 +2476,8 @@ async function adminRoute(p, req, res, me) {
     if (S.config.noAI) return send(res, 400, { error: 'All AI is turned off. Turn AI back on (Game settings) first.' }); 
     if (!ids.some(k => BOTS.isBot(k))) { const Ws = mkWorld(), sp = BOTS.spawn(Ws); if (!sp) return send(res, 400, { error: 'There are no AI nations to raise, and there is no land to start a new one.' }); Ws.welcome = null; commit(Ws); } // no AI left: start one, then raise it
     if (!ids.some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
-    S.bossFell = 0; S.config.aiBoss = true;
-    const W = mkWorld(), b = BOTS.raiseBoss(W, W.cfg); if (!b) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
+    S.bossFell = 0;
+    const W = mkWorld(), b = BOTS.raiseBoss(W, W.cfg, '', true); if (!b) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
     commit(W); persist(); systemMessage(`⚠ ${W.A[b].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
     audit(me.name, 'Raised the Rising Power', W.A[b].name); return send(res, 200, { ok: true, name: W.A[b].name });
   }
@@ -2598,9 +2597,9 @@ async function adminRoute(p, req, res, me) {
       const want = typeof b.pick === 'string' && BOTS.isBot(b.pick) && W.A[b.pick] ? b.pick : '';
       if (!Object.keys(W.A).some(k => BOTS.isBot(k))) return send(res, 400, { error: 'There are no AI nations to raise. Turn AI nations on first.' });
       if (!Object.keys(W.A).some(k => !BOTS.isBot(k))) return send(res, 400, { error: 'There are no player nations yet.' });
-      S.bossFell = 0; S.config.aiBoss = true;
       if (S.config.noAI) return send(res, 400, { error: 'All AI is turned off. Turn AI back on (Game settings) first.' }); 
-      const W2 = mkWorld(), nb = BOTS.raiseBoss(W2, W2.cfg, want); if (!nb) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
+      S.bossFell = 0;
+      const W2 = mkWorld(), nb = BOTS.raiseBoss(W2, W2.cfg, want, true); if (!nb) return send(res, 400, { error: 'Could not raise a Rising Power right now.' });
       commit(W2); persist(); systemMessage(`⚠ ${W2.A[nb].name} has become the Rising Power. Foreign backers are pouring money and weapons into its military. Stopping it will take the world working together.`);
       audit(me.name, 'Raised the Rising Power', W2.A[nb].name); return send(res, 200, { ok: true, name: W2.A[nb].name });
     }

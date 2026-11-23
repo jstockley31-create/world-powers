@@ -127,9 +127,10 @@ module.exports = function makeBots(core, WP, rng) {
   // admin controls for the Rising Power (Admin page → Rising Power). str scales how fast it grows and how big it may get, aggr how often it fights.
   const BOSS_DEF = { mode: 'auto', str: 1, aggr: 1, nukes: 'yes', target: '', def: 1, atk: 1, coal: 3, heal: 1.75, dome: 'no' };
   const bossCfg = cfg => { const b = { ...BOSS_DEF, ...((cfg && cfg.boss) || {}) }; b.str = Math.min(5, Math.max(.25, +b.str || 1)); b.aggr = Math.min(3, Math.max(0, +b.aggr || 0)); b.def = Math.min(4, Math.max(1, +b.def || 1)); b.atk = Math.min(4, Math.max(1, +b.atk || 1)); b.coal = Math.max(0, Math.min(20, Math.round(b.coal == null ? 3 : +b.coal))); b.heal = Math.max(0, Math.min(6, b.heal == null ? 1.75 : +b.heal)); return b; };
-  function pickBoss(W, cfg, want) {
-    const bots = Object.keys(W.A).filter(isBot); if (!cfg.aiBoss || !bots.length || !humans(W).length || (cfg.bossPause && !bots.some(b => W.A[b].ai.boss))) { if (cfg.bossPause) return null; for (const b of bots) if (W.A[b].ai.boss) { W.A[b].ai.boss = false; core.touch(W, b); } return null; }
-    const cur = bots.find(b => W.A[b].ai.boss); if (cur) return cur;
+  function pickBoss(W, cfg, want, force) { // cfg.aiBoss only decides whether one rises ON ITS OWN; a Rising Power that exists keeps its status until it falls or an admin retires it
+    const bots = Object.keys(W.A).filter(isBot), cur = bots.find(b => W.A[b].ai.boss); if (cur) return cur;
+    if (!bots.length || !humans(W).length) return null;
+    if (!force && (!cfg.aiBoss || cfg.bossPause)) return null;
     const fresh = bots.filter(x => !(W.now - (W.A[x].ai.exBoss || 0) < 24 * HOUR)), pool = fresh.length ? fresh : bots; // a nation that was just retired doesn't rise again straight away
     const b = want && bots.includes(want) ? want : pool.sort((a, c) => (['warlord', 'expansionist'].includes(W.A[c].ai.p) - ['warlord', 'expansionist'].includes(W.A[a].ai.p)) || core.score(W, c) - core.score(W, a))[0];
     W.A[b].ai.boss = true; core.touch(W, b);
