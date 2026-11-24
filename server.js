@@ -3066,6 +3066,7 @@ async function handle(req, res) {
     if (p === '/api/poker') return pokerRoute(p, req, res, me);
     if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
     if (p === '/api/casino/live' && req.method === 'GET') return send(res, 200, czLive(me.id));
+    if (p === '/api/routeq' && req.method === 'GET') { const W = mkWorld(), q = {}; if (W.A[me.id]) for (const v of Object.keys(W.A)) if (v !== me.id && core.routeOk(W, me.id, v)) q[v] = { pay: core.routePay(W, me.id, v), cost: core.routeCost(W, me.id, v) }; return send(res, 200, { q, t: Date.now() }); } // exact trade route quotes for your allies (partners' tax rates are private, so the browser can't work them out)
     if (p === '/api/season' && req.method === 'GET') return send(res, 200, { cur: seasonView(seasonW(), S.seasons.cur, me.id), hof: noLeaders(HOF) });
     if (p === '/api/me' && req.method === 'GET') { touch(me.id, req); return send(res, 200, pub(me)); }
     if (p === '/api/account/save' && req.method === 'POST') {

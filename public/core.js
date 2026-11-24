@@ -965,7 +965,7 @@ function Core(PD, CARDS) {
     infra: { ladder: [25e9, 1e11, 4e11, 16e11], list: {
       grid: { n: 'National power grid', ic: '⚡', h: 4, steel: 3000, goods: 1500, f: .06, d: 'Production of every resource +6%.' }, rail: { n: 'Rail network', ic: '🚆', h: 6, steel: 5000, goods: 1000, f: .08, d: 'Army upkeep −8%.' },
       uni: { n: 'Universities', ic: '🎓', h: 8, steel: 1000, goods: 4000, f: .08, d: 'Research costs 8% less.' }, ports: { n: 'Deep-water ports', ic: '⚓', h: 6, steel: 4000, goods: 2000, f: .25, imp: .2, coast: true, d: 'Trade routes pay 25% more and your daily import limit is 20% higher. Needs a coast.' } } },
-    route: { max: 3, pay: 1, cap: 4, floor: 25e7, inc: 120 },
+    route: { max: 3, pay: 1, cap: 4, floor: 1e7, inc: 120 },
     reserve: { capF: .5, cash: 100, upkeep: 1.5, cdMin: 10, callMin: 30 } };
   const upOf = n => (n && n.up) || {}, minL = (n, k) => clamp((upOf(n).min || {})[k] || 0, 0, UPG.min.max), lvlL = (n, k) => clamp((upOf(n).lvl || {})[k] || 0, 0, UPG.lvl.max), hasInfra = (n, k) => !!(upOf(n).infra || {})[k];
   // Development prices are the same for every nation and climb steeply by level. They do not depend on income, so a small nation gets no discount on levels it keeps for good.
@@ -986,11 +986,12 @@ function Core(PD, CARDS) {
   const routesOf = (W, u) => { const mine = upOf(W.A[u]).routes || [], out = new Set(mine); for (const v of Object.keys(W.A)) if (v !== u && (upOf(W.A[v]).routes || []).includes(u)) out.add(v); return [...out].filter(v => W.A[v]); };
   const routePay = (W, u, v) => { const n = W.A[u]; return Math.round(Math.min(taxIncome(W, u), taxIncome(W, v)) * UPG.route.pay * (1 + UPG.min.list.foreign.route * minL(n, 'foreign')) * (hasInfra(n, 'ports') ? 1 + UPG.infra.list.ports.f : 1)); };
   const routeCut = (W, u, v) => !routeOk(W, u, v) ? 'not allied' : (W.A[u].blockade || 0) > W.now || (W.A[v].blockade || 0) > W.now ? 'blockade' : '';
-  const routeCost = (W, u) => Math.round(Math.max(UPG.route.floor, taxIncome(W, u) * UPG.route.inc) / 1e5) * 1e5;
+  // the setup price is about 5 days (route.inc hours) of what THIS route will pay you, so every route pays for itself in the same time, whoever the partner is
+  const routeCost = (W, u, v) => { const p = v && W.A[v] ? routePay(W, u, v) : taxIncome(W, u); return Math.round(Math.max(UPG.route.floor, (isFinite(p) ? p : 0) * UPG.route.inc) / 1e5) * 1e5; };
   function routeSet(W, u, v, off) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(W.A, v) || v === u) fail('Choose another nation.'); const cur = upOf(n).routes || [];
     if (off) { if (!cur.includes(v)) fail('You have no trade route with that nation.'); n.up = { ...(n.up || {}), routes: cur.filter(x => x !== v) }; touch(W, u); return { msg: `Trade route with ${W.A[v].name} closed.` }; }
     if (cur.includes(v)) fail('You already have a trade route with that nation.'); if (cur.length >= UPG.route.max) fail(`You can set up at most ${UPG.route.max} trade routes.`); if (!routeOk(W, u, v)) fail('Trade routes are only for allies: an alliance pact or the same alliance, and not at war.');
-    const c = routeCost(W, u); if ((n.cash || 0) < c) fail(`Setting up a trade route costs ${money(c)}.`); n.cash -= c; n.up = { ...(n.up || {}), routes: [...cur, v] }; log(n, `Trade route opened with ${W.A[v].name} (${money(c)}).`, W); note(W, v, 'diplo', `🚢 ${n.name} opened a trade route with you. You both earn from it every hour while you stay allied and your ports are open.`); touch(W, u); return { msg: `Trade route with ${W.A[v].name} is open. It pays you both every hour.` }; }
+    const c = routeCost(W, u, v); if ((n.cash || 0) < c) fail(`Setting up this trade route costs ${money(c)}.`); n.cash -= c; n.up = { ...(n.up || {}), routes: [...cur, v] }; log(n, `Trade route opened with ${W.A[v].name} (${money(c)}).`, W); note(W, v, 'diplo', `🚢 ${n.name} opened a trade route with you. You both earn from it every hour while you stay allied and your ports are open.`); touch(W, u); return { msg: `Trade route with ${W.A[v].name} is open. It pays you both every hour.` }; }
   function refineSet(W, u, k, on) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (k !== 'oil' && k !== 'food') fail('Unknown process.'); if (!lvlL(n, 'refine')) fail('Build a refinery first.'); n.up = { ...(n.up || {}), ref: { ...((n.up || {}).ref || {}), [k]: !!on } }; touch(W, u); return { msg: on ? 'Processing switched on.' : 'Processing switched off.' }; }
   // RESERVES: part-time troops. Cheap to train and to keep; calling them up moves them into the army at once (only when at war or attacked in the last day).
   function reserve(W, u, a) { const n = W.A[u]; if (!n) fail('Found a nation first.'); const R_ = UPG.reserve;
