@@ -456,8 +456,10 @@ const hcSus = uid => (S.flags || []).some(f => f.uid === uid && Date.now() - f.t
 // cheat jail: locks the account until an admin releases it
 const JAIL_MSG = 'Your account is under investigation for cheating. Our anti-cheat system stopped it after repeated failed checks. An admin will review it soon. Your nation is safe and nothing has been taken, but you can’t play until the review is done.';
 const JAIL_MSG_SCRIPT = 'Your account is under investigation for cheating. Our anti-cheat system detected automated play (a script or auto-clicker). An admin will review it soon. Your nation is safe and nothing has been taken, but you can’t play until the review is done.';
-const hcJail = uid => { const h = (S.hc || {})[uid]; return h && h.jail ? { error: h.jail.script ? JAIL_MSG_SCRIPT : JAIL_MSG, jail: { t: h.jail.t } } : null; };
-function autoJail(uid, why, script) { if (hcExempt(uid)) return false; const h = hcState(uid); if (h.jail) return true; const now = Date.now();
+const suspMsg = j => `Your account is suspended for automated play (a script or auto-clicker) until ${new Date(j.until).toUTCString().slice(5, 22)} UTC. Your nation is protected from attack while you are locked out, and nothing has been taken. You were warned first; the evidence is in your mail. If you think this is a mistake, message the Helpdesk.`;
+const hcJail = uid => { const h = (S.hc || {})[uid]; if (h && h.jail && h.jail.until && Date.now() >= h.jail.until) { delete h.jail; h.streak = 0; h.pend = null; hcLog(uid, 'released', { why: 'suspension ended' }); const a = (S.acl || {})[uid]; if (a) a.from = Date.now(); persist(); }
+  return h && h.jail ? { error: h.jail.until ? suspMsg(h.jail) : h.jail.script ? JAIL_MSG_SCRIPT : JAIL_MSG, jail: { t: h.jail.t, until: h.jail.until || 0 } } : null; };
+function autoJail(uid, why, script, hard) { if (hcExempt(uid)) return false; if (!hard && cleanPass(uid)) return false; /* you marked them Not cheating: only hard proof jails them */ const h = hcState(uid); if (h.jail && !h.jail.until) return true; const now = Date.now();
   h.jail = { t: now, why, script: script ? 1 : 0 }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { why }); flag(uid, `Put in cheat jail automatically: ${why}`);
   (S.cheatReview = S.cheatReview || {})[uid] = { d: 'watch', t: now, by: 'Anti-cheat', note: `Jailed automatically: ${why}.` };
   try { sendTo(uid, 'jail', { msg: script ? JAIL_MSG_SCRIPT : JAIL_MSG }); } catch (e) {}
@@ -467,7 +469,7 @@ function hcGate(uid, isAct) {
   if (S.config && S.config.humanCheck === false) return null; if (hcExempt(uid)) return null;
   const h = hcState(uid), now = Date.now();
   if (h.lock > now) return { error: `Too many wrong answers. Operations unlock in ${Math.ceil((h.lock - now) / 1000)} seconds.`, hc: hcPub(h.pend), lock: h.lock };
-  if (h.pend) { h.pendHits = (h.pendHits || 0) + 1; if (h.pendHits >= 40 && autoJail(uid, `kept sending ${h.pendHits} actions while ignoring an open human check`, true)) return hcJail(uid);
+  if (h.pend) { h.pendHits = (h.pendHits || 0) + 1; if (h.pendHits >= 40 && autoJail(uid, `kept sending ${h.pendHits} actions while ignoring an open human check`, true, true)) return hcJail(uid);
     if (now - h.pend.t > HC.expireMs) { hcLog(uid, 'expired', { want: h.pend.type === 'code' ? 'code' : h.pend.want }); h.pend = hcMake(h.pend.type === 'code'); persist(); }
     return { error: h.pend.type === 'code' ? 'Quick check: type the code to carry on.' : 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) }; }
   const sus = hcSus(uid);
@@ -492,13 +494,13 @@ function hcAnswer(uid, b) {
     const odd = [], fast = info.ms < (isCode ? HC.fastCodeMs : HC.fastMs); if (fast) odd.push(`solved in ${info.ms} ms`); if (!isCode && info.pt === 'm' && info.mv === 0) odd.push('mouse never moved');
     const byCode = isCode ? info.keys === 0 || !info.trusted : !info.trusted; if (byCode) odd.push(isCode ? 'code filled in by a program, not typed' : 'click made by code');
     hcLog(uid, odd.length ? 'pass (odd)' : 'pass', { ...info, odd: odd.join(', ') });
-    if (byCode && autoJail(uid, isCode ? 'the human check was answered by a program (the code was never typed)' : 'the human check was clicked by code, not by a person', true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT };
+    if (byCode && autoJail(uid, isCode ? 'the human check was answered by a program (the code was never typed)' : 'the human check was clicked by code, not by a person', true, true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT };
     if (fast) { const prev = h.log.slice(1).filter(x => x.r === 'pass (odd)' && /solved in/.test(x.odd || '') && now - x.t < 48 * HOUR).length; if (prev >= 1 && autoJail(uid, `solved the human check faster than a person can, twice (${info.ms} ms)`, true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT }; }
     if (odd.length) flag(uid, `Human check passed oddly: ${odd.join(', ')}`);
     h.pend = null; h.pendHits = 0; h.last = now; h.streak = 0; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
   }
   p.tries++; h.streak = (h.streak || 0) + 1; hcLog(uid, 'miss', info);
-  if (h.streak >= HC.jailAfter && !hcExempt(uid)) { h.jail = { t: now, why: `Answered the human check wrong ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: info.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why}`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
+  if (h.streak >= HC.jailAfter && !hcExempt(uid) && !cleanPass(uid)) { h.jail = { t: now, why: `Answered the human check wrong ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: info.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why}`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
   if (p.tries >= HC.tries) { hcLog(uid, 'fail', { want: info.want }); flag(uid, `Failed the human check ${HC.tries} times in a row`); h.lock = now + HC.lockMs; h.pend = hcMake(isCode); persist(); return { ok: false, lock: h.lock, msg: `Three wrong answers. Operations are paused for ${HC.lockMs / 60e3} minutes.`, hc: hcPub(h.pend) }; }
   persist(); return { ok: false, msg: isCode ? `That's not the code. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.` : `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
 }
@@ -506,7 +508,7 @@ function hcAnswer(uid, b) {
 // iPhone taps used to be recorded as mouse clicks, so they were marked "mouse never moved". Checks from before this version are not held against anyone for that.
 if (!S.hcTouchFixT) S.hcTouchFixT = Date.now();
 const hcRes = x => x.r === 'pass (odd)' && x.t < S.hcTouchFixT && x.odd === 'mouse never moved' ? 'pass' : x.r;
-function hcSummary(uid) { const L = ((S.hc[uid] || {}).log || []).filter(x => Date.now() - x.t < 48 * HOUR); if (!L.length && !(S.hc[uid] || {}).pend) return null; const c = k => L.filter(x => hcRes(x) === k).length, ms = L.filter(x => /^pass/.test(x.r)).map(x => x.ms).sort((a, b) => a - b);
+function hcSummary(uid, from) { const L = ((S.hc[uid] || {}).log || []).filter(x => Date.now() - x.t < 48 * HOUR && (!from || x.t >= from)); if (!L.length && !(S.hc[uid] || {}).pend) return null; const c = k => L.filter(x => hcRes(x) === k).length, ms = L.filter(x => /^pass/.test(x.r)).map(x => x.ms).sort((a, b) => a - b);
   return { pass: c('pass'), odd: c('pass (odd)'), miss: c('miss'), fail: c('fail'), expired: c('expired'), pics: c('new picture'), medMs: ms.length ? ms[Math.floor(ms.length / 2)] : null, open: !!(S.hc[uid] || {}).pend, last: L.slice(0, 12) }; }
 // same network = a home connection both accounts used. An address many players share (satellite internet like Starlink, mobile carriers,
 // schools: one public address for thousands of people) says nothing about who owns an account, so it doesn't count.
@@ -2115,11 +2117,42 @@ function botRecord(uid, b, readyAt, req, cdLen) {
 // other warnings about a player from the last 7 days (shared networks, aid between them, speed flags), for the verdict box
 function netWarn(uid) { const from = Date.now() - 7 * 864e5, f = (S.flags || []).filter(x => x.uid === uid && x.t >= from); const kinds = {}; for (const x of f) { const k = /same network|second ac/i.test(x.r) ? 'Shares a network with another account' : /faster than a person|bot|script/i.test(x.r) ? 'Sent actions faster than a person can click' : /charged back/i.test(x.r) ? 'Charged back a donation' : 'Other flag'; kinds[k] = (kinds[k] || 0) + 1; } return Object.entries(kinds).map(([k, n]) => `${k} (${n}×)`); }
 S.cheatReview = S.cheatReview || {};
-const CLEAN_H = 24; // hours a "Not cheating" decision keeps a player green on Cheat watch
-function scriptCheck() {
-  const now = Date.now(), from = now - 48 * HOUR, out = [], sd = a => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
+// ANTI-CHEAT LADDER (automatic). A player whose case reaches "act" (red) is 1) warned by mail with the evidence; if the signs continue in what they do AFTER the warning,
+// 2) suspended 24 hours, 3) 72 hours, 4) jailed until an admin reviews. Strikes expire after 14 days. "Not cheating" protects for 7 days. Admins are told of every step.
+S.acl = S.acl || {};
+const ACL = { graceH: 12, s1H: 24, s2H: 72, memD: 14, everyMin: 10 };
+function aclMail(uid, subj, body) { const t = Date.now(); S.mail[uid] = [{ id: rid(), from: HD, to: uid, t, subj, body, box: 'in', read: false }, ...(S.mail[uid] || [])].slice(0, 200); try { sendTo(uid, 'mail', { unread: S.mail[uid].filter(m => m.box === 'in' && !m.read).length }); } catch (e) {} addNote(uid, 'mail', `Anti-cheat: ${subj}`); }
+function aclTell(text) { for (const [id, u] of Object.entries(S.users)) if (u.admin) addNote(id, 'event', `🛡 Anti-cheat: ${text}`); }
+const aclEvidence = r => [...(r.case.strong || []), ...(r.why || [])].slice(0, 6).map(x => '• ' + x).join('\n');
+function aclSuspend(uid, hours, r, strike) { const h = hcState(uid), now = Date.now(), until = now + hours * HOUR, nm = nationName(uid);
+  h.jail = { t: now, until, script: 1, why: `Suspended ${hours} hours automatically: kept playing with a script after a warning` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { why: h.jail.why });
+  const n = S.docs['nations/' + uid]; if (n) { n.shield = Math.max(n.shield || 0, until); setDoc('nations', uid, n); } // nobody can attack a nation whose owner is locked out
+  aclMail(uid, `Suspended for ${hours} hours`, `Our anti-cheat system found that the signs of automated play continued after your warning:\n\n${aclEvidence(r)}\n\nYour account is suspended for ${hours} hours. Your nation is protected from attack during that time and nothing has been taken.\n\n${strike >= 2 ? 'This is your second suspension. If it happens again your account will be locked until an admin reviews it.' : 'If it happens again the suspension will be 72 hours.'}\n\nIf this is a mistake, reply to the Helpdesk and an admin will look at it.`);
+  try { sendTo(uid, 'jail', { msg: suspMsg(h.jail) }); } catch (e) {}
+  flag(uid, `Suspended ${hours} hours automatically (strike ${strike}): script signs continued after a warning`); audit('Anti-cheat', 'Suspended player automatically', nm, `${hours} hours, strike ${strike}`);
+  S.fairlog.unshift({ t: now, action: 'Anti-cheat suspended a player', target: null, detail: `${hours} hours for automated play, after a warning` }); S.fairlog = S.fairlog.slice(0, 3000);
+  aclTell(`${nm} was suspended for ${hours} hours (strike ${strike}). Release them from Cheat watch if this is wrong.`); }
+function aclRun() { if (S.config.acAuto === false || (S.chaos && S.chaos.on)) return; const now = Date.now(); let ch = false;
+  for (const [u, a] of Object.entries(S.acl)) { a.strikes = (a.strikes || []).filter(t => now - t < ACL.memD * 864e5); if (!a.strikes.length && now - (a.warn || 0) > ACL.memD * 864e5) { delete S.acl[u]; ch = true; } }
+  for (const [u, h] of Object.entries(S.hc || {})) if (h && h.jail && h.jail.until && now >= h.jail.until) hcJail(u); // finished suspensions end on their own
+  const base = scriptCheck().filter(r => r.case.level === 'act' && !r.jail && !hcExempt(r.id) && !cleanPass(r.id) && S.users[r.id] && !S.users[r.id].banned);
+  for (const r of base) { const uid = r.id, a = S.acl[uid]; hcJail(uid);
+    if (!a || !a.warn) { S.acl[uid] = { warn: now, from: now, strikes: (a && a.strikes) || [] }; ch = true;
+      aclMail(uid, 'Warning: signs of automated play', `Our anti-cheat system noticed patterns in how your account plays that look like a script, macro or auto-clicker:\n\n${aclEvidence(r)}\n\nAutomated play is not allowed: it is unfair to everyone who plays by hand. Nothing has been done to your account. If these signs continue, your account will be suspended for 24 hours automatically.\n\nIf you are not using any automation, reply to the Helpdesk and an admin will review it.`);
+      flag(uid, 'Warned automatically: signs of automated play'); audit('Anti-cheat', 'Warned player automatically', nationName(uid), (r.case.strong || []).join('; ').slice(0, 300)); aclTell(`${nationName(uid)} was sent an automatic warning (${r.case.conf.toLowerCase()} evidence). Mark them "Not cheating" on Cheat watch to stop the ladder for 7 days.`); continue; }
+    if (now - a.from < ACL.graceH * HOUR) continue; // give them time to read the warning and stop
+    const again = scriptCheck({ [uid]: a.from }).find(x => x.id === uid); if (!again || again.case.level !== 'act') continue; // judged only on what they did since the warning or the last suspension
+    const k = a.strikes.length + 1; a.strikes.push(now); a.from = now; ch = true;
+    if (k >= 3) { autoJail(uid, 'kept playing with a script after a warning and two suspensions', true, true); aclMail(uid, 'Account locked for review', 'The signs of automated play continued after two suspensions. Your account is locked until an admin reviews it. Your nation is safe. You can message the Helpdesk.'); aclTell(`${nationName(uid)} was locked in cheat jail after a warning and two suspensions. It needs your review.`); }
+    else aclSuspend(uid, k === 1 ? ACL.s1H : ACL.s2H, again, k); }
+  if (ch) persist(); }
+setInterval(() => { try { aclRun(); } catch (e) { logErr('aclRun: ' + (e.stack || e.message)); } }, ACL.everyMin * 60e3).unref(); setTimeout(() => { try { aclRun(); } catch (e) { logErr('aclRun: ' + (e.stack || e.message)); } }, 45e3).unref();
+const CLEAN_H = 168; // hours (7 days) a "Not cheating" decision protects a player: green on Cheat watch, and no automatic warnings, suspensions or jail except on hard proof
+const cleanPass = uid => { const r = (S.cheatReview || {})[uid]; return !!(r && r.d === 'clean' && Date.now() - r.t < CLEAN_H * HOUR); };
+function scriptCheck(since) { // since: optional { uid: time } to judge a player only on what they did after that time (used after a warning)
+  const now = Date.now(), from0 = now - 48 * HOUR, out = [], sd = a => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / a.length); }, med = a => { const b = a.slice().sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
   for (const [uid, s] of Object.entries(S.botsig)) {
-    const u = S.users[uid]; if (!u) continue; const L = (s.a || []).filter(x => x[0] >= from); if (L.length < 10) continue;
+    const u = S.users[uid]; if (!u) continue; const from = Math.max(from0, (since && since[uid]) || 0); const L = (s.a || []).filter(x => x[0] >= from); if (L.length < 10) continue;
     const why = []; let score = 0;
     // 1. reaction time: how soon after an operation was ready it was run (only when they were around: within 10 minutes)
     const D = L.filter(x => x[2] >= 0 && x[2] <= 10 * 60e3).map(x => x[2]), fast = D.filter(d => d < 1500).length, fp = D.length ? fast / D.length : 0;
@@ -2167,7 +2200,7 @@ function scriptCheck() {
     if (MC.length >= 12 && still >= .7) { score += 2; why.push(`The mouse didn't move at all before ${Math.round(still * 100)}% of mouse clicks (${MC.filter(q => q[3] === 0).length} of ${MC.length}): the cursor stays parked while something clicks`); }
     if (timed.length >= 12 && quickP >= .6) { score += 3; why.push(`The button was held down for 15 milliseconds or less on ${Math.round(quickP * 100)}% of clicks (typical ${medP} ms); people hold a click for about 60 to 150 ms`); }
     // 13. the human check: failed it, kept tapping the wrong shape, or solved it too fast / without moving the mouse / with a click made by code
-    const hs = hcSummary(uid); if (hs) {
+    const hs = hcSummary(uid, from); if (hs) {
       if (hs.fail) { score += Math.min(6, hs.fail * 3); why.push(`Failed the human check ${hs.fail} time${hs.fail > 1 ? 's' : ''} (three wrong shapes in a row)`); }
       else if (hs.miss >= 3) { score += 1; why.push(`Tapped the wrong shape ${hs.miss} times on human checks`); }
       const oddShare = hs.odd / Math.max(1, (hs.pass || 0) + hs.odd); hs.oddReal = hs.odd >= 2 && oddShare >= .4; // the right shape is sometimes already under the cursor (about 1 in 6), so a few odd passes among many normal ones are luck
@@ -2177,11 +2210,11 @@ function scriptCheck() {
     // 5. the existing speed flag
     const sf = (S.flags || []).filter(f => f.uid === uid && f.t >= from && /faster than a person/.test(f.r)).length; if (sf) { score += Math.min(2, sf); why.push(`Flagged ${sf} time${sf > 1 ? 's' : ''} for sending actions faster than a person can click`); }
     const n = S.docs['nations/' + uid];
-    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, streakN: streak.n || 0, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hs, jail: ((S.hc || {})[uid] || {}).jail || null, hourly: (() => { const H = new Array(48).fill(0); for (const x of L) { const i = Math.floor((x[0] - from) / HOUR); if (i >= 0 && i < 48) H[i]++; } return H; })(), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
+    out.push({ id: uid, name: u.name, nation: n ? n.name : '', acts: L.length, react: D.length ? { n: D.length, fastPct: Math.round(fp * 100), med: Math.round(med(D)) } : null, offPct: Math.round(off / L.length * 100), hidPct: Math.round(hid / L.length * 100), hrs, gapH: Math.round(gap / HOUR * 10) / 10, real: H.length ? Math.round((H.length - uC - nC) / H.length * 100) : null, onTime: D.length ? Math.round(D10 / D.length * 100) : null, streakH: Math.round(streak.h / HOUR * 10) / 10, streakN: streak.n || 0, clicks: CL.length, samePct: CL.length >= 5 ? Math.round(same * 100) : null, stillPct: MC.length >= 5 ? Math.round(still * 100) : null, pressMs: timed.length >= 5 ? medP : null, net: netWarn(uid), hc: hs, jail: ((S.hc || {})[uid] || {}).jail || null, hourly: (() => { const H = new Array(48).fill(0); for (const x of L) { const i = Math.floor((x[0] - from0) / HOUR); if (i >= 0 && i < 48) H[i]++; } return H; })(), review: (S.cheatReview || {})[uid] || null, score, verdict: score >= 6 ? 'red' : score >= 3 ? 'amber' : 'ok', why });
   }
-  for (const r of out) { r.case = caseFile(r);
+  for (const r of out) { r.case = caseFile(r); { const a = (S.acl || {})[r.id]; if (a) r.acl = { warn: a.warn || 0, strikes: (a.strikes || []).length, until: (r.jail && r.jail.until) || 0 }; }
     // you marked them "Not cheating": they stay green for 24 hours (unless locked in cheat jail), then are judged normally again
-    const rv = r.review; if (rv && rv.d === 'clean' && now - rv.t < CLEAN_H * HOUR && !r.jail) { r.okUntil = rv.t + CLEAN_H * HOUR; r.verdict = 'ok'; r.case = { ...r.case, level: 'clear', tone: 'green', conf: 'None', action: `You marked them as not cheating, so they stay green for 24 hours. After that they are judged normally again, and come back here only if new signs appear.` }; } }
+    const rv = r.review; if (rv && rv.d === 'clean' && now - rv.t < CLEAN_H * HOUR && !r.jail) { r.okUntil = rv.t + CLEAN_H * HOUR; r.verdict = 'ok'; r.case = { ...r.case, level: 'clear', tone: 'green', conf: 'None', action: `You marked them as not cheating, so they are protected for 7 days: they stay green and get no automatic warnings or suspensions (only hard proof, like a human check answered by code, can still jail them). After that they are judged normally again.` }; } }
   return out.sort((a, b) => (a.okUntil ? 1 : 0) - (b.okUntil ? 1 : 0) || b.score - a.score || b.acts - a.acts);
 }
 // turns one player's numbers into a decision: how worried to be, how sure, what to do, and evidence worded so it can be shown to them
@@ -2853,7 +2886,7 @@ async function adminRoute(p, req, res, me) {
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
-      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss', 'supply']) if (c[k] != null) nc[k] = !!c[k];
+      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss', 'supply', 'acAuto']) if (c[k] != null) nc[k] = !!c[k];
       if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 1000);
       if (c.donateUrl != null) { const d = String(c.donateUrl).trim(); if (d && !/^https:\/\/[^\s"'<>]+$/i.test(d)) return send(res, 400, { error: 'The donation link must start with https://' }); nc.donateUrl = d || WP.DEFCFG.donateUrl; }
@@ -2885,6 +2918,7 @@ async function adminRoute(p, req, res, me) {
     case '/api/admin/cheatreview': { // your decision on a player after reviewing the evidence (only admins see it)
       if (!u) return send(res, 404, { error: 'Unknown player.' }); const d = ['cheat', 'clean', 'watch'].includes(b.d) ? b.d : null;
       if (!d) delete S.cheatReview[b.id]; else S.cheatReview[b.id] = { d, t: Date.now(), by: me.name, note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 300) };
+      if (d === 'clean') { delete S.acl[b.id]; const h = (S.hc || {})[b.id]; if (h && h.jail && h.jail.until) { delete h.jail; h.streak = 0; h.pend = null; hcLog(b.id, 'released', { why: 'marked not cheating' }); addNote(b.id, 'war', '✅ An admin reviewed your account and lifted the suspension. You can play again.'); } }
       audit(me.name, 'Cheat review', target, d ? { cheat: 'Cheating', clean: 'Not cheating', watch: 'Keep watching' }[d] : 'Cleared'); persist(); return send(res, 200, { ok: true, rows: scriptCheck(), t: Date.now() });
     }
     case '/api/admin/timeline': { if (!u) return send(res, 404, { error: 'Unknown player.' }); return send(res, 200, timeline(b.id)); }
