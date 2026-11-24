@@ -2853,7 +2853,7 @@ async function adminRoute(p, req, res, me) {
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
-      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss']) if (c[k] != null) nc[k] = !!c[k];
+      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss', 'supply']) if (c[k] != null) nc[k] = !!c[k];
       if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 1000);
       if (c.donateUrl != null) { const d = String(c.donateUrl).trim(); if (d && !/^https:\/\/[^\s"'<>]+$/i.test(d)) return send(res, 400, { error: 'The donation link must start with https://' }); nc.donateUrl = d || WP.DEFCFG.donateUrl; }

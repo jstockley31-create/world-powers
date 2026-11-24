@@ -338,6 +338,10 @@ const ADMIN = { base: 20, per: 5, ai: 6, coreD: 7, colony: 2, far: 1, farKm: 300
 // VASSALS: win a capital siege choosing "make vassal" and the nation survives as your vassal: it keeps its land, pays tribute every 10 minutes
 // (half a tax collection and 10% of its production), and neither side can attack the other. After 48 hours it may declare independence (war).
 const OUTPOST = { max: 4, rank: 2, stageKm: 2500, def: 1.1, cdH: 2, conv: { cash: 25e6, steel: 500, oil: 300 }, est: { cash: 60e6, steel: 1000, oil: 600 } };
+// outpost levels: each level reaches further (for supply lines) and defends a little better. Upgrades cost more for bigger economies.
+const OUTLV = { max: 3, km: [0, 0, 500, 1000], def: [1, 1.1, 1.15, 1.2], rank: [0, 2, 3, 4], cost: [null, null, { cash: 8e7, steel: 2000, oil: 1200, gdp: .003 }, { cash: 2e8, steel: 5000, oil: 3000, gdp: .006 }] };
+// supply lines: provinces far from your capital and outposts are harder to defend. Full strength within 2,000 km, two-thirds out to 3,500 km, one-third beyond.
+const SUPPLY = { full: 2000, mid: 3500, midF: 2 / 3, farF: 1 / 3 };
 const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
@@ -704,20 +708,30 @@ function Core(PD, CARDS) {
   const RAD_MAX = 5; // at most this many clouds drain a nation at once
   const armyF = n => 1 + ARMYUP.max * clamp(((n.troops || 0) - ARMYUP.from) / (ARMYUP.to - ARMYUP.from), 0, 1);
   const upkeep = (W, n) => ((n.troops || 0) * 8 * armyF(n) * (hasInfra(n, 'rail') ? 1 - UPG.infra.list.rail.f : 1) + (n.reserve || 0) * UPG.reserve.upkeep + (n.ships || 0) * 120 + (n.air || 0) * 150 + (n.nuke ? NUKE.upkeep : 0) + 0) * W.m.upkeep;
+  // one province's raw output before nation-wide bonuses (the same numbers production() adds up)
+  function hexRaw(W, n, h) { const pr = P[h], q = { food: 0, oil: 0, steel: 0, goods: 0 }; let dk = 1 + DEV.prod * devLvl(n, h);
+    if (h == n.cap) { for (const k in CAPP) q[k] += CAPP[k]; } else { const t = TYPE[pr.t] || TYPE.P; for (const k in t.p) q[k] += t.p[k]; }
+    if (pr.r) q.food += 5; if (pr.m) q.steel += 4; if (pr.co) q.goods += 3;
+    if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) dk *= .3; // a disaster zone produces little until it recovers
+    for (const k in q) q[k] *= dk; return q; }
+  function prodMul(W, u) { const n = W.A[u], m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income * adminF(W, u) * (1 + TALL.prod * tallLvl(W, u)) * (hasInfra(n, 'grid') ? 1 + UPG.infra.list.grid.f : 1), pf = fxMul(n, 'prod');
+    return k => m * pf * (k === 'food' ? W.m.food * (radOn(W, n) && n.rad.acc ? NUKEACC.crops : 1) : k === 'oil' ? W.m.oil : 1); }
   function production(W, u) {
     const n = W.A[u]; const p = { food: 0, oil: 0, steel: 0, goods: 0, mun: 0 };
-    for (const h of hexesOf(W, u)) {
-      const pr = P[h];
-      const q = { food: 0, oil: 0, steel: 0, goods: 0 }; let dk = 1 + DEV.prod * devLvl(n, h);
-      if (h == n.cap) { for (const k in CAPP) q[k] += CAPP[k]; } else { const t = TYPE[pr.t] || TYPE.P; for (const k in t.p) q[k] += t.p[k]; }
-      if (pr.r) q.food += 5; if (pr.m) q.steel += 4; if (pr.co) q.goods += 3;
-      if ((W.DIS || []).some(x => x.h == h && x.until > W.now)) dk *= .3; // a disaster zone produces little until it recovers
-      for (const k in q) p[k] += q[k] * dk;
-    }
-    const m = (1 + rankOf(n.xp) * .1) * (1 + soft(n.infra, 10) * .05) * W.cfg.income * adminF(W, u) * (1 + TALL.prod * tallLvl(W, u)) * (hasInfra(n, 'grid') ? 1 + UPG.infra.list.grid.f : 1);
-    const pf = fxMul(n, 'prod'); for (const k in p) p[k] = Math.round(p[k] * m * pf * (k === 'food' ? W.m.food * (radOn(W, n) && n.rad.acc ? NUKEACC.crops : 1) : k === 'oil' ? W.m.oil : 1));
+    for (const h of hexesOf(W, u)) { const q = hexRaw(W, n, h); for (const k in q) p[k] += q[k]; }
+    const f = prodMul(W, u); for (const k in p) p[k] = Math.round(p[k] * f(k));
     return p;
   }
+  // everything the Territories page shows about one of your provinces
+  function provInfo(W, u, h) { const n = W.A[u], o = W.OWN[h], pr = P[h], f = prodMul(W, u), q = hexRaw(W, n, h), y = {}; let val = 0;
+    for (const k in q) { y[k] = Math.round(q[k] * f(k) * 10) / 10; val += y[k] * RES[k].p; }
+    const cap = !!(o && o.cap) || +h === +n.cap, outHere = !!(n.outposts && n.outposts[h]), outNear = !outHere && land(h).some(k => n.outposts && n.outposts[k] && owner(W, k) === u);
+    const km = cap || !P[n.cap] ? 0 : Math.round(kmBetween(+h, +n.cap)), leg = legacy(n, h), far = !cap && !outHere && !leg && km > OVER.farKm;
+    const sk = cap ? 0 : Math.round(supplyKm(W, u, h)), sz = cap || (n.ai && n.ai.boss) ? 1 : sk <= SUPPLY.full ? 1 : sk <= SUPPLY.mid ? SUPPLY.midF : SUPPLY.farF, sf = supplyF(W, u, h);
+    const def = holdF(W, n, h) * terrainF(h, 'land') * outpostDef(W, n, h) * sf * (cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) : spreadF(W, u));
+    return { h, cap, dev: devLvl(n, h), type: cap ? 'Capital' : (TYPE[pr.t] || TYPE.P).n, mtn: !!pr.m, river: !!pr.r, coast: !!pr.co, y, val: Math.round(val * 6), km, far, outHere, outNear, leg,
+      def: Math.round(def * 100) / 100, sk, sf, sz, opl: opLvl(n, h), admin: provAdmin(W, u, h), core: !!o && (W.now - o.ts) / 864e5 >= ADMIN.coreD, ageD: o ? (W.now - o.ts) / 864e5 : 0, loyal: loyalF(n, h),
+      dis: (W.DIS || []).some(x => x.h == h && x.until > W.now), unrest: ((n.unrest || {})[h] || 0) > W.now, conq: !!(n.conq && n.conq[h]) }; }
   const consumption = n => ({ food: Math.round(n.pop / 1000 * .25), oil: Math.round(((n.troops || 0) / 100 * .5 + (n.ships || 0) * .5 + (n.air || 0) * .4 + n.infra * .5) * fxMul(n, 'oil')), steel: 0, goods: Math.round(n.pop / 1000 * .05), mun: 0 });
   const popCap = (W, u) => (hexesOf(W, u).length * 150000 + devTotal(W, u) * DEV.pop) * (1 + soft(W.A[u].infra, 10) * .05);
   // World market. Prices follow the last 6 hours of net trading by all nations, but each nation's own net counts for at most
@@ -893,13 +907,18 @@ function Core(PD, CARDS) {
     return { rt: r.rt, km: r.km, via: r.via, staged: r.staged, mult, costX: cx, X, AIR, maxX, perShip: AIRB ? AIRBORNE.per : perShip, cost, atk: Math.round(atk), def: Math.round(def), chance, regroupMin: r.rt === 'ocean' || AIRB ? 60 : r.rt === 'march' ? 45 : 30 };
   }
   const terrainF = (h, rt) => (P[h].m ? 1.25 : 1) * (P[h].r && rt === 'land' ? 1.15 : 1);
-  const outpostDef = (W, n, h) => { const o = n && n.outposts; if (!o) return 1; if (o[h]) return OUTPOST.def; return land(h).some(k => o[k] && owner(W, k) === owner(W, h)) ? OUTPOST.def : 1; };
+  const opLvl = (n, h) => n && n.outposts && n.outposts[h] ? Math.min(OUTLV.max, Math.max(1, (n.opl || {})[h] || 1)) : 0;
+  const outpostDef = (W, n, h) => { const o = n && n.outposts; if (!o) return 1; if (o[h]) return OUTLV.def[opLvl(n, h)]; let b = 1; for (const k of land(h)) if (o[k] && owner(W, k) === owner(W, h)) b = Math.max(b, OUTLV.def[opLvl(n, k)]); return b; };
+  // distance to the nearest base: the capital, or an outpost (whose reach grows with its level)
+  function supplyKm(W, u, h) { const n = W.A[u]; if (!n || !P[n.cap] || !P[h]) return 0; let d = kmBetween(+h, +n.cap); for (const k of Object.keys(n.outposts || {})) if (owner(W, +k) === u) d = Math.min(d, Math.max(0, kmBetween(+h, +k) - OUTLV.km[opLvl(n, k)])); return d; }
+  const supplyOn = W => !!(W.cfg && W.cfg.supply !== false);
+  function supplyF(W, u, h) { const n = W.A[u]; if (!supplyOn(W) || !n || (n.ai && n.ai.boss) || +h === +n.cap || (W.OWN[h] && W.OWN[h].cap)) return 1; const d = supplyKm(W, u, h); return d <= SUPPLY.full ? 1 : d <= SUPPLY.mid ? SUPPLY.midF : SUPPLY.farF; }
   // a big empire's army is spread thin: every province past 10 weakens the defence of each non-capital province a little (30 provinces 72%, 60 58%, 100 50%)
   const spreadF = (W, v) => { const k = hexesOf(W, v).length; return k > 10 ? Math.pow(10 / k, .3) : 1; };
   function defense(W, h, attacker) {
     const v = owner(W, h), n = W.A[v], tp = (n.troops || 0) * .5; let t = tp + Math.min((n.air || 0) * 10, tp); /* the air force supports the army: it can add at most as much again as the troops, so a nation can't hold every province with planes alone */ for (const a of allies(W, v)) if (a !== attacker) t += (W.A[a].troops || 0) * .1;
     const rt = attacker ? route(W, attacker, h) : 'land';
-    return t * (1 + UPG.min.list.defense.f * minL(n, 'defense')) * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) * (n.nuke && !rogue(W, n) ? 2 : 1) : spreadF(W, v)) * genF(n, 'defense') * puF(n, 'def') * fxMul(n, 'def') * outpostDef(W, n, h) * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
+    return t * (1 + UPG.min.list.defense.f * minL(n, 'defense')) * techF(n) * (1 + soft(n.fort, 8) * .1) * (1 + rankOf(n.xp) * .08) * holdF(W, n, h) * oilF(n) * GOV[n.gov].mil * moraleF(n) * terrainF(h, rt) * ((n.regroup || 0) > W.now ? .75 : 1) * (W.OWN[h] && W.OWN[h].cap ? ((n.capMoved || 0) + CAPMOVE.fortH * HOUR > W.now ? 1.15 : 1.5) * (n.nuke && !rogue(W, n) ? 2 : 1) : spreadF(W, v)) * genF(n, 'defense') * puF(n, 'def') * fxMul(n, 'def') * outpostDef(W, n, h) * supplyF(W, v, h) * (measure(W, n, 'guarantee') ? 1.2 : 1) * ((n.ai && n.ai.boss && n.ai.defX) || 1);
   }
   const navalDefense = (W, h) => { const v = owner(W, h), n = W.A[v]; return (n.ships || 0) * 25 * techF(n) * 1.2; };
   const bestGen = (n, type) => (n.gens || []).filter(g => g.type === type).reduce((b, g) => !b || g.stars > b.stars ? g : b, null);
@@ -1951,8 +1970,15 @@ function Core(PD, CARDS) {
     if (fresh) news(W, u, `🏰 ${n.name} has established an outpost at ${pname(h)}.`); touch(W, u);
     return { msg: `🏰 Outpost established at ${pname(h)}.` };
   }
-  function dropOutpost(W, u, h) { const n = W.A[u]; if (!n || !n.outposts || !n.outposts[h]) fail('There is no outpost there.'); const o = { ...n.outposts }; delete o[h]; n.outposts = o; log(n, `Outpost at ${pname(h)} dismantled.`, W); touch(W, u); return { msg: `Outpost at ${pname(h)} dismantled. The province stays yours.` }; }
-  function outpostTidy(W, u) { const n = W.A[u]; if (!n || !n.outposts) return false; let ch = false; const o = { ...n.outposts }; for (const h of Object.keys(o)) if (owner(W, +h) !== u) { delete o[h]; ch = true; log(n, `Your outpost at ${pname(+h)} was lost.`, W); } if (ch) { n.outposts = o; touch(W, u); } return ch; }
+  const opUpCost = (W, u, h) => { const n = W.A[u], L = opLvl(n, h), c = OUTLV.cost[L + 1]; return c ? { cash: Math.round(Math.max(c.cash, (n.gdp || 0) * c.gdp)), steel: c.steel, oil: c.oil } : null; };
+  function opUpCheck(W, u, h) { const n = W.A[u]; if (!n || !n.outposts || !n.outposts[h]) return 'There is no outpost there.'; const L = opLvl(n, h); if (L >= OUTLV.max) return 'This outpost is already at the top level.';
+    if (rankOf(n.xp) < OUTLV.rank[L + 1]) return `A level ${L + 1} outpost needs the rank of ${RANKS[OUTLV.rank[L + 1]][1]}.`; if (left(W, n, 'outpost')) return `Your engineers are still building: ${fmtT(left(W, n, 'outpost'))}.`;
+    const c = opUpCost(W, u, h); if (n.cash < c.cash || (n.res.steel || 0) < c.steel || (n.res.oil || 0) < c.oil) return `Upgrading to level ${L + 1} costs ${money(c.cash)}, ${num(c.steel)} steel and ${num(c.oil)} oil.`; return null; }
+  function upOutpost(W, u, h) { h = Number(h); const why = opUpCheck(W, u, h); if (why) fail(why); const n = W.A[u], c = opUpCost(W, u, h), L = opLvl(n, h) + 1;
+    n.cash -= c.cash; n.res.steel -= c.steel; n.res.oil -= c.oil; n.opl = { ...(n.opl || {}), [h]: L }; n.cd.outpost = W.now + tq(W, OUTPOST.cdH * HOUR); gainXP(W, u, 20 * L);
+    log(n, `🏰 Outpost at ${pname(h)} upgraded to level ${L}: its supply lines reach ${num(OUTLV.km[L])} km further and it defends ${Math.round((OUTLV.def[L] - 1) * 100)}% better.`, W); touch(W, u); return { msg: `🏰 Outpost at ${pname(h)} is now level ${L}.` }; }
+  function dropOutpost(W, u, h) { const n = W.A[u]; if (!n || !n.outposts || !n.outposts[h]) fail('There is no outpost there.'); const o = { ...n.outposts }; delete o[h]; n.outposts = o; if (n.opl) { const l = { ...n.opl }; delete l[h]; n.opl = l; } log(n, `Outpost at ${pname(h)} dismantled.`, W); touch(W, u); return { msg: `Outpost at ${pname(h)} dismantled. The province stays yours.` }; }
+  function outpostTidy(W, u) { const n = W.A[u]; if (!n || !n.outposts) return false; let ch = false; const o = { ...n.outposts }; for (const h of Object.keys(o)) if (owner(W, +h) !== u) { delete o[h]; if (n.opl) delete n.opl[h]; ch = true; log(n, `Your outpost at ${pname(+h)} was lost.`, W); } if (ch) { n.outposts = o; touch(W, u); } return ch; }
   // ---------- WORLD CASINO: games of chance with the nation's treasury (all randomness on the server) ----------
   const CASINO = { min: 1e4, maxAbs: 5e9, perMin: 30, slotMax: 1000,
     slots: { sym: ['cherry', 'bar', 'bell', 'star', 'diamond', 'seven'], name: ['Cherry', 'Bar', 'Bell', 'Star', 'Diamond', 'Seven'], w: [34, 26, 18, 12, 7, 3], three: [5, 10, 20, 40, 100, 300], two: { cherry: 1.5 } },
@@ -3064,7 +3090,7 @@ function Core(PD, CARDS) {
       case 'gov': return setGov(W, u, String(c.g));
       case 'covert': return covert(W, u, String(c.op), String(c.v), rng);
       case 'casino': return casino(W, u, c, rng);
-      case 'outpost': return buildOutpost(W, u, c.h);
+      case 'outpost': return c.op === 'up' ? upOutpost(W, u, c.h) : buildOutpost(W, u, c.h);
       case 'outpostrm': return dropOutpost(W, u, Number(c.h));
       case 'bloc': return blocCmd(W, u, String(c.op || ''), c);
       case 'uwonder': return uwonder(W, u, String(c.k), !!c.abandon);
@@ -3107,7 +3133,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { supplyOn, OUTLV, SUPPLY, opLvl, supplyKm, supplyF, opUpCost, opUpCheck, provInfo, hexRaw, EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, TREATY_BREAK, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
