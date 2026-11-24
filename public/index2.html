@@ -1564,6 +1564,12 @@ table thead th{letter-spacing:.06em}
 'use strict';
 const QS=new URLSearchParams(location.search);try{if(/^[A-Za-z0-9]{7}$/.test(QS.get('ref')||''))localStorage.setItem('wp_ref',QS.get('ref'))}catch(e){}
 const getRef=()=>{try{return localStorage.getItem('wp_ref')||''}catch(e){return''}};
+// Google Ads sign-up measurement: only for players who arrived from one of our ads in the last 90 days, never when the browser asks not to be tracked, and counted once per browser
+const GADS={id:'AW-18590452421',signup:'AW-18590452421/UJF8CICQpr4dEMWVz6BF'};
+function gadsOn(){try{if(navigator.globalPrivacyControl||navigator.doNotTrack==='1')return false;const q=new URLSearchParams(location.search);if(q.get('gclid')||q.get('wbraid')||q.get('gbraid'))localStorage.setItem('wp_ad',String(Date.now()));return Date.now()-(+localStorage.getItem('wp_ad')||0)<90*864e5}catch(e){return false}}
+function gadsLoad(){if(window.gtag||!gadsOn())return!!window.gtag;window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag('js',new Date());gtag('config',GADS.id);const s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+GADS.id;document.head.appendChild(s);return true}
+function gadsSignup(){try{if(!gadsLoad()||localStorage.getItem('wp_gconv'))return;localStorage.setItem('wp_gconv',String(Date.now()));gtag('event','conversion',{send_to:GADS.signup})}catch(e){}}
+gadsLoad();
 const st={me:null,users:{},cols:{nations:{},chat:{},online:{}},ready:false,subs:[]};
 let resolveAuth;const authed=new Promise(r=>resolveAuth=r);
 function snap(col){const m=st.cols[col]||{};const docs=Object.keys(m).map(id=>({id,exists:true,data:()=>m[id],metadata:{fromCache:false,hasPendingWrites:false}}));return{docs,size:docs.length,empty:!docs.length,metadata:{fromCache:false,hasPendingWrites:false},docChanges:()=>[]}}
@@ -1683,8 +1689,8 @@ function showLogin(){let el=document.getElementById('auth');const first=!el;
  <div class="sw">${signup?'Already have an account? <a data-m="login">Sign in</a>':'New here? <a data-m="signup">Create an account</a>'}</div><button type="button" class="guest" id="guestGo">Just looking? <b>Play as a guest</b> — no email needed</button>${signup?'':'<div class="fine">Forgot your password? Contact the game administrator to have it reset.</div>'}<div class="fine" style="margin-top:8px">Enjoying the game? <a href="/donate" target="_blank" rel="noopener" style="color:#f3a3bd">❤ Donate</a>, no account needed.</div>`;
  el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{mode=b.dataset.m;showLogin()});
  document.getElementById('authf').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const btn=e.target.querySelector('.go');btn.disabled=true;document.getElementById('autherr').textContent='';
-  try{const body=Object.fromEntries(f);if(signup){body.agree=!!f.get('agree');body.ref=getRef()}st.me=await api('POST','/api/'+mode,body);go()}catch(x){document.getElementById('autherr').textContent=x.message;btn.disabled=false}};
- document.getElementById('guestGo').onclick=async()=>{const b=document.getElementById('guestGo');b.disabled=true;try{st.me=await api('POST','/api/guest',{ref:getRef()});go()}catch(x){document.getElementById('autherr').textContent=x.message;b.disabled=false}};
+  try{const body=Object.fromEntries(f);if(signup){body.agree=!!f.get('agree');body.ref=getRef()}st.me=await api('POST','/api/'+mode,body);if(signup)gadsSignup();go()}catch(x){document.getElementById('autherr').textContent=x.message;btn.disabled=false}};
+ document.getElementById('guestGo').onclick=async()=>{const b=document.getElementById('guestGo');b.disabled=true;try{st.me=await api('POST','/api/guest',{ref:getRef()});gadsSignup();go()}catch(x){document.getElementById('autherr').textContent=x.message;b.disabled=false}};
  el.querySelector('input').focus();
  if(first)window.dispatchEvent(new Event('wp-login'))}
 function go(){const el=document.getElementById('auth');if(el)el.remove();const lo=document.getElementById('logoutBtn');if(lo){lo.style.display='';lo.title='Signed in as '+st.me.name+' ('+st.me.email+')';lo.onclick=async()=>{lo.disabled=true;try{await api('POST','/api/logout',{})}catch(e){}location.href='/'}}connect();resolveAuth()}
