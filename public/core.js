@@ -1968,7 +1968,7 @@ function Core(PD, CARDS) {
     n.cash -= c.cash; n.res.steel -= c.steel; n.res.oil -= c.oil; if (fresh) { n.hexes[h] = W.now; W.OWN = computeOwn(W.A); }
     n.outposts = { ...(n.outposts || {}), [h]: W.now }; n.cd.outpost = W.now + tq(W, OUTPOST.cdH * HOUR); gainXP(W, u, 20);
     log(n, `🏰 Outpost established at ${pname(h)}: attacks within ${num(OUTPOST.stageKm)} km launch from here, and it and your neighbouring provinces defend 10% better.`, W);
-    if (fresh) news(W, u, `🏰 ${n.name} has established an outpost at ${pname(h)}.`); touch(W, u);
+    if (fresh) { news(W, u, `🏰 ${n.name} has established an outpost at ${pname(h)}.`); mTrack(W, u, 'expand', 1); } touch(W, u);
     return { msg: `🏰 Outpost established at ${pname(h)}.` };
   }
   const opUpCost = (W, u, h) => { const n = W.A[u], L = opLvl(n, h), c = OUTLV.cost[L + 1]; return c ? { cash: Math.round(Math.max(c.cash, (n.gdp || 0) * c.gdp)), steel: c.steel, oil: c.oil } : null; };
@@ -2449,7 +2449,7 @@ function Core(PD, CARDS) {
   function missionsFor(W, u) {
     const n = W.A[u], day = dayKey(W.now); if (n.mis && n.mis.day === day) return n.mis;
     let h = 0; for (const ch of u + day) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const atWar_ = wars(W, u).length > 0, pool = Object.keys(MISSIONS).filter(k => (!MISSIONS[k].war || atWar_) && !(k === 'exped' && rankOf(n.xp) < 1));
+    const atWar_ = wars(W, u).length > 0, canGrow = (() => { const a = adminState(W, u); return atWar_ || !isFinite(a.cap) || a.used < a.cap; })(), pool = Object.keys(MISSIONS).filter(k => (!MISSIONS[k].war || atWar_) && !(k === 'exped' && rankOf(n.xp) < 1) && !(k === 'expand' && !canGrow));
     const pick = []; while (pick.length < 3 && pool.length) { h = (h * 1103515245 + 12345) >>> 0; pick.push(pool.splice(h % pool.length, 1)[0]); }
     n.mis = { day, list: pick.map(k => ({ k, p: 0, done: false, claimed: false })), bonus: false }; return n.mis;
   }
@@ -2459,6 +2459,12 @@ function Core(PD, CARDS) {
     if (ch) touch(W, u);
   }
   function mState(W, u) { const n = W.A[u]; if (n.approval >= 70) mTrack(W, u, 'approval', 1); if (n.stability >= 65) mTrack(W, u, 'stability', 1); }
+  // once a day, swap one unfinished mission for a different one (for missions you can't do right now, like settling land at your administration limit)
+  function swapMission(W, u, i) { const n = W.A[u]; if (!n) fail('Found a nation first.'); const m = missionsFor(W, u), x = m.list[Number(i)]; if (!x) fail('Unknown mission.');
+    if (m.swap) fail('You can swap one mission a day. New missions arrive tomorrow.'); if (x.done || x.claimed) fail('That mission is already finished.');
+    const atWar_ = wars(W, u).length > 0, have = new Set(m.list.map(y => y.k)), pool = Object.keys(MISSIONS).filter(k => !have.has(k) && (!MISSIONS[k].war || atWar_) && k !== 'expand' && !(k === 'exped' && rankOf(n.xp) < 1));
+    if (!pool.length) fail('No other mission is available today.'); const k = pool[Math.floor(Math.random() * pool.length)]; m.list[Number(i)] = { k, p: 0, done: false, claimed: false }; m.swap = true; touch(W, u); mState(W, u);
+    return { msg: `Mission swapped: ${MISSIONS[k].n}.` }; }
   function claimMission(W, u, i) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); const m = missionsFor(W, u), x = m.list[Number(i)]; if (!x) fail('Unknown mission.');
     if (!x.done) fail('That mission is not finished yet.'); if (x.claimed) fail('Already claimed.');
@@ -3064,7 +3070,7 @@ function Core(PD, CARDS) {
       case 'law': return setLaw(W, u, String(c.k), !!c.on);
       case 'wonder': return wonder(W, u, String(c.k), !!c.abandon);
       case 'exped': return c.op === 'pick' ? expedPick(W, u, String(c.v)) : expedition(W, u, String(c.k), String(c.risk || ''));
-      case 'mission': return claimMission(W, u, c.i);
+      case 'mission': return c.op === 'swap' ? swapMission(W, u, c.i) : claimMission(W, u, c.i);
       case 'offer': return offer(W, u, String(c.v), c.give, c.want);
       case 'release': return releaseProv(W, u, c.h);
       case 'offerok': return answerOffer(W, u, String(c.id), true);
@@ -3127,7 +3133,7 @@ function Core(PD, CARDS) {
       else if (c.c === 'decide') { mTrack(W, u, 'decide', 1); blocGoal(W, u, 'dec'); }
       else if (c.c === 'market') { const q = Math.floor(Number(c.q)) || 0; mTrack(W, u, c.buy ? 'import' : 'export', q); n.cnt.trades = (n.cnt.trades || 0) + 1; }
       else if (c.c === 'aid' && r && r.val >= aidMissionMin(n)) mTrack(W, u, 'aid', 1); /* the daily aid mission needs real help, not a $1 gift */
-      else if (c.c === 'attack' && r && r.battle) { crisisHit(W, u, r.battle, pre); if (r.battle.win || r.battle.conquered) { t.wins = (t.wins || 0) + 1; mTrack(W, u, 'win', 1); } if (r.battle.conquered) { t.caps = (t.caps || 0) + 1; } }
+      else if (c.c === 'attack' && r && r.battle) { crisisHit(W, u, r.battle, pre); if (r.battle.win || r.battle.conquered) { t.wins = (t.wins || 0) + 1; mTrack(W, u, 'win', 1); mTrack(W, u, 'expand', 1); } if (r.battle.conquered) { t.caps = (t.caps || 0) + 1; } }
       mState(W, u); achCheck(W, u);
     } catch (e) { }
     return r;
