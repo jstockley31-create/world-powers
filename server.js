@@ -354,7 +354,13 @@ function devHandle(me, p, method, b, q) {
 // cheat flags. The picture is drawn here and sent as an image, so a page script can't read the answer. Every answer is logged for Cheat watch.
 const HC = { jailAfter: 5, min: 25, max: 60, gapMs: 15 * 60e3, susGapMs: 4 * 60e3, fastCodeMs: 1200, expireMs: 10 * 60e3, tries: 3, lockMs: 2 * 60e3, fastMs: 600, refreshes: 3, W: 300, H: 180 };
 S.hc = S.hc || {};
-for (const h of Object.values(S.hc)) if (h && h.n > HC.max) h.n = HC.min + crypto.randomInt(HC.max - HC.min); // countdowns set under the old, rarer schedule switch to the new one
+// PER-PLAYER SENSITIVITY: the admin can turn the human check down for one player. 'low' = about three times rarer, always the easy "tap the shape" picture, never sped up by suspicion,
+// and twice as many wrong answers before jail. 'off' = that player is never asked. Script detection (the automatic warning and suspension ladder) is separate and stays on.
+S.hcLv = S.hcLv || {};
+const HC_LOW = { mul: 3, gapMs: 45 * 60e3, jailMul: 2 };
+const hcLv = uid => { const x = (S.hcLv || {})[uid]; return x && (x.lv === 'low' || x.lv === 'off') ? x.lv : 'normal'; };
+const hcN = uid => (HC.min + crypto.randomInt(HC.max - HC.min)) * (hcLv(uid) === 'low' ? HC_LOW.mul : 1);
+for (const [u, h] of Object.entries(S.hc)) if (h && h.n > HC.max && hcLv(u) !== 'low') h.n = HC.min + crypto.randomInt(HC.max - HC.min); // countdowns set under the old, rarer schedule switch to the new one
 const HC_NAMES = ['star', 'heart', 'triangle', 'circle', 'square', 'diamond', 'cross', 'moon'];
 const HC_COLS = ['#e5484d', '#f5a524', '#3dd68c', '#3e9bff', '#b072ff', '#ff6fb1', '#f2e55c', '#5fd4e6'];
 function hcPath(k, r) { // a shape centred on 0,0 with radius r
@@ -467,16 +473,17 @@ function autoJail(uid, why, script, hard) { if (hcExempt(uid)) return false; if 
 // called before every operation: returns a refusal with a picture when a check is due or still open
 function hcGate(uid, isAct) {
   if (S.config && S.config.humanCheck === false) return null; if (hcExempt(uid)) return null;
+  const lv = hcLv(uid); if (lv === 'off') { const h0 = (S.hc || {})[uid]; if (h0 && (h0.pend || h0.lock)) { h0.pend = null; h0.lock = 0; } return null; }
   const h = hcState(uid), now = Date.now();
   if (h.lock > now) return { error: `Too many wrong answers. Operations unlock in ${Math.ceil((h.lock - now) / 1000)} seconds.`, hc: hcPub(h.pend), lock: h.lock };
   if (h.pend) { h.pendHits = (h.pendHits || 0) + 1; if (h.pendHits >= 40 && autoJail(uid, `kept sending ${h.pendHits} actions while ignoring an open human check`, true, true)) return hcJail(uid);
     if (now - h.pend.t > HC.expireMs) { hcLog(uid, 'expired', { want: h.pend.type === 'code' ? 'code' : h.pend.want }); h.pend = hcMake(h.pend.type === 'code'); persist(); }
     return { error: h.pend.type === 'code' ? 'Quick check: type the code to carry on.' : 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) }; }
-  const sus = hcSus(uid);
-  if (h.n == null) h.n = HC.min + crypto.randomInt(HC.max - HC.min);
+  const low = lv === 'low', sus = !low && hcSus(uid);
+  if (h.n == null) h.n = hcN(uid);
   if (isAct || sus) h.n -= sus ? 5 : 1; // every kind of action can be stopped by a check, but for an ordinary player only economy actions count down, so checks come no more often than before
-  if (h.n > 0 || now - (h.last || 0) < (sus ? HC.susGapMs : HC.gapMs)) return null;
-  h.pend = hcMake(crypto.randomInt(100) < (S.config && S.config.hcCodePct != null ? +S.config.hcCodePct : sus ? 70 : 35)); /* how often it's "type the code" rather than "tap the shape" */ h.pendHits = 0; persist();
+  if (h.n > 0 || now - (h.last || 0) < (low ? HC_LOW.gapMs : sus ? HC.susGapMs : HC.gapMs)) return null;
+  h.pend = hcMake(!low && crypto.randomInt(100) < (S.config && S.config.hcCodePct != null ? +S.config.hcCodePct : sus ? 70 : 35)); /* how often it's "type the code" rather than "tap the shape" */ h.pendHits = 0; persist();
   return { error: h.pend.type === 'code' ? 'Quick check: type the code to carry on.' : 'Quick check: tap the right shape to carry on.', hc: hcPub(h.pend) };
 }
 function hcAnswer(uid, b) {
@@ -497,10 +504,10 @@ function hcAnswer(uid, b) {
     if (byCode && autoJail(uid, isCode ? 'the human check was answered by a program (the code was never typed)' : 'the human check was clicked by code, not by a person', true, true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT };
     if (fast) { const prev = h.log.slice(1).filter(x => x.r === 'pass (odd)' && /solved in/.test(x.odd || '') && now - x.t < 48 * HOUR).length; if (prev >= 1 && autoJail(uid, `solved the human check faster than a person can, twice (${info.ms} ms)`, true)) return { ok: false, jail: { t: now }, msg: JAIL_MSG_SCRIPT }; }
     if (odd.length) flag(uid, `Human check passed oddly: ${odd.join(', ')}`);
-    h.pend = null; h.pendHits = 0; h.last = now; h.streak = 0; h.n = HC.min + crypto.randomInt(HC.max - HC.min); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
+    h.pend = null; h.pendHits = 0; h.last = now; h.streak = 0; h.n = hcN(uid); persist(); return { ok: true, msg: 'Thanks! Carry on.' };
   }
   p.tries++; h.streak = (h.streak || 0) + 1; hcLog(uid, 'miss', info);
-  if (h.streak >= HC.jailAfter && !hcExempt(uid) && !cleanPass(uid)) { h.jail = { t: now, why: `Answered the human check wrong ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: info.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why}`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
+  if (h.streak >= HC.jailAfter * (hcLv(uid) === 'low' ? HC_LOW.jailMul : 1) && !hcExempt(uid) && !cleanPass(uid)) { h.jail = { t: now, why: `Answered the human check wrong ${h.streak} times in a row` }; h.pend = null; h.lock = 0; hcLog(uid, 'jailed', { want: info.want }); flag(uid, `Put in cheat jail automatically: ${h.jail.why}`); (S.cheatReview = S.cheatReview || {})[uid] = S.cheatReview[uid] || { d: 'watch', t: now, by: 'Anti-cheat', note: 'Jailed automatically after failing the human check.' }; persist(); return { ok: false, jail: { t: now }, msg: JAIL_MSG }; }
   if (p.tries >= HC.tries) { hcLog(uid, 'fail', { want: info.want }); flag(uid, `Failed the human check ${HC.tries} times in a row`); h.lock = now + HC.lockMs; h.pend = hcMake(isCode); persist(); return { ok: false, lock: h.lock, msg: `Three wrong answers. Operations are paused for ${HC.lockMs / 60e3} minutes.`, hc: hcPub(h.pend) }; }
   persist(); return { ok: false, msg: isCode ? `That's not the code. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.` : `That's not the ${p.want}. ${HC.tries - p.tries} ${HC.tries - p.tries === 1 ? 'try' : 'tries'} left.`, hc: hcPub(p) };
 }
@@ -589,7 +596,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
-  const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || Date.now() - l.end > 24 * 36e5) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
+  const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || Date.now() - l.end > 24 * 36e5) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, rows: (l.recap.rows || []).map(({ u, ...r }) => ({ ...r, me: u === uid })), me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
   return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
@@ -1651,7 +1658,7 @@ function chaosEnd(by, why) {
   let snap = null; try { snap = JSON.parse(fs.readFileSync(CHAOS_FILE, 'utf8')); } catch (e) {}
   if (!snap || snap.v !== 1 || !snap.nations || snap.t !== S.chaos.t) { const alt = path.join(BACKUP_DIR, `chaos-realworld-${S.chaos.t}.json`); try { snap = JSON.parse(fs.readFileSync(alt, 'utf8')); } catch (e) { snap = null; } }
   if (!snap || !snap.nations) { logErr('Chaos world: the saved real world could not be read'); throw Object.assign(new Error('The saved real world could not be read. Nothing was changed; Chaos world keeps running. Check the backups folder.'), { status: 500 }); }
-  let rank = []; try { rank = chaosStandings(mkWorld()).slice(0, 10); } catch (e) {}
+  let rank = []; try { rank = chaosStandings(mkWorld()); } catch (e) {}
   try { pkCashAll(null); } catch (e) {}
   const now = Date.now(), d = now - snap.t, t0 = snap.t;
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
@@ -1691,7 +1698,9 @@ function chaosEnd(by, why) {
 // Nukes landing close together fill it faster. A catastrophe releases part of the pressure. Nothing here outlives the Chaos world.
 const CATA = { perNuke: 12, cluster: 8, clusterKm: 1500, release: 35, onNuke: .55, ambient: .03, quakeKm: 900, quakeMax: 6, waveKm: 1300, waveMax: 8,
   n: { quake: ['🏚️', 'EARTHQUAKE'], volcano: ['🌋', 'VOLCANIC ERUPTION'], tsunami: ['🌊', 'TSUNAMI'] } };
-function chaosNukeHit(fx) { const c = S.chaos; if (!c || !c.on || fx.intercepted || fx.h == null || !core.P[fx.h]) return; c.nk = c.nk || []; c.stat = c.stat || {};
+function chaosNukeHit(fx) { const c = S.chaos; if (!c || !c.on) return; c.stat = c.stat || {}; const sx = u => (c.stat[u] = c.stat[u] || {});
+  if (fx.intercepted) { if (fx.to) sx(fx.to).icp = (sx(fx.to).icp || 0) + 1; if (fx.by) sx(fx.by).nk = (sx(fx.by).nk || 0) + 1; c.icp = (c.icp || 0) + 1; return; }
+  if (fx.h == null || !core.P[fx.h]) return; c.nk = c.nk || []; if (fx.to) sx(fx.to).nkIn = (sx(fx.to).nkIn || 0) + 1;
   const near = c.nk.filter(x => core.kmBetween(x.h, fx.h) <= CATA.clusterKm).length; c.nk.push({ h: fx.h, t: Date.now() }); if (fx.by) { const st = c.stat[fx.by] = c.stat[fx.by] || {}; st.nk = (st.nk || 0) + 1; }
   c.meter = Math.min(100, (c.meter || 0) + CATA.perNuke + Math.min(4, near) * CATA.cluster); broadcast('cmeter', { m: Math.round(c.meter) });
   const p = c.meter / 100 * CATA.onNuke + (near >= 2 ? .25 : 0); if (rng() < p) setTimeout(() => { try { chaosCata(near >= 2 ? fx.h : null); } catch (e) { logErr('chaosCata: ' + (e.stack || e)); } }, nukeFlightMs(fx) + 9000); persist(); }
@@ -1704,7 +1713,7 @@ function chaosCata(nearH, forceKind) { const c = S.chaos; if (!c || !c.on) retur
   if (kind === 'quake') { const zone = owned.filter(x => x !== h && core.kmBetween(x, h) <= CATA.quakeKm).sort((a, b) => core.kmBetween(a, h) - core.kmBetween(b, h)).slice(0, CATA.quakeMax - 1); for (const x of [h, ...zone]) wreck(x, 1); for (const u of Object.keys(owners)) { const n = W.A[u]; n.troops = Math.round((n.troops || 0) * .97); } S.burn[h] = { t: Date.now(), n: 6 }; }
   else if (kind === 'volcano') { wreck(h, 0); for (const x of core.land(h)) if (W.OWN[x]) wreck(x, 1); S.burn[h] = { t: Date.now(), n: 20 }; }
   else { const zone = owned.filter(x => P[x].co && core.kmBetween(x, h) <= CATA.waveKm).sort((a, b) => core.kmBetween(a, h) - core.kmBetween(b, h)).slice(0, CATA.waveMax); for (const x of zone) wreck(x, 1); for (const u of Object.keys(owners)) { const n = W.A[u]; n.ships = Math.round((n.ships || 0) * .85); } }
-  if (!hit.length) return null; commit(W);
+  if (!hit.length) return null; commit(W); c.stat = c.stat || {}; for (const [u, o] of Object.entries(owners)) { const x = c.stat[u] = c.stat[u] || {}; x.hit = (x.hit || 0) + o.n; x.dev = (x.dev || 0) + o.lost; }
   const N = CATA.n[kind], place = core.pname(h), names = Object.keys(owners).map(u => (W.A[u] || {}).name).filter(Boolean), dev = Object.values(owners).reduce((t, o) => t + o.lost, 0);
   const rec = { id: rid(), kind, h, c: P[h].c, hs: hit, place, t: Date.now(), n: hit.length, dev, names: names.slice(0, 6), meter: 0 };
   c.meter = Math.max(0, (c.meter || 0) - CATA.release); rec.meter = Math.round(c.meter); c.cata = [rec, ...(c.cata || [])].slice(0, 30); persist();
@@ -1722,14 +1731,20 @@ function chaosSudden(now) { const c = S.chaos; if (c.sd || now < c.end - chaosSd
   persist(); broadcast('config', effCfg()); return true; }
 function chaosTrack() { const c = S.chaos, W = mkWorld(); c.stat = c.stat || {}; const st = chaosStandings(W);
   for (const r of st) { const x = c.stat[r.u] = c.stat[r.u] || {}; x.lo = x.lo == null ? r.provs : Math.min(x.lo, r.provs); x.hi = Math.max(x.hi || 0, r.provs); }
+  { const own = {}; for (const h of Object.keys(W.OWN)) own[h] = W.OWN[h].u; if (c.own) for (const h of Object.keys(own)) { const was = c.own[h], now = own[h]; if (was && was !== now) { c.flips = (c.flips || 0) + 1; const a = c.stat[now] = c.stat[now] || {}, b = c.stat[was] = c.stat[was] || {}; a.cap = (a.cap || 0) + 1; b.lost = (b.lost || 0) + 1; } } c.own = own; }
   if (!c.sd) return; const lead = st[0] && st[0].gain > 0 ? st[0].u : null;
   if (c.lead && c.leadH) for (const h of c.leadH) { const o = W.OWN[h]; if (o && o.u !== c.lead && S.users[o.u] && !BOTS.isBot(o.u)) { c.bounty[o.u] = (c.bounty[o.u] || 0) + 1; addNote(o.u, 'event', `💀 Bounty! You took ${core.pname(h)} from the leader: it counts double.`); persist(); } }
   if (lead !== c.lead) { c.lead = lead; persist(); broadcast('config', effCfg()); if (lead) systemMessage(`👑 ${W.A[lead].name} leads the Chaos world and now carries the bounty. Take their land for double points!`); }
   c.leadH = lead ? core.hexesOf(W, lead) : []; }
 function chaosRecap(rank) { const c = S.chaos, nm = u => (rank.find(r => r.u === u) || {}).name || ((c.start || {})[u] || {}).name || '', st = c.stat || {}, best = (f) => { let b = null; for (const [u, x] of Object.entries(st)) { const v = f(u, x); if (v > 0 && nm(u) && (!b || v > b.v)) b = { name: nm(u), v }; } return b; };
-  const fin = Object.fromEntries(rank.map(r => [r.u, r.provs])), worst = (c.cata || []).slice().sort((a, b) => b.dev + b.n - (a.dev + a.n))[0];
+  const fin = Object.fromEntries(rank.map(r => [r.u, r.provs])), worst = (c.cata || []).slice().sort((a, b) => b.dev + b.n - (a.dev + a.n))[0], kinds = { quake: 0, volcano: 0, tsunami: 0 }; for (const x of c.cata || []) kinds[x.kind] = (kinds[x.kind] || 0) + 1;
+  const top1 = f => { const r = rank.slice().sort((a, b) => f(b) - f(a))[0]; return r && f(r) > 0 ? { name: r.name, v: f(r) } : null; };
   return { nukes: best((u, x) => x.nk || 0), land: rank[0] && rank[0].gain > 0 ? { name: rank[0].name, v: rank[0].gain } : null, comeback: best((u, x) => fin[u] != null && x.lo != null ? fin[u] - x.lo : 0), bounty: best(u => (c.bounty || {})[u] || 0),
-    worst: worst ? { kind: worst.kind, place: worst.place, n: worst.n, dev: worst.dev } : null, totals: { nukes: (c.nk || []).length, cata: (c.cata || []).length, players: rank.length }, top: rank.filter(r => r.gain > 0).slice(0, 3).map(r => ({ name: r.name, color: r.color, gain: r.gain })) }; }
+    conq: best((u, x) => x.cap || 0), nuked: best((u, x) => x.nkIn || 0), shield: best((u, x) => x.icp || 0), nature: best((u, x) => (x.dev || 0) + (x.hit || 0) / 100), collapse: best((u, x) => fin[u] != null && x.hi ? x.hi - fin[u] : 0), empire: top1(r => r.provs), army: top1(r => r.power),
+    worst: worst ? { kind: worst.kind, place: worst.place, n: worst.n, dev: worst.dev } : null,
+    totals: { nukes: (c.nk || []).length, icp: c.icp || 0, cata: (c.cata || []).length, kinds, flips: c.flips || 0, dev: (c.cata || []).reduce((t, x) => t + (x.dev || 0), 0), hit: (c.cata || []).reduce((t, x) => t + (x.n || 0), 0), players: rank.length, speed: (c.o || {}).speed || 0, sd: !!c.sd },
+    rows: rank.slice(0, 60).map(r => { const x = st[r.u] || {}; return { u: r.u, name: r.name, color: r.color, provs: r.provs, gain: r.gain, bounty: r.bounty || 0, power: r.power, nk: x.nk || 0, nkIn: x.nkIn || 0, cap: x.cap || 0, lost: x.lost || 0, dev: x.dev || 0, hi: x.hi || r.provs }; }),
+    top: rank.filter(r => r.gain > 0).slice(0, 3).map(r => ({ name: r.name, color: r.color, gain: r.gain })) }; }
 // every 10 minutes during Chaos world: an airdrop for every nation (and the war chest is topped up if the admin chose unlimited money)
 const CHAOS_DROPS = [['💰', 'a war chest', n => { n.cash = (n.cash || 0) + CHAOS_OPT.chest[S.chaos.o.chest] * .25; }], ['⏱', 'an instant reset: every cooldown is ready now', n => { n.cd = {}; n.regroup = 0; }], ['🕵️', '100 extra agents', n => { n.spies = (n.spies || 0) + 100; }], ['🪖', '250,000 extra troops', n => { n.troops = (n.troops || 0) + 250000; }], ['✈', '2,000 extra aircraft', n => { n.air = (n.air || 0) + 2000; }], ['🚢', '300 extra warships', n => { n.ships = (n.ships || 0) + 300; }]];
 // HEADS-UP COUNTDOWN: the owner announces "Chaos world starts in N minutes". Everyone sees a countdown; reminders go out near the end;
@@ -2964,8 +2979,12 @@ async function adminRoute(p, req, res, me) {
       audit(me.name, 'Set rogue status', n.name, `${hrs} hours${b.nuke ? ', nuclear (cannot be bought off)' : ''}`); persist(); return send(res, 200, { ok: true, until, hrs });
     }
     case '/api/admin/hcrelease': { const h = (S.hc || {})[String(b.id || '')]; if (!h || !h.jail) return send(res, 400, { error: 'That player is not in jail.' }); const was = h.jail; delete h.jail; h.streak = 0; h.pend = null; h.lock = 0; h.pendHits = 0; if (S.botsig && S.botsig[String(b.id)]) S.botsig[String(b.id)].a = []; /* a fresh start: the actions that led to the jail don't count again */ hcLog(b.id, 'released', { by: me.name }); addNote(b.id, 'war', '✅ The review is done and your account has been released. Thanks for your patience.'); persist(); return send(res, 200, { ok: true, was }); }
+    case '/api/admin/hclevel': { const id = String(b.id || ''), lv = ['low', 'off'].includes(b.lv) ? b.lv : 'normal'; if (!S.users[id]) return send(res, 400, { error: 'Pick a player.' }); if (S.users[id].admin) return send(res, 400, { error: 'Admins are never checked anyway.' });
+      const was = hcLv(id); if (lv === 'normal') delete S.hcLv[id]; else S.hcLv[id] = { lv, t: Date.now(), by: me.name };
+      const h = (S.hc || {})[id]; if (h) { if (lv !== 'normal') { h.pend = null; h.lock = 0; h.pendHits = 0; h.streak = 0; } h.n = hcN(id); }
+      if (was !== lv) audit(me.name, 'Human check sensitivity', (S.users[id].name || id), `${was} → ${lv}`); persist(); return send(res, 200, { ok: true, lv }); }
     case '/api/admin/hcset': { S.config.humanCheck = !!b.on; if (!b.on) for (const h of Object.values(S.hc || {})) { h.pend = null; h.lock = 0; } persist(); return send(res, 200, { ok: true, on: !!b.on }); } // turn the human check on or off (turning it off clears any open checks)
-    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), jailed: Object.entries(S.hc || {}).filter(([, h]) => h && h.jail).map(([uid, h]) => ({ uid, name: (S.users[uid] || {}).name || '?', nation: ((S.docs['nations/' + uid]) || {}).name || '', t: h.jail.t, why: h.jail.why })), t: Date.now() });
+    case '/api/admin/scriptcheck': return send(res, 200, { rows: scriptCheck(), hcEvents: Object.entries(S.hc || {}).flatMap(([uid, h]) => (h.log || []).filter(x => Date.now() - x.t < 72 * HOUR).map(x => ({ ...x, uid, name: (S.users[uid] || {}).name || '?' }))).sort((a, b) => b.t - a.t).slice(0, 150), hcOn: !(S.config && S.config.humanCheck === false), hcLv: Object.entries(S.hcLv || {}).filter(([uid]) => S.users[uid]).map(([uid, x]) => ({ uid, name: S.users[uid].name || '?', nation: (S.docs['nations/' + uid] || {}).name || '', lv: x.lv, t: x.t, by: x.by })), jailed: Object.entries(S.hc || {}).filter(([, h]) => h && h.jail).map(([uid, h]) => ({ uid, name: (S.users[uid] || {}).name || '?', nation: ((S.docs['nations/' + uid]) || {}).name || '', t: h.jail.t, why: h.jail.why })), t: Date.now() });
     case '/api/admin/cheatreview': { // your decision on a player after reviewing the evidence (only admins see it)
       if (!u) return send(res, 404, { error: 'Unknown player.' }); const d = ['cheat', 'clean', 'watch'].includes(b.d) ? b.d : null;
       if (!d) delete S.cheatReview[b.id]; else S.cheatReview[b.id] = { d, t: Date.now(), by: me.name, note: String(b.note || '').replace(/\s+/g, ' ').slice(0, 300) };
