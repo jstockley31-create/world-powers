@@ -589,7 +589,8 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
-  return { seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || Date.now() - l.end > 30 * 60e3) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
+  return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -628,7 +629,7 @@ function effCfg() {
   if (on.length) c.boost = { label: on.map(x => x.label || BOOSTS[x.type]).join(' + '), end: Math.min(...on.map(x => x.end)) };
   if (S.map2) { c.map2 = 1; c.tall = 1; } // the bigger map, and the build-tall bonus that came with it
   if (S.chaosTimer && S.chaosTimer.at > now && !(S.chaos && S.chaos.on)) c.chaosAt = S.chaosTimer.at; // a heads-up countdown the owner set
-  if (S.chaos && S.chaos.on) { const o = S.chaos.o || {}; c.chaos = { end: S.chaos.end, speed: o.speed || 10 }; c.tm = 1 / (o.speed || 10); c.income *= 3; c.protectH = o.noShield ? 0 : c.protectH; c.boost = { label: `💥 Chaos world: weapons unlocked, timers ${o.speed || 10}× faster. Everything resets when it ends`, end: S.chaos.end }; }
+  if (S.chaos && S.chaos.on) { const o = S.chaos.o || {}; const sd = !!S.chaos.sd, sp = (o.speed || 10) * (sd ? 2 : 1); c.chaos = { end: S.chaos.end, speed: sp, meter: Math.round(S.chaos.meter || 0), sd: sd ? S.chaos.sd : 0, sdAt: S.chaos.end - chaosSdMs(S.chaos), lead: sd ? S.chaos.lead || null : null }; c.tm = 1 / sp; c.income *= 3; c.protectH = o.noShield || sd ? 0 : c.protectH; c.boost = { label: `💥 Chaos world: weapons unlocked, timers ${o.speed || 10}× faster. Everything resets when it ends`, end: S.chaos.end }; }
   c.overPause = S.overPause || 0;
   c.season = S.seasons && S.seasons.cur && S.seasons.cur.status === 'live' ? S.seasons.cur.id : null;
   c.noAdmin = !!S.fresh; // no province limit inside a fresh-start season world
@@ -682,7 +683,7 @@ function commit(W) {
   for (const fx of W.nukeFx || []) {
     const t = fx.intercepted ? `🛡 NUCLEAR MISSILE INTERCEPTED: ${fx.toName}'s Golden Dome destroyed the missile ${fx.byName} fired at ${fx.place}.` : `☢ NUCLEAR DETONATION: ${fx.byName} ${fx.retaliation ? 'retaliated against' : 'struck'} ${fx.toName} at ${fx.place}. Fallout is spreading.`;
     // the chat line lands after the missile's flight, which everyone is watching
-    const fl = nukeFlightMs(fx); setTimeout(() => systemMessage(t), fl); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50);
+    const fl = nukeFlightMs(fx); setTimeout(() => systemMessage(t), fl); broadcast('nuke', fx); S.nukes.unshift(fx); S.nukes = S.nukes.slice(0, 50); try { chaosNukeHit(fx); } catch (e) { logErr('chaosNukeHit: ' + e.message); }
     if (!fx.intercepted) S.burn[fx.h] = { t: Date.now() + fl, n: 20 }; // ground zero burns for a day
     persist();
   }
@@ -1642,7 +1643,7 @@ function chaosBegin(W, by, o) {
   broadcast('config', effCfg()); setTimeout(() => broadcast('reload', { t: Date.now() }), 300);
 }
 function chaosStandings(W) {
-  const st = S.chaos.start || {}; return Object.keys(W.A).filter(u => !W.A[u].ai && S.users[u] && !S.users[u].test).map(u => { const p = core.hexesOf(W, u).length, s = st[u]; return { u, name: W.A[u].name, color: W.A[u].color, provs: p, gain: p - (s ? s.provs : 0), power: Math.round(core.power(W, u)), joined: !s }; })
+  const st = S.chaos.start || {}; return Object.keys(W.A).filter(u => !W.A[u].ai && S.users[u] && !S.users[u].test).map(u => { const p = core.hexesOf(W, u).length, s = st[u]; const bty = ((S.chaos.bounty || {})[u]) || 0; return { u, name: W.A[u].name, color: W.A[u].color, provs: p, gain: p - (s ? s.provs : 0) + bty, bounty: bty, power: Math.round(core.power(W, u)), joined: !s }; })
     .sort((a, b) => b.gain - a.gain || b.power - a.power);
 }
 function chaosEnd(by, why) {
@@ -1669,7 +1670,12 @@ function chaosEnd(by, why) {
   for (const u of Object.keys(S.notes)) S.notes[u] = (S.notes[u] || []).filter(x => !(x.t >= t0 && x.t <= now));
   const lab = S.chaos.lab, o = S.chaos.o, mins = Math.round(d / 60e3);
   const top = rank.filter(r => S.docs['nations/' + r.u] && r.gain > 0).slice(0, 3), day = new Date(t0).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' });
-  S.chaosLast = { t: t0, end: now, by: S.chaos.by, endBy: by || 'System', why: why || '', mins, o, rank, top: top.map(r => r.name) };
+  let recap = null; try { recap = chaosRecap(rank); } catch (e) { logErr('chaos recap: ' + e.message); }
+  S.chaosLast = { t: t0, end: now, by: S.chaos.by, endBy: by || 'System', why: why || '', mins, o, rank, top: top.map(r => r.name), recap };
+  // champions keep something real: a badge on their nation page, and a little prestige when at least three players took part
+  { const P3 = [5, 3, 2], IC = ['💥', '🥈', '🥉'], T = ['Chaos Champion', 'Chaos runner-up', 'Chaos third place'], real = rank.filter(r => r.gain > 0).length >= 3;
+    top.forEach((r, i) => { if (!S.users[r.u]) return; seasonGrant(r.u, { cash: 0, xp: 0, titles: [], badges: [{ s: 'chaos', k: 'chaos' + (i + 1), ic: IC[i], t: `${T[i]} (${day})` }], lines: [], log: `${IC[i]} ${T[i]} of the Chaos world on ${day}.` });
+      const n = S.docs['nations/' + r.u]; if (n && real) n.prestige = (n.prestige || 0) + P3[i]; if (recap && recap.top[i]) recap.top[i].prize = `${IC[i]} badge${real ? ` + ${P3[i]} prestige` : ''}`; }); }
   S.chaos = null; if (lab && S.testLab) S.testLab.on = true;
   try { if (S.map2 && !snap.map2) map2GrantAll(); else if (!S.map2 && !S.fresh) map2Switch('after Chaos world'); } catch (e) { logErr('map2 after chaos: ' + e.message); }
   SW = null; publicCache = null; S.moneyLog = []; persist(true);
@@ -1681,6 +1687,49 @@ function chaosEnd(by, why) {
   broadcast('config', effCfg()); setTimeout(() => broadcast('reload', { t: Date.now() }), 300);
   return S.chaosLast;
 }
+// THE PLANET FIGHTS BACK (Chaos world only): every nuclear detonation fills a fallout meter; the fuller it is, the likelier an earthquake, a volcanic eruption or a tsunami somewhere in the world.
+// Nukes landing close together fill it faster. A catastrophe releases part of the pressure. Nothing here outlives the Chaos world.
+const CATA = { perNuke: 12, cluster: 8, clusterKm: 1500, release: 35, onNuke: .55, ambient: .03, quakeKm: 900, quakeMax: 6, waveKm: 1300, waveMax: 8,
+  n: { quake: ['🏚️', 'EARTHQUAKE'], volcano: ['🌋', 'VOLCANIC ERUPTION'], tsunami: ['🌊', 'TSUNAMI'] } };
+function chaosNukeHit(fx) { const c = S.chaos; if (!c || !c.on || fx.intercepted || fx.h == null || !core.P[fx.h]) return; c.nk = c.nk || []; c.stat = c.stat || {};
+  const near = c.nk.filter(x => core.kmBetween(x.h, fx.h) <= CATA.clusterKm).length; c.nk.push({ h: fx.h, t: Date.now() }); if (fx.by) { const st = c.stat[fx.by] = c.stat[fx.by] || {}; st.nk = (st.nk || 0) + 1; }
+  c.meter = Math.min(100, (c.meter || 0) + CATA.perNuke + Math.min(4, near) * CATA.cluster); broadcast('cmeter', { m: Math.round(c.meter) });
+  const p = c.meter / 100 * CATA.onNuke + (near >= 2 ? .25 : 0); if (rng() < p) setTimeout(() => { try { chaosCata(near >= 2 ? fx.h : null); } catch (e) { logErr('chaosCata: ' + (e.stack || e)); } }, nukeFlightMs(fx) + 9000); persist(); }
+function chaosCata(nearH, forceKind) { const c = S.chaos; if (!c || !c.on) return null; const W = mkWorld(), P = core.P, owned = Object.keys(W.OWN).map(Number).filter(h => P[h]); if (!owned.length) return null;
+  let pool = owned; if (nearH != null) { const nb = owned.filter(h => core.kmBetween(h, nearH) <= 2500); if (nb.length) pool = nb; } // heavy nuking of one area: the ground gives way nearby
+  const kind = CATA.n[forceKind] ? forceKind : (() => { const r = rng(); return r < .4 ? 'quake' : r < .7 ? 'volcano' : 'tsunami'; })();
+  let h = pool[Math.floor(rng() * pool.length)]; if (kind === 'tsunami') { const co = pool.filter(x => P[x].co); const src = co.length ? co : owned.filter(x => P[x].co); if (!src.length) return chaosCata(nearH, 'quake'); h = src[Math.floor(rng() * src.length)]; }
+  if (kind === 'volcano') { const mt = pool.filter(x => P[x].m); if (mt.length && rng() < .7) h = mt[Math.floor(rng() * mt.length)]; }
+  const hit = [], owners = {}, wreck = (x, lv) => { const o = W.OWN[x]; if (!o) return; const n = W.A[o.u]; if (!n) return; const was = (n.dev && n.dev[x]) || 0, to = lv === 0 ? 0 : Math.max(0, was - 1); if (was !== to) { n.dev = { ...(n.dev || {}), [x]: to }; if (!to) delete n.dev[x]; } hit.push(x); (owners[o.u] = owners[o.u] || { n: 0, lost: 0 }).n++; owners[o.u].lost += was - to; core.touch(W, o.u); };
+  if (kind === 'quake') { const zone = owned.filter(x => x !== h && core.kmBetween(x, h) <= CATA.quakeKm).sort((a, b) => core.kmBetween(a, h) - core.kmBetween(b, h)).slice(0, CATA.quakeMax - 1); for (const x of [h, ...zone]) wreck(x, 1); for (const u of Object.keys(owners)) { const n = W.A[u]; n.troops = Math.round((n.troops || 0) * .97); } S.burn[h] = { t: Date.now(), n: 6 }; }
+  else if (kind === 'volcano') { wreck(h, 0); for (const x of core.land(h)) if (W.OWN[x]) wreck(x, 1); S.burn[h] = { t: Date.now(), n: 20 }; }
+  else { const zone = owned.filter(x => P[x].co && core.kmBetween(x, h) <= CATA.waveKm).sort((a, b) => core.kmBetween(a, h) - core.kmBetween(b, h)).slice(0, CATA.waveMax); for (const x of zone) wreck(x, 1); for (const u of Object.keys(owners)) { const n = W.A[u]; n.ships = Math.round((n.ships || 0) * .85); } }
+  if (!hit.length) return null; commit(W);
+  const N = CATA.n[kind], place = core.pname(h), names = Object.keys(owners).map(u => (W.A[u] || {}).name).filter(Boolean), dev = Object.values(owners).reduce((t, o) => t + o.lost, 0);
+  const rec = { id: rid(), kind, h, c: P[h].c, hs: hit, place, t: Date.now(), n: hit.length, dev, names: names.slice(0, 6), meter: 0 };
+  c.meter = Math.max(0, (c.meter || 0) - CATA.release); rec.meter = Math.round(c.meter); c.cata = [rec, ...(c.cata || [])].slice(0, 30); persist();
+  broadcast('cata', rec); broadcast('cmeter', { m: rec.meter });
+  const what = kind === 'quake' ? `${hit.length} province${hit.length > 1 ? 's' : ''} lost a development level and their armies took losses` : kind === 'volcano' ? `everything built there was wiped out and the land around it was scorched` : `${hit.length} coastal province${hit.length > 1 ? 's were' : ' was'} flooded and fleets were smashed`;
+  setTimeout(() => systemMessage(`${N[0]} ${N[1]} at ${place}! The planet is fighting back against the nuclear fallout: ${what}. Hit: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ' and more' : ''}.`), 2500);
+  for (const [u, o] of Object.entries(owners)) if (S.users[u]) addNote(u, 'event', `${N[0]} ${N[1][0] + N[1].slice(1).toLowerCase()} at ${place}: ${o.n} of your provinces were hit${o.lost ? ` and lost ${o.lost} development level${o.lost > 1 ? 's' : ''}` : ''}${kind === 'tsunami' ? ', and 15% of your warships sank' : kind === 'quake' ? ', and 3% of your troops were lost' : ''}.`);
+  return rec; }
+// SUDDEN DEATH: the last minutes of a Chaos world. Shields drop, timers run twice as fast again, and the leader carries a bounty: every province taken from them counts double.
+const chaosSdMs = c => Math.min(5, Math.max(2, Math.round(c.o.mins / 4))) * 60e3;
+function chaosSudden(now) { const c = S.chaos; if (c.sd || now < c.end - chaosSdMs(c)) return false; c.sd = now; c.bounty = c.bounty || {};
+  for (const [k, n] of Object.entries(S.docs)) if (k.startsWith('nations/') && n) n.shield = 0;
+  try { chaosRetime(c.o.speed, c.o.speed * 2); } catch (e) { logErr('sudden death retime: ' + e.message); }
+  const mins = Math.round(chaosSdMs(c) / 60e3); systemMessage(`💀 SUDDEN DEATH! ${mins} minutes left. Every shield is down, timers run twice as fast, and the leader has a bounty on their head: each province you take from them counts double.`); broadcast('announce', { text: `💀 Sudden death: ${mins} minutes left!` });
+  persist(); broadcast('config', effCfg()); return true; }
+function chaosTrack() { const c = S.chaos, W = mkWorld(); c.stat = c.stat || {}; const st = chaosStandings(W);
+  for (const r of st) { const x = c.stat[r.u] = c.stat[r.u] || {}; x.lo = x.lo == null ? r.provs : Math.min(x.lo, r.provs); x.hi = Math.max(x.hi || 0, r.provs); }
+  if (!c.sd) return; const lead = st[0] && st[0].gain > 0 ? st[0].u : null;
+  if (c.lead && c.leadH) for (const h of c.leadH) { const o = W.OWN[h]; if (o && o.u !== c.lead && S.users[o.u] && !BOTS.isBot(o.u)) { c.bounty[o.u] = (c.bounty[o.u] || 0) + 1; addNote(o.u, 'event', `💀 Bounty! You took ${core.pname(h)} from the leader: it counts double.`); persist(); } }
+  if (lead !== c.lead) { c.lead = lead; persist(); broadcast('config', effCfg()); if (lead) systemMessage(`👑 ${W.A[lead].name} leads the Chaos world and now carries the bounty. Take their land for double points!`); }
+  c.leadH = lead ? core.hexesOf(W, lead) : []; }
+function chaosRecap(rank) { const c = S.chaos, nm = u => (rank.find(r => r.u === u) || {}).name || ((c.start || {})[u] || {}).name || '', st = c.stat || {}, best = (f) => { let b = null; for (const [u, x] of Object.entries(st)) { const v = f(u, x); if (v > 0 && nm(u) && (!b || v > b.v)) b = { name: nm(u), v }; } return b; };
+  const fin = Object.fromEntries(rank.map(r => [r.u, r.provs])), worst = (c.cata || []).slice().sort((a, b) => b.dev + b.n - (a.dev + a.n))[0];
+  return { nukes: best((u, x) => x.nk || 0), land: rank[0] && rank[0].gain > 0 ? { name: rank[0].name, v: rank[0].gain } : null, comeback: best((u, x) => fin[u] != null && x.lo != null ? fin[u] - x.lo : 0), bounty: best(u => (c.bounty || {})[u] || 0),
+    worst: worst ? { kind: worst.kind, place: worst.place, n: worst.n, dev: worst.dev } : null, totals: { nukes: (c.nk || []).length, cata: (c.cata || []).length, players: rank.length }, top: rank.filter(r => r.gain > 0).slice(0, 3).map(r => ({ name: r.name, color: r.color, gain: r.gain })) }; }
 // every 10 minutes during Chaos world: an airdrop for every nation (and the war chest is topped up if the admin chose unlimited money)
 const CHAOS_DROPS = [['💰', 'a war chest', n => { n.cash = (n.cash || 0) + CHAOS_OPT.chest[S.chaos.o.chest] * .25; }], ['⏱', 'an instant reset: every cooldown is ready now', n => { n.cd = {}; n.regroup = 0; }], ['🕵️', '100 extra agents', n => { n.spies = (n.spies || 0) + 100; }], ['🪖', '250,000 extra troops', n => { n.troops = (n.troops || 0) + 250000; }], ['✈', '2,000 extra aircraft', n => { n.air = (n.air || 0) + 2000; }], ['🚢', '300 extra warships', n => { n.ships = (n.ships || 0) + 300; }]];
 // HEADS-UP COUNTDOWN: the owner announces "Chaos world starts in N minutes". Everyone sees a countdown; reminders go out near the end;
@@ -1700,6 +1749,7 @@ function chaosLoop() {
   if (!S.chaos || !S.chaos.on) return;
   const now = Date.now();
   if (now >= S.chaos.end || now >= chaosMaxEnd()) { try { chaosEnd('System', now >= S.chaos.end ? 'time ran out' : 'season ending'); } catch (e) { logErr('Chaos world could not end: ' + (e.stack || e)); } return; }
+  try { chaosSudden(now); chaosTrack(); if ((S.chaos.meter || 0) > 0 && rng() < Math.pow(S.chaos.meter / 100, 2) * CATA.ambient) chaosCata(null); } catch (e) { logErr('chaos extras: ' + (e.stack || e)); }
   S.chaos.armed = S.chaos.armed || {}; for (const [k, n] of Object.entries(S.docs)) { if (!k.startsWith('nations/') || !n) continue; const u = k.slice(8); if (S.chaos.start[u] || S.chaos.armed[u]) continue; S.chaos.armed[u] = 1; chaosArm(n, S.chaos.o); sendNation(u); persist(); } // nations founded during the event get armed too
   if (now - S.chaos.lastDrop < 10 * 60e3) return;
   S.chaos.lastDrop = now; S.chaos.drops++; const o = S.chaos.o;
@@ -2435,6 +2485,7 @@ async function adminRoute(p, req, res, me) {
       const o = { mins: CHAOS_OPT.mins.includes(+b.mins) ? +b.mins : 60, speed: CHAOS_OPT.speed.includes(+b.speed) ? +b.speed : 10, nukes: CHAOS_OPT.nukes.includes(+b.nukes) ? +b.nukes : 2, chest: CHAOS_OPT.chest[b.chest] ? b.chest : 'big', refill: b.refill !== false, unlock: b.unlock !== false, drops: b.drops !== false, noShield: b.noShield !== false };
       if (Date.now() + mins * 60e3 + 60e3 > chaosMaxEnd()) return send(res, 400, { error: 'That is too close to the end of the season.' });
       chaosTimerSet(me.name, mins, o, b.auto !== false); return send(res, 200, { ok: true, view: chaosView() }); }
+    if (b.op === 'cata') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const r = chaosCata(null, String(b.kind || '')); audit(me.name, 'Chaos world', 'triggered a ' + (r ? r.kind : 'disaster (none possible)')); return send(res, 200, { ok: true, rec: r, view: chaosView() }); }
     if (b.op === 'timeroff') { chaosTimerClear(me.name, true); return send(res, 200, { ok: true, view: chaosView() }); }
     if (b.op === 'speed') { if (!chaosOn()) return send(res, 400, { error: 'Chaos world is not running.' }); const sp = +b.speed; if (!CHAOS_OPT.speed.includes(sp)) return send(res, 400, { error: 'Choose 4, 10, 20 or 30.' });
       const old = S.chaos.o.speed || 10; if (sp !== old) { chaosRetime(old, sp); S.chaos.o.speed = sp; persist(); broadcast('config', effCfg()); systemMessage(`💥 Chaos world is now ${sp}× faster!`); audit(me.name, 'Chaos world speed', `${old}× → ${sp}×`); }
