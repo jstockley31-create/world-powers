@@ -2050,7 +2050,7 @@ function lateAct(uid, b) { const off = lateOff(); if (off) return { error: off }
     const mine = a.top && a.top.u === uid ? a.top.amt : 0, need = amt - mine; if ((n.cash || 0) < need) return { error: `You need ${M(need)} in your treasury for that bid.` };
     if (a.top && a.top.u !== uid) { const o = W.A[a.top.u]; if (o) { lateGive(W, o, a.top.amt, 'other'); core.touch(W, a.top.u); if (S.users[a.top.u]) addNote(a.top.u, 'economy', `🔨 You were outbid at the World Auction by ${n.name} (${M(amt)}). Your ${M(a.top.amt)} is back in your treasury.`); } }
     latePay(W, n, need, 'ops'); a.top = { u: uid, amt, t: now }; a.bids = (a.bids || 0) + 1; if (a.end - now < AUC.snipeMin * 60e3) a.end = now + AUC.snipeMin * 60e3; core.touch(W, uid); const it = AUC.items.find(x => x.k === a.k) || AUC.items[0];
-    if (a.bids === 1 || amt >= (a.said || 0) * 1.5) { a.said = amt; systemMessage(`🔨 World Auction: ${n.name} bid ${M(amt)} for ${it.ic} ${it.n}.`); }
+    // no chat message per bid: World Chat only hears when an auction opens, when an hour is left, and who won
     msg = `🔨 You are the top bidder with ${M(amt)}. The money is held until the auction ends; if someone outbids you, you get it back at once.`; }
   else return { error: 'Unknown action.' };
   commit(W); persist(); return { ok: true, msg, late: lateView(uid) }; }
