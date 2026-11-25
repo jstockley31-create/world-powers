@@ -929,7 +929,7 @@ function Core(PD, CARDS) {
   const JOINT = { shares: [0, .25, .5, 1], cdMin: 15 };
   const friendOf = (W, u, a) => pact(W, u, a, 'ally') || !!(blocOf(W, u) && blocOf(W, u) === blocOf(W, a));
   function jointSupport(W, u, v) { if (W.cfg.joint === false) return []; const out = [], mob = tq(W, W.m.mobilize * MIN);
-    for (const a of Object.keys(W.A)) { const n = W.A[a]; if (a === u || a === v || !n || !(n.joint > 0) || !friendOf(W, u, a) || !atWar(W, a, v) || W.now - warSince(W, a, v) < mob) continue; if (Math.max((n.cd && n.cd.joint) || 0, n.jcd || 0) > W.now) continue;
+    for (const a of Object.keys(W.A)) { const n = W.A[a]; if (a === u || a === v || !n || !(n.joint > 0) || !friendOf(W, u, a) || !atWar(W, a, v) || W.now - warSince(W, a, v) < mob || shieldOn(W, n)) continue; /* a nation under protection cannot fight from behind its shield */ if (Math.max((n.cd && n.cd.joint) || 0, n.jcd || 0) > W.now) continue;
       const sh = Math.min(1, n.joint), X = Math.floor((n.troops || 0) * sh), air = Math.floor((n.air || 0) * sh); if (X < 10) continue; out.push({ a, name: n.name, X, air, str: Math.round((X + air * 20) * atkMult(n)) }); }
     return out; }
   function jointSet(W, u, share) { const n = W.A[u]; if (!n) fail('Found a nation first.'); const sh = Number(share); if (!JOINT.shares.includes(sh)) fail('Choose 0, 25, 50 or 100 percent.'); n.joint = sh; touch(W, u); return { msg: sh ? `Standing order set: ${Math.round(sh * 100)}% of your army joins allied assaults on nations you are at war with.` : 'Standing order cancelled: your army no longer joins allied assaults.' }; }
