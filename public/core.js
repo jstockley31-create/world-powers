@@ -918,11 +918,11 @@ function Core(PD, CARDS) {
   const spreadF = (W, v) => { const k = hexesOf(W, v).length; return k > 10 ? Math.pow(10 / k, .3) : 1; };
   // LATE-GAME PURCHASES (they buy power and standing, never income; prices are set in hours of the buyer's own tax income so they stay expensive as nations grow).
   // The buying itself happens on the server (/api/late); the core only applies the effects: hired mercenaries, the alliance headquarters level, and space race stages.
-  const MERC = { h: 24, f: .25, hours: 4, floor: 5e9 };
-  const HQ = { need: [1e11, 3e11, 7e11, 1.5e12, 3e12], joint: .10, def: .02, min: 1e9 };
-  const SPACE = { cdH: 12, firstX: 2, stages: [{ n: 'Weather satellite network', ic: '🛰', floor: 5e10, h: 8, pr: 5 }, { n: 'Orbital shipyard', ic: '🚀', floor: 1e11, h: 12, pr: 8 }, { n: 'Lunar outpost', ic: '🌕', floor: 2e11, h: 18, pr: 12 }, { n: 'Asteroid mining station', ic: '☄', floor: 3.5e11, h: 24, pr: 16 }, { n: 'Interstellar probe', ic: '🌌', floor: 5e11, h: 36, pr: 25 }] }; // price: the floor, or that many hours of the buyer's tax income if that is more
+  const MERC = { h: 24, f: .25, hours: 4, floor: 1e8 };
+  const HQ = { levels: 5, hours: [12, 36, 84, 180, 360], floor: [2e9, 6e9, 1.4e10, 3e10, 6e10], joint: .10, def: .02, min: 1e8 }; // each level costs that many hours of the members' combined tax income (total paid in), so a small alliance pays small-alliance prices
+  const SPACE = { cdH: 12, firstX: 2, stages: [{ n: 'Weather satellite network', ic: '🛰', floor: 1e10, h: 8, pr: 5 }, { n: 'Orbital shipyard', ic: '🚀', floor: 2.5e10, h: 12, pr: 8 }, { n: 'Lunar outpost', ic: '🌕', floor: 6e10, h: 18, pr: 12 }, { n: 'Asteroid mining station', ic: '☄', floor: 1.5e11, h: 24, pr: 16 }, { n: 'Interstellar probe', ic: '🌌', floor: 4e11, h: 36, pr: 25 }] }; // price: the floor, or that many hours of the buyer's tax income if that is more
   const mercOn = (n, k, now) => !!(n && n.merc && n.merc.k === k && n.merc.until > (now || Date.now()));
-  const hqLv = (W, u) => { const b = blocOf(W, u); return b && b.hq ? Math.max(0, Math.min(HQ.need.length, b.hq.lv || 0)) : 0; };
+  const hqLv = (W, u) => { const b = blocOf(W, u); return b && b.hq ? Math.max(0, Math.min(HQ.levels, b.hq.lv || 0)) : 0; };
   // SOFTENING: a strong attack that lands leaves its province battered: each hit takes 15% off that province's defense for 6 hours, up to 60%. While a nation has a battered
   // province, follow-up strikes concentrate on the same breach instead of landing at random. (Admin switch: soften.)
   const BATTER = { per: .15, max: 4, h: 6, kinds: ['ballistic', 'bombard', 'artillery', 'cruise', 'carpet', 'drones', 'hypersonic', 'orbital', 'stealth', 'carrier', 'subsalvo'] };
