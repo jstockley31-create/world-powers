@@ -2094,6 +2094,49 @@ function boxLoop() { try { const now = Date.now(); if (lateOff()) return; try { 
     if (a) { if (now >= a.end) boxSettle(); else if (!a.warned && a.end - now < HOUR) { a.warned = 1; const it = boxItem(a.k); systemMessage(`🎁 One hour left in the Mystery Box auction for the ${it.ic} ${it.n}. ${a.top ? `Top bid: ${WP.moneyS(a.top.amt)} by ${pubName(a.top.u)}.` : 'No bids yet.'}`); persist(); } return; }
     if (S.config.boxOn === false) return; if (!S.late.boxNext) { S.late.boxNext = now + 2 * HOUR; persist(); return; } if (now >= S.late.boxNext && Object.keys(S.users).length >= 3) boxStart(null); } catch (e) { logErr('box: ' + (e.stack || e)); } }
 setInterval(boxLoop, 30e3).unref();
+
+// ---------- WORLD RECORDS: achievements only one nation holds at a time. Whoever does better (or worse) takes the record, the badge and the bragging rights ----------
+const RECS = [
+  { k: 'highroller', ic: '🎰', n: 'High Roller', d: 'Most money wagered at the World Casino', min: 1e9, $: 1, v: n => (n.casino || {}).wagered || 0 },
+  { k: 'casinoking', ic: '🤑', n: 'Casino King', d: 'Biggest total winnings at the World Casino', min: 1e8, $: 1, v: n => (n.casino || {}).net || 0 },
+  { k: 'housefav', ic: '💸', n: "The House's Favorite", d: 'Biggest total losses at the World Casino', min: 1e8, $: 1, v: n => -((n.casino || {}).net || 0) },
+  { k: 'luckystrike', ic: '🍀', n: 'Lucky Strike', d: 'Biggest single win at the World Casino', min: 1e8, $: 1, v: n => (n.casino || {}).best || 0 },
+  { k: 'cardshark', ic: '🃏', n: 'Card Shark', d: 'Most money won at the poker tables', min: 1e7, $: 1, v: (n, u) => (S.poker.stats[u] || {}).net || 0 },
+  { k: 'fish', ic: '🐟', n: 'The Fish', d: 'Most money lost at the poker tables', min: 1e7, $: 1, v: (n, u) => -((S.poker.stats[u] || {}).net || 0) },
+  { k: 'warlord', ic: '⚔', n: 'Warlord', d: 'Most battles won', min: 5, v: n => (n.tally || {}).wins || 0 },
+  { k: 'kingslayer', ic: '🏴', n: 'Kingslayer', d: 'Most capitals captured', min: 1, v: n => (n.tally || {}).caps || 0 },
+  { k: 'explorer', ic: '🧭', n: 'Great Explorer', d: 'Most expeditions sent', min: 5, v: n => (n.tally || {}).exped || 0 },
+  { k: 'merchant', ic: '🚢', n: 'Merchant Prince', d: 'Most trades on the world market', min: 50, v: n => (n.cnt || {}).trades || 0 },
+  { k: 'saint', ic: '🕊', n: 'The Generous', d: 'Most aid given to other nations', min: 1e8, $: 1, v: n => (n.tally || {}).aidV || 0 },
+  { k: 'taxman', ic: '🧾', n: 'The Taxman', d: 'Most tax collections', min: 100, v: n => (n.cnt || {}).tax || 0 },
+  { k: 'dutiful', ic: '✅', n: 'Mission Master', d: 'Most daily missions completed', min: 10, v: n => (n.tally || {}).missions || 0 },
+  { k: 'titan', ic: '🏛', n: 'Titan of Prestige', d: 'Most prestige', min: 20, v: n => n.prestige || 0 }];
+S.records = S.records && typeof S.records === 'object' ? S.records : {};
+const recFmt = (R, v) => R.$ ? WP.moneyS(v) : Math.round(v).toLocaleString('en-US');
+function recLoop() { try { if (lateOff()) return; const now = Date.now(), first = !S.recInit, cand = Object.entries(S.docs).filter(([k, d]) => k.startsWith('nations/') && d && !d.ai && S.users[k.slice(8)] && !S.users[k.slice(8)].banned).map(([k, d]) => [k.slice(8), d]); const moves = [];
+    for (const R of RECS) { const cur = S.records[R.k], curDoc = cur && S.docs['nations/' + cur.u], curOk = curDoc && !curDoc.ai && S.users[cur.u] && !S.users[cur.u].banned, curV = curOk ? R.v(curDoc, cur.u) : -Infinity;
+      let best = null, bv = Math.max(R.min, curOk && curV >= R.min ? curV : 0); for (const [u, d] of cand) { if (cur && u === cur.u) continue; const v = R.v(d, u); if (v > bv || (v >= R.min && v === bv && !(curOk && curV >= R.min) && !best)) { best = u; bv = v; } }
+      if (best) moves.push([R, cur && curOk ? cur.u : null, best, bv]); else if (cur && !(curOk && curV >= R.min)) moves.push([R, cur.u, null, 0]); else if (cur) cur.v = curV; }
+    if (!moves.length) { if (first) { S.recInit = 1; persist(); } return; }
+    const W = mkWorld();
+    for (const [R, from, to, v] of moves) { const bk = 'rec_' + R.k;
+      for (const [u, n] of Object.entries(W.A)) if (n && (n.badges || []).some(b => b.k === bk) && u !== to) { n.badges = n.badges.filter(b => b.k !== bk); core.touch(W, u); }
+      if (!to) { delete S.records[R.k]; continue; }
+      const n = W.A[to]; if (!n) continue; n.badges = [...(n.badges || []).filter(b => b.k !== bk), { s: 'rec', k: bk, ic: R.ic, t: `World record · ${R.n}: ${R.d.toLowerCase()}` }]; core.touch(W, to);
+      const prev = S.records[R.k]; S.records[R.k] = { u: to, v, t: now, said: prev ? prev.said || 0 : 0 };
+      if (!first) { addNote(to, 'rank', `${R.ic} World record! You now hold "${R.n}" (${R.d.toLowerCase()}: ${recFmt(R, v)}). The badge is on your nation until someone beats you.`);
+        if (from && from !== to && S.users[from]) addNote(from, 'rank', `${R.ic} ${n.name} took your world record "${R.n}" with ${recFmt(R, v)}. Beat that to win it back.`);
+        if (now - (S.records[R.k].said || 0) > 6 * HOUR) { S.records[R.k].said = now; systemMessage(`${R.ic} WORLD RECORD: ${n.name} ${from && from !== to && W.A[from] ? `took "${R.n}" from ${W.A[from].name}` : `now holds "${R.n}"`} (${R.d.toLowerCase()}: ${recFmt(R, v)}).`); } } }
+    S.recInit = 1; commit(W); persist(); } catch (e) { logErr('records: ' + (e.stack || e)); } }
+// low-oil warning: a nation whose oil will run out within 12 hours is told once (at most every 12 hours), with the quickest fixes
+function oilWarn() { try { if (lateOff()) return; const W = mkWorld(), now = Date.now(); let ch = false;
+    for (const [u, n] of Object.entries(W.A)) { if (!n || n.ai || n.cap == null || !S.users[u]) continue; const m = meta(u); if (now - (m.oilWarn || 0) < 12 * HOUR) continue;
+      const c = core.consumption(n).oil || 0, p = core.production(W, u).oil || 0, net = (p - c) * 6; if (net >= 0 || c * 144 < 2000) continue; const hrs = (n.res.oil || 0) / -net; if (hrs > 12) continue;
+      m.oilWarn = now; ch = true; addNote(u, 'economy', `⛽ Oil warning: ${hrs < 1 ? 'your oil is running out now' : `you have about ${Math.round(hrs)} hours of oil left`}. You burn ${Math.round(c * 144).toLocaleString('en-US')} a day and make ${Math.round(p * 144).toLocaleString('en-US')}. Quickest fix: Military → Stand down, and put aircraft and warships in reserve (they burn no oil there). You can also buy oil on the market or build oil wells.`); }
+    if (ch) persist(); } catch (e) { logErr('oil warning: ' + (e.stack || e)); } }
+setInterval(oilWarn, 10 * 60e3).unref(); setTimeout(oilWarn, 90e3).unref();
+setInterval(recLoop, 60e3).unref(); setTimeout(recLoop, 8e3).unref();
+const recView = uid => RECS.map(R => { const c = S.records[R.k], d = c && S.docs['nations/' + c.u], me = S.docs['nations/' + uid], mine = me ? R.v(me, uid) : 0; return { k: R.k, ic: R.ic, n: R.n, d: R.d, holder: d ? { name: d.name, v: recFmt(R, c.v), me: c.u === uid, t: c.t } : null, mine: mine >= R.min || (mine > 0 && !R.$) ? recFmt(R, Math.max(0, mine)) : null, need: recFmt(R, R.min) }; });
 function lateView(uid) { const W = mkWorld(), n = W.A[uid], now = Date.now(), SP = core.SPACE, a = S.late.auc, it = a && (AUC.items.find(x => x.k === a.k) || AUC.items[0]), b = n && n.bloc && S.blocs[n.bloc] && (S.blocs[n.bloc].members || []).includes(uid) ? S.blocs[n.bloc] : null;
   const nm = u => (S.docs['nations/' + u] || {}).name || '?', stage = n ? (n.space || 0) : 0;
   return { off: lateOff(), t: now,
@@ -2104,7 +2147,7 @@ function lateView(uid) { const W = mkWorld(), n = W.A[uid], now = Date.now(), SP
     auc: a ? { id: a.id, ic: it.ic, n: it.n, title: it.title, end: a.end, bids: a.bids, top: a.top ? { name: nm(a.top.u), amt: a.top.amt, me: a.top.u === uid } : null, min: a.top ? Math.ceil(a.top.amt * AUC.step / 1e8) * 1e8 : AUC.minBid, pr: AUC.pr } : null, aucNext: a ? 0 : (S.config.auctionOn === false ? -1 : S.late.aucNext || 0), aucHist: S.late.hist.slice(0, 6).map(h => ({ ic: h.ic, n: h.n, name: h.name, amt: h.amt, t: h.t })),
     box: (() => { const x = S.late.box; if (!x) return null; const bi = boxItem(x.k); return { id: x.id, ic: bi.ic, n: bi.n, d: bi.d, end: x.end, bids: x.bids, top: x.top ? { name: nm(x.top.u), amt: x.top.amt, me: x.top.u === uid } : null, min: x.top ? Math.ceil(x.top.amt * BOX.step / 1e7) * 1e7 : BOX.minBid }; })(),
     boxNext: S.late.box ? 0 : (S.config.boxOn === false ? -1 : S.late.boxNext || 0), boxUp: (() => { const k = BOX.items[(S.late.boxN || 0) % BOX.items.length]; return { ic: k.ic, n: k.n, d: k.d }; })(), boxList: BOX.items.map(i => ({ ic: i.ic, n: i.n, d: i.d })),
-    boxHist: S.late.boxHist.slice(0, 6).map(h => ({ ic: h.ic, n: h.n, name: h.name, amt: h.amt, t: h.t, lucky: !!h.lucky })), fsp: n && n.fsp && n.fsp.n > 0 ? n.fsp : null, bond: n && n.bond && n.bond.left > 0 ? { left: n.bond.left, amt: n.bond.amt, next: n.bond.next } : null }; }
+    boxHist: S.late.boxHist.slice(0, 6).map(h => ({ ic: h.ic, n: h.n, name: h.name, amt: h.amt, t: h.t, lucky: !!h.lucky })), records: recView(uid), fsp: n && n.fsp && n.fsp.n > 0 ? n.fsp : null, bond: n && n.bond && n.bond.left > 0 ? { left: n.bond.left, amt: n.bond.amt, next: n.bond.next } : null }; }
 function lateAct(uid, b) { const off = lateOff(); if (off) return { error: off }; const W = mkWorld(), n = W.A[uid]; if (!n) return { error: 'Found a nation first.' }; const op = String(b.op || ''), now = Date.now(), M = WP.moneyS; let msg = '';
   if (op === 'space') { const SP = core.SPACE, i = n.space || 0; if (i >= SP.stages.length) return { error: 'You have finished the Space Race.' }; if (n.spaceT && now - n.spaceT < SP.cdH * HOUR) { const tm = Math.ceil((n.spaceT + SP.cdH * HOUR - now) / 60e3), hh = Math.floor(tm / 60), mm = tm % 60; return { error: `Your space agency needs ${hh ? hh + ' h ' : ''}${mm} min before the next stage.` }; }
     const St = SP.stages[i], c = spaceCost(W, uid, i); if ((n.cash || 0) < c) return { error: `${St.n} costs ${M(c)}.` }; latePay(W, n, c, 'projects'); n.space = i + 1; n.spaceT = now; const first = !S.late.space.firsts[i]; n.prestige = (n.prestige || 0) + St.pr * (first ? SP.firstX : 1);
@@ -2666,7 +2709,7 @@ async function adminRoute(p, req, res, me) {
   if (p === '/api/admin/market') { // owner only: the finite world market
     const view = () => { const W = mkWorld(), d = core.mktDemand(W), M = S.mkt || {}, since = Date.now() - 24 * HOUR, imp = [];
       for (const [u, n] of Object.entries(W.A)) { const q = {}; for (const t of n.mbuy || []) if (t.t > since) q[t.r] = (q[t.r] || 0) + t.q; if (Object.keys(q).length) imp.push({ name: n.name, color: n.color, q, lim: Object.fromEntries(Object.keys(q).map(r => [r, core.mkLimit(W, u, r)])) }); }
-      return { on: !!M.on, live: core.mkOn(W), sup: M.sup != null ? M.sup : core.MKT.sup, primed: M.primed || 0, stock: M.stock || null, ref: d.ref, use: d.c, make: d.p, del: M.del || {}, prices: core.prices(W), base: Object.fromEntries(Object.entries(core.RES || WP.RES).map(([k, v]) => [k, v.p])), hist: M.hist || [], imp: imp.sort((a, b) => Object.values(b.q).reduce((x, y) => x + y, 0) - Object.values(a.q).reduce((x, y) => x + y, 0)) }; };
+      return { on: !!M.on, live: core.mkOn(W), sup: M.sup != null ? M.sup : core.MKT.sup, primed: M.primed || 0, stock: M.stock || null, ref: d.ref, use: d.c, make: d.p, del: M.del || {}, out: M.out || {}, prices: core.prices(W), base: Object.fromEntries(Object.entries(core.RES || WP.RES).map(([k, v]) => [k, v.p])), hist: M.hist || [], imp: imp.sort((a, b) => Object.values(b.q).reduce((x, y) => x + y, 0) - Object.values(a.q).reduce((x, y) => x + y, 0)) }; };
     if (req.method === 'GET') return send(res, 200, view());
     const b = req._body || await readBody(req, 2048);
     if (b.op === 'on' || b.op === 'off') { const on = b.op === 'on'; if (on && !S.mkt.on) { S.mkt.on = true; S.mkt.stock = null; S.mkt.hist = []; } else if (!on) S.mkt.on = false; audit(me.name, on ? 'Switched on the limited world market' : 'Switched off the limited world market (back to unlimited)', on ? 'stock primed from the current world' : null); }

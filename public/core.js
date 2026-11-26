@@ -764,11 +764,11 @@ function Core(PD, CARDS) {
   // and an empty market sells nothing. Foreign suppliers deliver part of the world's shortfall every 10 minutes (only while the
   // stock is below its normal level; a commodity the world makes enough of gets a small trickle instead), computer nations sell their surplus into it, and each nation can import only so much in 24 hours.
   // Food has an emergency import at a steep price, for a nation that is about to run out, so a shortage hurts but never kills.
-  const MKT = { refH: 24, cap: 4, sup: .4, trickle: .25, elast: .75, pmin: .55, pmax: 4, limPad: .1, emerX: 3, emerH: 24, emerLow: 12, histH: 168,
+  const MKT = { glutAt: 2, glutH: .02, refH: 24, cap: 4, sup: .4, trickle: .25, elast: .75, pmin: .55, pmax: 4, limPad: .1, emerX: 3, emerH: 24, emerLow: 12, histH: 168,
     floor: { food: 2e5, oil: 1e5, steel: 1e5, goods: 6e4, mun: 4000 }, perHex: { food: 500, oil: 400, steel: 400, goods: 150, mun: 8 }, limMin: { food: 40000, oil: 8000, steel: 8000, goods: 8000, mun: 150 } };
   const mkOn = W => !!(W && W.MK && W.MK.on && W.MK.stock);
   function mktDemand(W) { if (W._mkd && W._mkd.t === W.now) return W._mkd; const c = {}, p = {}; let munCap = 0; for (const r in RES) { c[r] = 0; p[r] = 0; }
-    for (const u in W.A) { const n = W.A[u]; if (!n || n.cap == null) continue; const cc = consumption(n), pp = production(W, u); for (const r in RES) { c[r] += cc[r] || 0; p[r] += pp[r] || 0; } munCap += MUN.cap(n); }
+    for (const u in W.A) { const n = W.A[u]; if (!n || n.cap == null || (n.ai && n.ai.boss)) continue; /* the Rising Power is not part of the market: its backers supply it, so its huge army no longer inflates demand and prices */ const cc = consumption(n), pp = production(W, u); for (const r in RES) { c[r] += cc[r] || 0; p[r] += pp[r] || 0; } munCap += MUN.cap(n); }
     const ref = {}; for (const r in RES) ref[r] = Math.round(Math.max(MKT.floor[r], (r === 'mun' ? munCap * .2 : Math.max(c[r], p[r]) * 6 * MKT.refH)));
     return (W._mkd = { t: W.now, c, p, ref }); }
   const mkRef = (W, r) => (W.MK && W.MK.ref && W.MK.ref[r]) || mktDemand(W).ref[r];
@@ -794,7 +794,9 @@ function Core(PD, CARDS) {
     const sup = mkSup(W); M.del = M.del || {}; M.ref = { ...d.ref };
     for (const r in RES) { const short = Math.max(0, d.c[r] - d.p[r]); let s = M.stock[r] || 0; const s0 = s;
       for (let i = 0; i < k; i++) if (s < d.ref[r]) s = Math.min(d.ref[r], s + (short > 0 ? sup * short : MKT.trickle * d.ref[r] / 144));
-      M.stock[r] = Math.round(s); M.del[r] = Math.round((M.del[r] || 0) + s - s0); }
+      /* foreign buyers: when a stock is more than twice its normal level, they take 2% of the excess every hour, so a glut clears and the price recovers */
+      const s1 = s; for (let i = 0; i < k; i++) { const over = s - d.ref[r] * MKT.glutAt; if (over > 0) s -= over * MKT.glutH / 6; else break; }
+      M.stock[r] = Math.round(s); M.del[r] = Math.round((M.del[r] || 0) + s1 - s0); M.out = M.out || {}; M.out[r] = Math.round((M.out[r] || 0) + s1 - s); }
     return mkHist(W) ? 2 : 1; }
   function prices(W) { const p = {}; for (const k in RES) { const m_ = mkOn(W) ? mkMul(W, k, mkStock(W, k)) : mktMult(W, mktNets(W, k, null).other); p[k] = Math.round(RES[k].p * m_ * (W.m.price[k] || 1)); } return p; }
   // average price multiplier for an order of q units (+ buy, − sell) by nation u, integrated along the price path
@@ -1030,7 +1032,7 @@ function Core(PD, CARDS) {
   // STORAGE CAPS: food, oil and steel only fit in your warehouses. Each holds 48 hours of whichever is bigger, what you make or what you use, plus 24 hours per warehouse level (a week at level 5), and never less than a floor that grows with your land.
   // Production that does not fit is sold on the world market at a forced-sale discount. Stock already above the cap is not taken: 2% of the extra is sold each hour until it fits.
   // FOOD SPOILS: food beyond two days of what your people eat loses 0.5% of the extra each hour; every warehouse level slows that by 10%.
-  const STORE = { res: ['food', 'oil', 'steel'], baseH: 48, perLvH: 24, floor: 50000, perProv: 5000, sellF: .6, drainH: .02, spoil: { safeH: 48, floor: 20000, pctH: .005, lvlCut: .1 } };
+  const STORE = { res: ['food', 'oil', 'steel', 'goods'], baseH: 48, perLvH: 24, floor: 50000, perProv: 5000, sellF: .6, drainH: .02, spoil: { safeH: 48, floor: 20000, pctH: .005, lvlCut: .1 } };
   function storeCaps(W, u, p, c) { const n = W.A[u]; if (!n) return {}; p = p || production(W, u); c = c || consumption(n); const lv = lvlL(n, 'store'), H = STORE.baseH + STORE.perLvH * lv, fl = STORE.floor + STORE.perProv * hexesOf(W, u).length, o = {};
     for (const r of STORE.res) o[r] = Math.max(fl, Math.round(6 * H * Math.max(p[r] || 0, c[r] || 0))); return o; }
   const storeRoom = (W, u, r) => { if (!STORE.res.includes(r)) return Infinity; const n = W.A[u]; return Math.max(0, storeCaps(W, u)[r] - Math.floor((n.res || {})[r] || 0)); };
