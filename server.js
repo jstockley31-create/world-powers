@@ -1738,6 +1738,13 @@ function chaosTrack() { const c = S.chaos, W = mkWorld(); c.stat = c.stat || {};
   if (c.lead && c.leadH) for (const h of c.leadH) { const o = W.OWN[h]; if (o && o.u !== c.lead && S.users[o.u] && !BOTS.isBot(o.u)) { c.bounty[o.u] = (c.bounty[o.u] || 0) + 1; addNote(o.u, 'event', `💀 Bounty! You took ${core.pname(h)} from the leader: it counts double.`); persist(); } }
   if (lead !== c.lead) { c.lead = lead; persist(); broadcast('config', effCfg()); if (lead) systemMessage(`👑 ${W.A[lead].name} leads the Chaos world and now carries the bounty. Take their land for double points!`); }
   c.leadH = lead ? core.hexesOf(W, lead) : []; }
+// one-time: before Nov 25 a new timed bonus wiped out any older one of the same kind. Give back the World Games bonuses that were lost that way,
+// with their original end times (gold/silver/bronze approval for 24 h, the champion's +3% GDP for 48 h). Expired ones are skipped.
+if (!S.boostFix1) { S.boostFix1 = 1; try { const G = S.games, now = Date.now(), out = [];
+  if (G && G.over && G.results && now - G.over < 48 * 36e5) { const CAT = { sport: 'Athletics', science: 'Science Expo', culture: 'Culture Festival' }, AP = [6, 4, 2], give = (u, src, fx, h) => { const n = S.docs['nations/' + u]; if (!n || G.over + h * 36e5 <= now) return; n.boosts = (n.boosts || []).filter(b => b.until > now && b.src !== src && !(b.src === '' && b.t === G.over)); n.boosts.push({ t: G.over, until: G.over + h * 36e5, src, ...fx }); out.push(n.name + ': ' + src); };
+    for (const [c, top] of Object.entries(G.results)) (top || []).slice(0, 3).forEach((r, i) => give(r.u, `World Games: ${CAT[c] || c} ${['gold', 'silver', 'bronze'][i]}`, { ap: AP[i] }, 24));
+    if (G.champ && G.champ.u) give(G.champ.u, 'World Games champion', { gdp: 1.03 }, 48); }
+  if (out.length) console.log('Restored World Games bonuses:', out.join('; ')); } catch (e) { console.log('boostFix1: ' + e.message); } }
 if (S.chaosLast && !S.chaosHid1) { S.chaosLast.hide = true; S.chaosHid1 = 1; } // one-time: the owner took down the Nov 25 Chaos world results (a new Chaos round shows its own)
 function chaosRecap(rank) { const c = S.chaos, nm = u => (rank.find(r => r.u === u) || {}).name || ((c.start || {})[u] || {}).name || '', st = c.stat || {}, best = (f) => { let b = null; for (const [u, x] of Object.entries(st)) { const v = f(u, x); if (v > 0 && nm(u) && (!b || v > b.v)) b = { name: nm(u), v }; } return b; };
   const fin = Object.fromEntries(rank.map(r => [r.u, r.provs])), worst = (c.cata || []).slice().sort((a, b) => b.dev + b.n - (a.dev + a.n))[0], kinds = { quake: 0, volcano: 0, tsunami: 0 }; for (const x of c.cata || []) kinds[x.kind] = (kinds[x.kind] || 0) + 1;
