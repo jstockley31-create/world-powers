@@ -280,7 +280,7 @@ function stat(key, uid) { const d = S.stats[today()] || (S.stats[today()] = { ac
 function touch(uid, req) { const m = meta(uid); if (m.lastSeen && Date.now() - m.lastSeen > 30 * 60e3) m.prevSeen = m.lastSeen; m.lastSeen = Date.now(); stat('active', uid); const ip = req && ipOf(req); if (ip && !m.ips.includes(ip)) { m.ips.unshift(ip); m.ips = m.ips.slice(0, 8); persist(); } }
 // co-admins: helpers the owner (a full admin) can add from the admin page. They can moderate but never touch the
 // world's history, money, settings or accounts, and everything they do is recorded in a log only the owner can read.
-const COADMIN_OK = new Set(['overview', 'player', 'ipbans', 'ipblock', 'ipunblock', 'ban', 'unban', 'mute', 'kick', 'clear-chat', 'clear-user-chat', 'report-done', 'bug-done', 'announce', 'poll', 'bug-img', 'finale-preview', 'scriptcheck', 'cheatreview', 'hcrelease']); // moderation only: co-admins also play, so they never see other players' nations, actions or the world's numbers
+const COADMIN_OK = new Set(['overview', 'player', 'ipbans', 'ipblock', 'ipunblock', 'ban', 'unban', 'mute', 'kick', 'clear-chat', 'clear-user-chat', 'report-done', 'bug-done', 'announce', 'poll', 'bug-img', 'finale-preview', 'scriptcheck', 'cheatreview', 'hcrelease']); // moderation only; the World economy, Test lab and World market tabs are also open to them read-only (see adminRoute)
 const isStaff = u => !!(u && (u.admin || u.coadmin));
 S.coLog = Array.isArray(S.coLog) ? S.coLog : [];
 // Helpdesk: players mail questions to 'helpdesk'; the owner answers from the admin page and the answer arrives in the player's mail. Private: never on /fair or the audit log.
@@ -2557,9 +2557,12 @@ function warRoom(W, nations) {
 const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl'];
 async function adminRoute(p, req, res, me) {
   if (!isStaff(me)) return send(res, 403, { error: 'Admins only.' });
-  if (!me.admin) { // a co-admin: only the allowed actions, never against an admin or another co-admin, and every request is logged
+  coadm: if (!me.admin) { // a co-admin: only the allowed actions, never against an admin or another co-admin, and every request is logged
     const act = p.replace('/api/admin/', '').split('/')[0], b0 = req.method === 'POST' ? await readBody(req, 16 * 1024).catch(() => ({})) : null;
     req._body = b0;
+    const view = (act === 'testlab' || act === 'market') ? req.method === 'GET' : act === 'econ' ? req.method === 'POST' && String((b0 || {}).op || 'view') === 'view' : false; // read-only tabs the owner opened to co-admins
+    if (view) break coadm; // falls through to the owner's read-only view, unchanged
+    if (['testlab', 'market', 'econ'].includes(act)) { coLog(me, p, b0, false, 'Blocked: view only'); return send(res, 403, { error: 'Co-admins can look at this tab but not change it.' }); }
     if (!COADMIN_OK.has(act)) { if (req.method !== 'GET') coLog(me, p, b0, false, 'Blocked: owner only'); return send(res, 403, { error: 'Only the owner can do that.' }); }
     const tgt = b0 && typeof b0.id === 'string' ? S.users[b0.id] : null;
     if (tgt && isStaff(tgt) && ['ban', 'unban', 'mute', 'kick', 'ipblock', 'clear-user-chat', 'cheatreview'].includes(act)) { coLog(me, p, b0, false, 'Blocked: target is an admin'); return send(res, 403, { error: 'Co-admins cannot act against admins.' }); }
