@@ -1226,6 +1226,8 @@ S.bm = S.bm && Array.isArray(S.bm.list) ? S.bm : { list: [] }; // black market l
 // ---------- poker: Texas Hold'em tables where nations play each other ----------
 const PK = require('./poker.js');
 const PK_TABLES = [['emb1', 'Embassy Table I', 5e4, 1e5, 2e6, 1e7], ['emb2', 'Embassy Table II', 5e4, 1e5, 2e6, 1e7], ['tre1', 'Treasury Table I', 5e5, 1e6, 2e7, 1e8], ['tre2', 'Treasury Table II', 5e5, 1e6, 2e7, 1e8], ['imp1', 'Imperial Table I', 5e6, 1e7, 2e8, 1e9], ['imp2', 'Imperial Table II', 5e6, 1e7, 2e8, 1e9], ['sov1', 'Sovereign Table', 2.5e7, 5e7, 1e9, 5e9]];
+// players-only tables: anyone can start one at the same stakes as the house tables; no house players ever sit there
+const PK_STAKES = { emb: ['Embassy', 5e4, 1e5, 2e6, 1e7], tre: ['Treasury', 5e5, 1e6, 2e7, 1e8], imp: ['Imperial', 5e6, 1e7, 2e8, 1e9], sov: ['Sovereign', 2.5e7, 5e7, 1e9, 5e9] }, PK_PMAX = 12, PK_EMPTY_MS = 10 * 60e3;
 S.poker = S.poker && S.poker.tables ? S.poker : { tables: {}, stats: {}, rake: 0, hands: 0 };
 for (const [id, name, sb, bb, mn, mx] of PK_TABLES) { const t = S.poker.tables[id]; if (!t) S.poker.tables[id] = PK.newTable(id, name, sb, bb, mn, mx); else Object.assign(t, { name, sb, bb, min: mn, max: mx }); }
 const PK_WATCH = new Map(); // uid -> { t, at }: who is looking at which table, for live updates
@@ -1240,12 +1242,12 @@ function pkView(t, uid) {
   return { id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, btn: t.btn, seats, me, board: H ? H.board.map(pkCard) : [], pot: H ? PK.potTotal(H) : 0, street: H ? (done ? 'done' : H.street) : null, toAct: H && !done ? H.toAct : -1, deadline: H && !done ? H.deadline : 0, now,
     legal: L, no: H ? H.no : t.handNo, result: done ? { pot: done.pot, rake: done.rake, ranOut: !!H.ranOut } : null, next: !H || done ? t.next : 0, hist: t.hist.slice(0, 8).map(h => ({ ...h, board: h.board.map(pkCard), win: h.win.map(w => ({ ...w, name: pkName(w.u) })), shown: Object.fromEntries(Object.entries(h.shown).map(([u, c]) => [pkName(u), c.map(pkCard)])) })) };
 }
-function pkLobby(uid) { const mine = pkSeatOf(uid); return { tables: Object.values(S.poker.tables).map(t => ({ id: t.id, name: t.name, sb: t.sb, bb: t.bb, min: t.min, max: t.max, seated: t.seats.filter(Boolean).length, seats: PK.SEATS, playing: t.hand && !t.hand.done ? Object.keys(t.hand.p).length : 0, pot: t.hand && !t.hand.done ? PK.potTotal(t.hand) : 0 })), mine: mine ? mine.t.id : null, stats: S.poker.stats[uid] || { hands: 0, won: 0, net: 0 } }; }
+function pkLobby(uid) { const mine = pkSeatOf(uid); return { stakes: Object.entries(PK_STAKES).map(([k, x]) => ({ k, n: x[0], sb: x[1], bb: x[2], min: x[3], max: x[4] })), pmax: PK_PMAX, tables: Object.values(S.poker.tables).sort((a, b) => (a.players ? 1 : 0) - (b.players ? 1 : 0) || (a.made || 0) - (b.made || 0)).map(t => ({ id: t.id, name: t.name, players: !!t.players, host: t.players ? (S.docs['nations/' + t.own] || {}).name || null : null, sb: t.sb, bb: t.bb, min: t.min, max: t.max, seated: t.seats.filter(Boolean).length, seats: PK.SEATS, playing: t.hand && !t.hand.done ? Object.keys(t.hand.p).length : 0, pot: t.hand && !t.hand.done ? PK.potTotal(t.hand) : 0 })), mine: mine ? mine.t.id : null, stats: S.poker.stats[uid] || { hands: 0, won: 0, net: 0 } }; }
 const pkName = u => String(u).startsWith('house:') ? PK_HOUSE[+String(u).split(':')[2] % PK_HOUSE.length] + ' (house)' : (S.docs['nations/' + u] || {}).name || '?';
 // house players: computer opponents that fill empty seats, so one player at a table always has a game. They play with the house's chips:
 // what they win is gone, what they lose is paid by the house. They leave when no player is seated.
 const PK_HOUSE = ['The Ambassador', 'The Banker', 'The General', 'The Envoy', 'The Admiral', 'The Senator'];
-function pkHouse(t, now) { let ch = false; const idle = !t.hand || t.hand.done, bots = t.seats.filter(s => s && s.bot).length, humans = t.seats.filter(s => s && !s.bot && !s.leaving && !s.sitOut).length;
+function pkHouse(t, now) { if (t.players) return false; let ch = false; const idle = !t.hand || t.hand.done, bots = t.seats.filter(s => s && s.bot).length, humans = t.seats.filter(s => s && !s.bot && !s.leaving && !s.sitOut).length;
   if (idle) {
     if (!humans && bots) { for (let i = 0; i < t.seats.length; i++) if (t.seats[i] && t.seats[i].bot) { t.seats[i] = null; ch = true; } }
     else if (humans && humans + bots < 3) { const i = t.seats.findIndex(s => !s); if (i >= 0) { t.seats[i] = { u: 'house:' + t.id + ':' + i, bot: true, name: PK_HOUSE[i % PK_HOUSE.length] + ' (house)', stack: Math.min(t.max, t.min * 3), sitOut: false, missed: 0, joined: now }; ch = true; if (now >= t.next - 500) t.next = now + 2500; } }
@@ -1286,6 +1288,7 @@ setInterval(() => { const now = Date.now();
       if (s.bot) continue;
       if (!S.docs['nations/' + s.u]) { t.seats[i] = null; ch = true; continue; }
       if (s.sitOut) { s.outSince = s.outSince || now; if (now - s.outSince > 10 * 60e3) { pkCashOut(t, i, `You were away from ${t.name} for 10 minutes and were stood up`); t.seats[i] = null; ch = true; } } else s.outSince = 0; }
+    if (t.players) { if (!t.seats.some(Boolean) && (!t.hand || t.hand.done)) { t.emptyAt = t.emptyAt || now; if (now - t.emptyAt > PK_EMPTY_MS) { delete S.poker.tables[t.id]; persist(); continue; } } else t.emptyAt = 0; }
     if (ch) { pkPush(t); persist(); } }
   for (const [u, w] of PK_WATCH) if (now - w.at > 120e3) PK_WATCH.delete(u);
 }, 500).unref();
@@ -1294,6 +1297,20 @@ async function pokerRoute(p, req, res, me) {
   if (req.method === 'GET') { const tid = url.searchParams.get('t'), t = tid && Object.prototype.hasOwnProperty.call(S.poker.tables, tid) ? S.poker.tables[tid] : null; if (t) PK_WATCH.set(me.id, { t: t.id, at: now }); else PK_WATCH.delete(me.id); return send(res, 200, { lobby: pkLobby(me.id), table: t ? pkView(t, me.id) : null }); }
   if (limited('poker:' + me.id, 40, 10e3)) return send(res, 429, { error: 'Slow down a little.' });
   const b = await readBody(req, 1024), op = String(b.op || ''), tid = String(b.t || ''), t = Object.prototype.hasOwnProperty.call(S.poker.tables, tid) ? S.poker.tables[tid] : null;
+  if (op === 'create') { // start a players-only table and sit at it
+    const n = S.docs['nations/' + me.id], fail_ = m => send(res, 400, { error: m }); if (!n) return fail_('Found a nation first.');
+    if (S.users[me.id] && S.users[me.id].banned) return fail_('Your account is suspended.');
+    const mine = pkSeatOf(me.id); if (mine) return fail_(`You are already sitting at ${mine.t.name}. Leave it first.`);
+    const st = Object.prototype.hasOwnProperty.call(PK_STAKES, String(b.lv)) ? PK_STAKES[String(b.lv)] : null; if (!st) return fail_('Pick the stakes.');
+    const P = Object.values(S.poker.tables).filter(x => x.players); if (P.some(x => x.own === me.id)) return fail_('You already have a table open. Players can join it from the poker room.');
+    if (P.length >= PK_PMAX) return fail_('All player tables are in use. Join one of them, or try again soon.');
+    const buy = Math.floor(+b.buy); if (!(buy >= st[3] && buy <= st[4])) return fail_(`The buy-in at ${st[0]} stakes is ${WP.moneyS(st[3])} to ${WP.moneyS(st[4])}.`);
+    if ((n.cash || 0) < buy) return fail_('You do not have that much in your treasury.');
+    let id; do { id = 'u' + crypto.randomBytes(4).toString('hex'); } while (S.poker.tables[id]);
+    const nt = PK.newTable(id, `${String(n.name || 'Players').slice(0, 40)}'s table`, st[1], st[2], st[3], st[4]); Object.assign(nt, { players: true, own: me.id, made: now, emptyAt: 0 });
+    core.finSync(null, n); n.cash -= buy; core.finSync(null, n, 'casino'); setDoc('nations', me.id, n); nt.seats[0] = { u: me.id, stack: buy, sitOut: false, missed: 0, joined: now };
+    S.poker.tables[id] = nt; PK_WATCH.set(me.id, { t: id, at: now }); audit(me.name, 'poker table', nt.name + ' · ' + st[0]); persist();
+    return send(res, 200, { lobby: pkLobby(me.id), table: pkView(nt, me.id) }); }
   if (!t) return send(res, 404, { error: 'That table does not exist.' });
   const n = S.docs['nations/' + me.id], mine = pkSeatOf(me.id), i = mine && mine.t === t ? mine.i : -1, fail_ = (m, c = 400) => send(res, c, { error: m });
   const done = () => { pkPush(t); persist(); return send(res, 200, { lobby: pkLobby(me.id), table: pkView(t, me.id) }); };
@@ -1324,7 +1341,7 @@ function seasonVal(W, se, u, m) { const n = W.A[u]; if (!n) return 0; const b = 
   if (m === 'final') return sc; if (m === 'prov') return core.hexesOf(W, u).length; if (m === 'econ') return n.gdp || 0; if (m === 'tech') return n.tech || 0; if (m === 'power') return core.power(W, u); return 0; }
 function seasonEligible(W, se, u) { const n = W.A[u]; if (!n) return false; if (n.ai && n.ai.boss) return false; return se.who === 'all' || !n.ai; }
 function seasonTable(W, se, m, max) { m = m || se.metric; return Object.keys(W.A).filter(u => seasonEligible(W, se, u)).map(u => ({ u, v: seasonVal(W, se, u, m) })).sort((a, b) => b.v - a.v).slice(0, max || 1e9); }
-function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, color: W.A[x.u].color, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
+function seasonView(W, se, uid) { if (!se) return null; const live = se.status === 'live', t = live ? seasonTable(W, se) : [], M = SEASON_METRICS[se.metric]; const row = (x, i) => ({ r: i + 1, name: W.A[x.u].name, color: W.A[x.u].color, flag: W.A[x.u].flag || null, ai: !!W.A[x.u].ai, v: x.v, f: M.fmt(x.v), me: x.u === uid });
   const mi = t.findIndex(x => x.u === uid);
   return { id: se.id, n: se.n, name: se.name, msg: se.msg || '', status: se.status, start: se.start, end: se.end, metric: se.metric, metricName: M.n, who: se.who, prizes: se.prizes, xp: se.xp, cats: se.cats, top: t.slice(0, 20).map(row), me: mi >= 0 ? row(t[mi], mi) : null, count: t.length }; }
 function seasonBegin(W) { S.finaleLast = null; /* the replay of the last finale is only shown until the next season starts */ const se = S.seasons.cur; if (se.fresh && !S.fresh) { try { freshBegin(W, se); } catch (e) { logErr('Fresh season could not start: ' + (e.stack || e)); se.status = 'failed'; se.err = String(e.message || e); persist(true); return; } }
@@ -2033,6 +2050,50 @@ function aucSettle() { const a = S.late.auc; if (!a) return; const it = AUC.item
 function aucLoop() { try { if (lateOff()) return; const now = Date.now(), a = S.late.auc; if (a) { if (now >= a.end) aucSettle(); else if (!a.warned && a.end - now < HOUR) { a.warned = 1; const it = AUC.items.find(x => x.k === a.k) || AUC.items[0]; systemMessage(`🔨 One hour left in the World Auction for ${it.ic} ${it.n}. ${a.top ? `Top bid: ${WP.moneyS(a.top.amt)} by ${pubName(a.top.u)}.` : 'No bids yet.'}`); persist(); } return; }
     if (S.config.auctionOn === false) return; if (!S.late.aucNext) { S.late.aucNext = now + 6 * HOUR; persist(); return; } if (now >= S.late.aucNext && Object.keys(S.users).length >= 3) aucStart(null); } catch (e) { logErr('auction: ' + (e.stack || e)); } }
 setInterval(aucLoop, 30e3).unref();
+
+// ---------- Mystery Box auctions: every 2 days a prize box goes up for 24 hours, next to the weekly jewel ----------
+// Each box is worth a lot: its prize is rolled the moment it is won, sized to the WINNER's own economy (hours of their tax income), and 1 box in 8 is a lucky box worth double.
+const BOX = { durH: 24, everyH: 48, minBid: 5e8, step: 1.05, snipeMin: 5, lucky: 1 / 8,
+  items: [
+    { k: 'vault', ic: '🎰', n: 'Casino Vault', d: '50 to 150 free spins on any slot machine. Each spin is staked at half an hour of your tax income (at least $100M, at most $5B) and the house pays the stake. Every win is yours.' },
+    { k: 'arsenal', ic: '🪖', n: 'Arsenal Crate', d: 'A full war chest: soldiers up to 30% of your army limit, 10–20% more warships and aircraft, tanks, 2,000–6,000 munitions, +10 training and +15 morale.' },
+    { k: 'bond', ic: '📜', n: 'Treasury Bond', d: 'Pays 60 to 100 hours of your tax income: a fifth at once and the rest over the next 4 days.' },
+    { k: 'harvest', ic: '🌾', n: 'Golden Harvest', d: '36 to 60 hours of your own food, oil, steel and goods production, delivered at once. Anything over your storage is sold on the world market for you.' },
+    { k: 'academy', ic: '🎓', n: 'Royal Academy', d: '+3 to +5 tech levels at once, skipping the research costs.' },
+    { k: 'spy', ic: '🕵', n: 'Spymaster Kit', d: '60–100% more spies (at least 60), +5 training, and your covert operations cooldown is cleared.' },
+    { k: 'pardon', ic: '🕊', n: "Diplomat's Pardon", d: 'Lifts every World Council measure on your nation, returns frozen assets, cuts aggression to 0 and adds +15 approval and +15 stability. (It cannot lift rogue status from a nuclear strike.)' },
+    { k: 'chest', ic: '👑', n: 'Prestige Chest', d: '+25 to +40 prestige and a rare badge only box winners can have.' }] };
+S.late.boxHist = S.late.boxHist || [];
+const boxItem = k => BOX.items.find(x => x.k === k) || BOX.items[0];
+function boxGrant(W, uid, k) { const n = W.A[uid], T = lateTax(W, uid), lucky = Math.random() < BOX.lucky, x = lucky ? 2 : 1, rr = (a, b) => a + Math.random() * (b - a), M = WP.moneyS, nf = v => Math.round(v).toLocaleString('en-US'); let out = '';
+  if (k === 'vault') { const spins = Math.round(rr(50, 150) * x), bet = Math.round(Math.min(core.CASINO.maxAbs, Math.max(1e8, T * .5)) / 1e6) * 1e6; const f = n.fsp && n.fsp.n > 0 ? n.fsp : null; n.fsp = { n: (f ? f.n : 0) + spins, bet: f ? Math.max(f.bet, bet) : bet, t: Date.now() }; out = `${spins} free spins at ${M(n.fsp.bet)} each (World Casino → Slots)`; }
+  else if (k === 'arsenal') { const cap = core.troopCap ? core.troopCap(n) : n.troops * 2, add = Math.max(0, Math.min(cap - n.troops, Math.round(cap * .3 * x))), sh = Math.round((n.ships || 0) * rr(.1, .2) * x), ai = Math.round((n.air || 0) * rr(.1, .2) * x), tk = Math.round(rr(100, 300) * x), mu = Math.round(rr(2000, 6000) * x);
+    n.troops += add; n.ships = (n.ships || 0) + sh; n.air = (n.air || 0) + ai; n.tanks = (n.tanks || 0) + tk; n.res.mun = (n.res.mun || 0) + mu; n.train = Math.min(core.maxTrain ? core.maxTrain(n) : 100, (n.train || 0) + 10 * x); n.morale = Math.min(100, (n.morale || 0) + 15);
+    out = `${nf(add)} soldiers, ${nf(sh)} warships, ${nf(ai)} aircraft, ${nf(tk)} tanks, ${nf(mu)} munitions, +${10 * x} training and +15 morale`; }
+  else if (k === 'bond') { const tot = Math.round(Math.max(5e8, T * rr(60, 100) * x) / 1e6) * 1e6, now = Date.now(); lateGive(W, n, Math.round(tot * .2), 'other'); n.bond = { left: 4, amt: Math.round(tot * .2), next: now + 864e5, tot: (n.bond && n.bond.left ? n.bond.amt * n.bond.left : 0) }; if (n.bond.tot) n.bond.amt += Math.round(n.bond.tot / 4); delete n.bond.tot;
+    out = `a bond worth ${M(tot)}: ${M(Math.round(tot * .2))} paid now and ${M(n.bond.amt)} a day for 4 days`; }
+  else if (k === 'harvest') { const p = core.production(W, uid), h = rr(36, 60) * x, got = []; for (const r of ['food', 'oil', 'steel', 'goods']) { const q = Math.round(Math.max(p[r] * 6 * h, 2000 * x)); n.res[r] = (n.res[r] || 0) + q; got.push(`${nf(q)} ${r}`); } out = got.join(', '); }
+  else if (k === 'academy') { const t = Math.round(rr(3, 5)) * x; n.tech = (n.tech || 0) + t; out = `+${t} tech levels (now ${n.tech})`; }
+  else if (k === 'spy') { const sp = Math.max(Math.round(rr(60, 120) * x), Math.round((n.spies || 0) * rr(.6, 1) * x)); n.spies = (n.spies || 0) + sp; if (n.cd) n.cd.covert = 0; n.train = Math.min(core.maxTrain ? core.maxTrain(n) : 100, (n.train || 0) + 5 * x); out = `${nf(sp)} more spies, +${5 * x} training, and your covert cooldown is cleared`; }
+  else if (k === 'pardon') { const nuke = core.nukeRogue && core.nukeRogue(W, n), back = n.frozen ? n.frozen.amt || 0 : 0; if (back) lateGive(W, n, back, 'council'); n.frozen = null; n.embargo = 0; n.armsEmb = 0; n.condemned = 0; n.sanction = 0; if (!nuke) { n.rogue = 0; delete n.rogueT; n.aggr = 0; } else n.aggr = Math.min(n.aggr || 0, 50);
+    n.approval = Math.min(100, (n.approval || 0) + 15 * x); n.stability = Math.min(100, (n.stability || 0) + 15 * x); out = `every Council measure lifted${back ? `, ${M(back)} of frozen assets returned` : ''}, aggression ${nuke ? 'cut (nuclear rogue status stays)' : 'cleared'}, +${15 * x} approval and stability`; }
+  else if (k === 'chest') { const pr = Math.round(rr(25, 40) * x); n.prestige = (n.prestige || 0) + pr; n.badges = [...(n.badges || []), { s: 'box', k: 'box' + Date.now(), ic: '👑', t: `Prestige Chest${lucky ? ' (lucky)' : ''}, won at the Mystery Box auction` }]; out = `+${pr} prestige and a rare badge`; }
+  return { lucky, out }; }
+function boxStart(by) { const n = (S.late.boxN || 0) + 1, it = BOX.items[(n - 1) % BOX.items.length], now = Date.now(); S.late.boxN = n; S.late.box = { id: n, k: it.k, t: now, end: now + BOX.durH * HOUR, top: null, bids: 0 }; S.late.boxNext = now + BOX.everyH * HOUR; persist();
+  systemMessage(`🎁 MYSTERY BOX AUCTION: ${it.ic} ${it.n} is up for ${BOX.durH} hours. ${it.d} Bids start at ${WP.moneyS(BOX.minBid)}. Bid from Projects & Prestige → World races.`); broadcast('announce', { text: `🎁 Mystery Box: ${it.n} is up for auction!` }); if (by) audit(by, 'Mystery box started', it.n); }
+function boxSettle() { const a = S.late.box; if (!a) return; const it = boxItem(a.k), top = a.top; S.late.box = null;
+  const W = mkWorld(), n = top && W.A[top.u];
+  if (top && n) { const g = boxGrant(W, top.u, a.k); core.touch(W, top.u); commit(W);
+    S.late.boxHist.unshift({ id: a.id, k: a.k, n: it.n, ic: it.ic, name: n.name, amt: top.amt, t: Date.now(), lucky: g.lucky, out: g.out }); S.late.boxHist = S.late.boxHist.slice(0, 30);
+    if (S.users[top.u]) addNote(top.u, 'economy', `${it.ic} You won the ${it.n} for ${WP.moneyS(top.amt)}${g.lucky ? ' and it was a LUCKY BOX (double)' : ''}: ${g.out}.`);
+    systemMessage(`🎁 SOLD! ${n.name} won the ${it.ic} ${it.n} for ${WP.moneyS(top.amt)}${g.lucky ? '. It was a LUCKY BOX: everything inside doubled!' : '.'}`); broadcast('announce', { text: `🎁 ${n.name} won the ${it.n}${g.lucky ? ' (lucky box!)' : ''}` }); }
+  else systemMessage(`🎁 The Mystery Box auction for the ${it.ic} ${it.n} ended with no bids.`);
+  persist(); }
+function bondRun(now) { let ch = false; const W = mkWorld(); for (const [u, n] of Object.entries(W.A)) { const b = n && n.bond; if (!b || !(b.left > 0) || now < b.next) continue; lateGive(W, n, b.amt, 'other'); b.left--; b.next += 864e5; core.touch(W, u); ch = true; if (S.users[u]) addNote(u, 'economy', `📜 Treasury Bond: ${WP.moneyS(b.amt)} paid into your treasury${b.left ? ` (${b.left} payment${b.left > 1 ? 's' : ''} left)` : ' (the last payment)'}.`); if (!b.left) delete n.bond; } if (ch) { commit(W); persist(); } }
+function boxLoop() { try { const now = Date.now(); if (lateOff()) return; try { bondRun(now); } catch (e) { logErr('bond: ' + (e.stack || e)); } const a = S.late.box;
+    if (a) { if (now >= a.end) boxSettle(); else if (!a.warned && a.end - now < HOUR) { a.warned = 1; const it = boxItem(a.k); systemMessage(`🎁 One hour left in the Mystery Box auction for the ${it.ic} ${it.n}. ${a.top ? `Top bid: ${WP.moneyS(a.top.amt)} by ${pubName(a.top.u)}.` : 'No bids yet.'}`); persist(); } return; }
+    if (S.config.boxOn === false) return; if (!S.late.boxNext) { S.late.boxNext = now + 2 * HOUR; persist(); return; } if (now >= S.late.boxNext && Object.keys(S.users).length >= 3) boxStart(null); } catch (e) { logErr('box: ' + (e.stack || e)); } }
+setInterval(boxLoop, 30e3).unref();
 function lateView(uid) { const W = mkWorld(), n = W.A[uid], now = Date.now(), SP = core.SPACE, a = S.late.auc, it = a && (AUC.items.find(x => x.k === a.k) || AUC.items[0]), b = n && n.bloc && S.blocs[n.bloc] && (S.blocs[n.bloc].members || []).includes(uid) ? S.blocs[n.bloc] : null;
   const nm = u => (S.docs['nations/' + u] || {}).name || '?', stage = n ? (n.space || 0) : 0;
   return { off: lateOff(), t: now,
@@ -2040,7 +2101,10 @@ function lateView(uid) { const W = mkWorld(), n = W.A[uid], now = Date.now(), SP
       racers: Object.entries(S.docs).filter(([k, d]) => k.startsWith('nations/') && d && d.space > 0).map(([k, d]) => ({ name: d.name, stage: d.space, me: k.slice(8) === uid })).sort((x, y) => y.stage - x.stage).slice(0, 12) },
     merc: { cost: n ? mercCost(W, uid) : 0, on: n && n.merc && n.merc.until > now ? { k: n.merc.k, until: n.merc.until } : null },
     hq: b ? { name: b.name, need: hqNeed(W, b), lv: (b.hq || {}).lv || 0, pool: Math.round((b.hq || {}).pool || 0), mine: Math.round(((b.hq || {}).by || {})[uid] || 0), by: Object.entries((b.hq || {}).by || {}).map(([u, v]) => ({ name: nm(u), amt: Math.round(v), me: u === uid })).sort((x, y) => y.amt - x.amt).slice(0, 12) } : null,
-    auc: a ? { id: a.id, ic: it.ic, n: it.n, title: it.title, end: a.end, bids: a.bids, top: a.top ? { name: nm(a.top.u), amt: a.top.amt, me: a.top.u === uid } : null, min: a.top ? Math.ceil(a.top.amt * AUC.step / 1e8) * 1e8 : AUC.minBid, pr: AUC.pr } : null, aucNext: a ? 0 : (S.config.auctionOn === false ? -1 : S.late.aucNext || 0), aucHist: S.late.hist.slice(0, 6).map(h => ({ ic: h.ic, n: h.n, name: h.name, amt: h.amt, t: h.t })) }; }
+    auc: a ? { id: a.id, ic: it.ic, n: it.n, title: it.title, end: a.end, bids: a.bids, top: a.top ? { name: nm(a.top.u), amt: a.top.amt, me: a.top.u === uid } : null, min: a.top ? Math.ceil(a.top.amt * AUC.step / 1e8) * 1e8 : AUC.minBid, pr: AUC.pr } : null, aucNext: a ? 0 : (S.config.auctionOn === false ? -1 : S.late.aucNext || 0), aucHist: S.late.hist.slice(0, 6).map(h => ({ ic: h.ic, n: h.n, name: h.name, amt: h.amt, t: h.t })),
+    box: (() => { const x = S.late.box; if (!x) return null; const bi = boxItem(x.k); return { id: x.id, ic: bi.ic, n: bi.n, d: bi.d, end: x.end, bids: x.bids, top: x.top ? { name: nm(x.top.u), amt: x.top.amt, me: x.top.u === uid } : null, min: x.top ? Math.ceil(x.top.amt * BOX.step / 1e7) * 1e7 : BOX.minBid }; })(),
+    boxNext: S.late.box ? 0 : (S.config.boxOn === false ? -1 : S.late.boxNext || 0), boxUp: (() => { const k = BOX.items[(S.late.boxN || 0) % BOX.items.length]; return { ic: k.ic, n: k.n, d: k.d }; })(), boxList: BOX.items.map(i => ({ ic: i.ic, n: i.n, d: i.d })),
+    boxHist: S.late.boxHist.slice(0, 6).map(h => ({ ic: h.ic, n: h.n, name: h.name, amt: h.amt, t: h.t, lucky: !!h.lucky })), fsp: n && n.fsp && n.fsp.n > 0 ? n.fsp : null, bond: n && n.bond && n.bond.left > 0 ? { left: n.bond.left, amt: n.bond.amt, next: n.bond.next } : null }; }
 function lateAct(uid, b) { const off = lateOff(); if (off) return { error: off }; const W = mkWorld(), n = W.A[uid]; if (!n) return { error: 'Found a nation first.' }; const op = String(b.op || ''), now = Date.now(), M = WP.moneyS; let msg = '';
   if (op === 'space') { const SP = core.SPACE, i = n.space || 0; if (i >= SP.stages.length) return { error: 'You have finished the Space Race.' }; if (n.spaceT && now - n.spaceT < SP.cdH * HOUR) { const tm = Math.ceil((n.spaceT + SP.cdH * HOUR - now) / 60e3), hh = Math.floor(tm / 60), mm = tm % 60; return { error: `Your space agency needs ${hh ? hh + ' h ' : ''}${mm} min before the next stage.` }; }
     const St = SP.stages[i], c = spaceCost(W, uid, i); if ((n.cash || 0) < c) return { error: `${St.n} costs ${M(c)}.` }; latePay(W, n, c, 'projects'); n.space = i + 1; n.spaceT = now; const first = !S.late.space.firsts[i]; n.prestige = (n.prestige || 0) + St.pr * (first ? SP.firstX : 1);
@@ -2062,6 +2126,11 @@ function lateAct(uid, b) { const off = lateOff(); if (off) return { error: off }
     latePay(W, n, need, 'ops'); a.top = { u: uid, amt, t: now }; a.bids = (a.bids || 0) + 1; if (a.end - now < AUC.snipeMin * 60e3) a.end = now + AUC.snipeMin * 60e3; core.touch(W, uid); const it = AUC.items.find(x => x.k === a.k) || AUC.items[0];
     // no chat message per bid: World Chat only hears when an auction opens, when an hour is left, and who won
     msg = `🔨 You are the top bidder with ${M(amt)}. The money is held until the auction ends; if someone outbids you, you get it back at once.`; }
+  else if (op === 'boxbid') { const a = S.late.box; if (!a || now >= a.end) return { error: 'There is no Mystery Box auction running.' }; const amt = Math.floor(+b.amt || 0), min = a.top ? Math.ceil(a.top.amt * BOX.step / 1e7) * 1e7 : BOX.minBid; if (!(amt >= min)) return { error: `The next bid must be at least ${M(min)}.` }; if (amt > 1e16) return { error: 'That is too much.' };
+    const mine = a.top && a.top.u === uid ? a.top.amt : 0, need = amt - mine; if ((n.cash || 0) < need) return { error: `You need ${M(need)} in your treasury for that bid.` };
+    if (a.top && a.top.u !== uid) { const o = W.A[a.top.u]; if (o) { lateGive(W, o, a.top.amt, 'other'); core.touch(W, a.top.u); if (S.users[a.top.u]) addNote(a.top.u, 'economy', `🎁 You were outbid on the Mystery Box by ${n.name} (${M(amt)}). Your ${M(a.top.amt)} is back in your treasury.`); } }
+    latePay(W, n, need, 'ops'); a.top = { u: uid, amt, t: now }; a.bids = (a.bids || 0) + 1; if (a.end - now < BOX.snipeMin * 60e3) a.end = now + BOX.snipeMin * 60e3; core.touch(W, uid);
+    msg = `🎁 You are the top bidder with ${M(amt)}. If someone outbids you, your money comes straight back.`; }
   else return { error: 'Unknown action.' };
   commit(W); persist(); return { ok: true, msg, late: lateView(uid) }; }
 // ---------- WORLD ECONOMY (admin): how much money exists, where it comes from, where it goes, who holds it, and the brakes against inflation ----------
