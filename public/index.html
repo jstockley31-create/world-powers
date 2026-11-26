@@ -2574,7 +2574,7 @@ const GL=(()=>{
    ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff3a0';ctx.fillText('☢',xy[0],xy[1])}
   // keep a still copy of the finished globe: while only strikes are animating, frames just paste it and draw the planes on top
   /* not while the globe is being dragged, zoomed or flown: taking this copy makes the browser finish the whole picture right away, which halved the frame rate while moving */
-   if((SK.length||st.fx||BURN.size||TX.length||smT||NF.length)&&!st.anim&&!(performance.now()-(st.movT||0)<250)){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
+   if((SK.length||st.fx||BURN.size||TX.length||smT||NF.length||satT)&&!st.anim&&!(performance.now()-(st.movT||0)<250)){if(baseCv.width!==cv.width||baseCv.height!==cv.height){baseCv.width=cv.width;baseCv.height=cv.height}bctx.setTransform(1,0,0,1,0,0);bctx.clearRect(0,0,baseCv.width,baseCv.height);bctx.drawImage(cv,0,0);st.baseOk=true}
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  // flags beside nation names: each flag drawn once into an image, redrawn when it changes
@@ -2661,8 +2661,9 @@ const GL=(()=>{
      for(const d of f.sp[i]){const ag=p*1.7,x=q[0]+Math.cos(d.a)*d.v*U*2.1*ag,y=q[1]+Math.sin(d.a)*d.v*U*1.2*ag-U*2.6*ag+U*2.3*ag*ag;glow(x,y,U*.2*(1-p)+1.3,'235,250,255',.7*al)}});NM()}}
   ctx.globalAlpha=1;NM();ctx.setLineDash([]);ctx.restore()}
  // Space Race firsts: a small satellite on an orbit ring around the capital of every nation that was first to finish a stage (one dot on the ring per first)
+ let satT=0,satSeen=0;function satLoop(){if(satT)return;const go=()=>{satT=0;if(!st.el||!st.el.isConnected||document.hidden||Date.now()-satSeen>1500)return;let cost=0;satT=-1;if(!skLoop&&!st.anim&&!st.raf&&!st.fx&&!reduce&&!(performance.now()-(st.movT||0)<300)){const t0=performance.now();fastFrame();cost=performance.now()-t0}satT=setTimeout(go,cost>14?140:cost>7?80:50)};satT=setTimeout(go,50)} /* the satellites keep moving by themselves: a light repaint about 20 times a second while one is on screen (slower on a device that struggles), never while something else is already animating the globe */
  function drawSats(ctr){let any=false;for(const u in A){if(A[u].spaceFirst>0){any=true;break}}if(!any)return;const cvv=unit(ctr),r=radius(),R=Math.max(13,Math.min(30,r*.034)),t=Date.now()/1000;ctx.save();
-  for(const u in A){const n=A[u],k=n.spaceFirst|0;if(!(k>0)||!P[n.cap])continue;const c=P[n.cap].c;if(dot(unit(c),cvv)<.08)continue;const q=proj(c);if(!q)continue;const x=q[0],y=q[1],tilt=-.45,ph=t*.5+(n.cap%7);
+  for(const u in A){const n=A[u],k=n.spaceFirst|0;if(!(k>0)||!P[n.cap])continue;const c=P[n.cap].c;if(dot(unit(c),cvv)<.08)continue;const q=proj(c);if(!q)continue;const x=q[0],y=q[1],tilt=-.45,ph=t*.5+(n.cap%7);if(x>-40&&x<st.w+40&&y>-40&&y<st.h+40){satSeen=Date.now();satLoop()}
    ctx.save();ctx.translate(x,y);ctx.rotate(tilt);ctx.setLineDash([3,4]);ctx.strokeStyle='rgba(170,215,255,.75)';ctx.lineWidth=1.2;ctx.beginPath();ctx.ellipse(0,0,R*1.5,R*.62,0,0,6.283);ctx.stroke();ctx.setLineDash([]);
    for(let i=1;i<Math.min(k,5);i++){const a=ph+i*6.283/Math.min(k,5);ctx.fillStyle='rgba(200,230,255,.9)';ctx.beginPath();ctx.arc(Math.cos(a)*R*1.5,Math.sin(a)*R*.62,2,0,6.283);ctx.fill()}
    const sx=Math.cos(ph)*R*1.5,sy=Math.sin(ph)*R*.62;ctx.shadowColor='rgba(140,200,255,.9)';ctx.shadowBlur=8;ctx.font=`${Math.round(R*.95)}px system-ui,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.rotate(-tilt);const rx=sx*Math.cos(tilt)-sy*Math.sin(tilt),ry=sx*Math.sin(tilt)+sy*Math.cos(tilt);ctx.fillText('🛰',rx,ry);ctx.restore()}
@@ -2755,7 +2756,7 @@ const GL=(()=>{
   const dur=!from?0:fx.heavy==='stealth'?clamp(9000+dist*3500,9000,16000):fx.heavy==='subsalvo'?clamp(3200+dist*2000,3200,5000):air_?clamp(3800+dist*1300,3800,6500):fx.heavy==='hypersonic'?clamp(3200+dist*900,3200,5200):fx.heavy==='orbital'?4200:fx.heavy==='artillery'||fx.heavy==='bombard'?clamp(2400+dist*2500,2400,4200):sea_?clamp(6000+dist*3000,6000,9000):fx.heavy==='ballistic'?clamp(10000+dist*3000,10000,16500):clamp(6500+dist*2400,6500,11000),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
   const R=seedOf(fx.id),n=hv_==='bombard'?clamp(Math.round((fx.n||1)/15),4,6):hv_==='blockade'?3:hv_==='carrier'?4:hv_==='stealth'?1:air_?clamp(Math.round((fx.n||5)/8),3,7):clamp(fx.n||1,1,20),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.min(n,fx.icept||0); /* every missile reaches the target and explodes there, except the ones a Golden Dome shoots down */
   const ml=hv_==='carrier'?1:air_?((n-1)/2)*.034:(n-1)*Math.min(.085,.5/n), /* the carrier group also sails home again */D=reduce?0:dur,cycle=D*(1+ml)+1800+1600,loops=!D?0:Math.max(2,Math.ceil(35000/cycle)); // replays for about 35 seconds so people have time to find it
-  SK.push({fx,from,to,dist,dur:D,ml,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:12},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
+  SK.push({fx,from,to,dist,dur:D,ml,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:12},()=>[R()*2-1,R()*2-1]),ip:from?(sea_?seaLane(from,to):d3.geoInterpolate(from,to)):null});
   while(SK.length>80)SK.shift();if(!fx.dirty&&!fx.noburn){const b=BURN.get(fx.h),hit=(fx.t||Date.now())+D;burn(fx.h,hit,quiet?(b?b.n:1):(b&&hit-b.t<SMOKE_MS?b.n:0)+1)}kick();smokeLoop()}
  // a province on fire: last hit time and number of hits (from the server at login, then live)
  // nuclear test in the ocean: flash, fireball, condensation dome, shock rings on the water, a column of water with a mushroom cap, base surge, then steam that lingers ten minutes
@@ -2786,7 +2787,7 @@ const GL=(()=>{
  const DGEO=new Map(),DHIT=new Map(),DRIP=new Map(),DLAT=[0,15,30,45,60,75,90];
  function domeGeo(n){if(!n||!n.dome||!P[n.cap])return null;const hx=Object.keys(n.hexes||{}),key=n.cap+':'+hx.length+':'+(n.dome.lvl||1);let g=DGEO.get(n);const emp=n.dome.ready<=Date.now()?C.domeEmp(null,n):0,on=n.dome.ready<=Date.now()&&!n.dome.off&&!emp&&(n.cash||0)>=0;if(g&&g.key===key){g.on=on;g.emp=emp;return g}
   const c=P[n.cap].c,km=C.domeKm?C.domeKm(n):600,d=km/6371; // drawn at its real reach: only provinces inside it are protected
-  g={key,c,km,d,hd:d*.9,on,emp,rings:DLAT.map(t=>t===90?null:ringPts(c,km*Math.cos(t*RAD)))};DGEO.set(n,g);return g}
+  g={key,c,km,d,lvl:n.dome.lvl||1,hd:d*.9,on,emp,rings:DLAT.map(t=>t===90?null:ringPts(c,km*Math.cos(t*RAD)))};DGEO.set(n,g);return g}
  // is a point on screen inside the dome as drawn this frame? (base ellipse below, the dome's curve above)
  const inDome=(G,x,y)=>{const q=G.scr;if(!q||performance.now()-q.t>500)return false;const dx=(x-q.bx)/q.ax,dy=y-q.by;return dx*dx+Math.pow(dy/(dy<0?q.ay+q.hp:q.ay),2)<=1};
  // the first point of a flight (0..1) that touches the dome, found on screen
@@ -2833,13 +2834,14 @@ const GL=(()=>{
   for(let i=0;i<3;i++){const a=age-i*.13;if(a<=0)continue;ctx.beginPath();ctx.arc(rp.x,rp.y,6+a*span,0,7);ctx.strokeStyle=`rgba(255,${236-i*10},${160-i*20},${(.85-i*.2)*(1-age)})`;ctx.lineWidth=(2.4-i*.6)*(1-a*.5);ctx.stroke()}
   ctx.restore()}
  // the dome's missile batteries: four small launchers round the capital, seen once you zoom in. They turn toward a threat and flash when they fire.
- const DOME_SHELL=false,BAT_KM=65,BAT_OFF=[[-1,1],[1,1],[1,-1],[-1,-1]];
+ const DOME_SHELL=false; /* a dome's level shows in its batteries: 4 launchers at level 1, one more each level (8 at level 5), on a ring that widens with the level */
+ const batN=G=>3+clamp(G.lvl||1,1,5),batAng=(G,i)=>Math.PI*.75-i*2*Math.PI/batN(G),batRest=(G,i)=>-Math.PI/2+Math.cos(batAng(G,i))*.65;
  function drawBatteries(u,G,cvv){if(st.scale<1.5||dot(unit(G.c),cvv)<.3){G.ls=null;return}const c0=proj(G.c);if(c0[0]<-40||c0[0]>st.w+40||c0[1]<-40||c0[1]>st.h+40){G.ls=null;return}
-  const now=performance.now(),z=clamp(.55+st.scale*.24,.8,2.6),minR=13+st.scale*3.4,cosL=Math.max(.2,Math.cos(G.c[1]*RAD)),live=G.on&&!G.emp;
-  G.lf=G.lf||[0,0,0,0];G.lk=G.lk||[0,0,0,0];G.la=G.la||[-2.2,-.95,-.95,-2.2];
-  G.ls=BAT_OFF.map(([ox,oy])=>{const p=proj([G.c[0]+ox*BAT_KM/111/cosL,G.c[1]+oy*BAT_KM/111]);let dx=p[0]-c0[0],dy=p[1]-c0[1];const L=Math.hypot(dx,dy)||1;if(L<minR){dx*=minR/L;dy*=minR/L}return[c0[0]+dx,c0[1]+dy]});G.lsT=now;
+  const now=performance.now(),z=clamp(.55+st.scale*.24,.8,2.6),lv=clamp(G.lvl||1,1,5),minR=(13+st.scale*3.4)*(1+(lv-1)*.16),km=92+(lv-1)*24,nB=batN(G),cosL=Math.max(.2,Math.cos(G.c[1]*RAD)),live=G.on&&!G.emp;
+  if(!G.lf||G.lf.length!==nB){G.lf=Array(nB).fill(0);G.lk=Array(nB).fill(0);G.la=Array.from({length:nB},(_,i)=>batRest(G,i))}
+  G.ls=Array.from({length:nB},(_,i)=>{const an=batAng(G,i),p=proj([G.c[0]+Math.cos(an)*km/111/cosL,G.c[1]+Math.sin(an)*km/111]);let dx=p[0]-c0[0],dy=p[1]-c0[1];const L=Math.hypot(dx,dy)||1;if(L<minR){dx*=minR/L;dy*=minR/L}return[c0[0]+dx,c0[1]+dy]});G.lsT=now;
   if(G.emp){const fl=.55+.45*Math.abs(Math.sin(Date.now()/90));ctx.save();ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillStyle=`rgba(190,228,255,${.6+.4*fl})`;ctx.shadowColor='rgba(0,0,0,.85)';ctx.shadowBlur=4;ctx.fillText('⚡ DOME DOWN',c0[0],Math.min(...G.ls.map(p=>p[1]))-7*z);ctx.restore()}
-  G.ls.forEach(([x,y],i)=>{const rest=i===0||i===3?-2.2:-.95,fired=now-G.lf[i];if(fired>2600)G.la[i]+=(rest-G.la[i])*.06;const a=G.la[i];
+  G.ls.forEach(([x,y],i)=>{const rest=batRest(G,i),fired=now-G.lf[i];if(fired>2600)G.la[i]+=(rest-G.la[i])*.06;const a=G.la[i];
    ctx.save();ctx.translate(x,y);
    /* ground shadow, then the carrier vehicle: a low tracked hull seen from above */
    ctx.fillStyle='rgba(0,0,0,.42)';ctx.beginPath();ctx.ellipse(.8*z,1.6*z,6.4*z,3*z,0,0,7);ctx.fill();
@@ -2864,7 +2866,7 @@ const GL=(()=>{
  // interceptors: nn missiles leave the nearest batteries, climb on curving smoke trails and meet the target at (ix,iy). tt = ms until the kill (negative afterwards, while the trails fade)
  function domeShots(G,ix,iy,tt,sz,nn,T){nn=nn||2;T=T||1300;if(reduce||tt>T||tt<-1500)return;const now=performance.now(),c0=proj(G.c);
   const L=G.ls&&now-(G.lsT||0)<500?G.ls:[[-4,3],[4,3],[4,-3],[-4,-3]].map(o=>[c0[0]+o[0],c0[1]+o[1]]),ord=L.map((p,i)=>[i,Math.hypot(p[0]-ix,p[1]-iy)]).sort((a,b)=>a[1]-b[1]);
-  for(let k=0;k<nn;k++){const li=ord[k%4][0],p0=L[li],lag=k*150,dur=T-lag+k*80,el=T-tt-lag;if(el<0)continue;
+  for(let k=0;k<nn;k++){const li=ord[k%ord.length][0],p0=L[li],lag=k*150,dur=T-lag+k*80,el=T-tt-lag;if(el<0)continue;
    const u=el/dur,e=Math.pow(Math.min(1,u),1.55),dx=ix-p0[0],dy=iy-p0[1],len=Math.hypot(dx,dy)||1,bend=len*.3*(k%2?-1:1),cx_=(p0[0]+ix)/2-dy/len*bend,cy_=(p0[1]+iy)/2+dx/len*bend-len*.32;
    const pos=t=>[(1-t)*(1-t)*p0[0]+2*(1-t)*t*cx_+t*t*ix,(1-t)*(1-t)*p0[1]+2*(1-t)*t*cy_+t*t*iy];
    if(el<220&&G.lf){if(G.lk){if(now-G.lf[li]>600)G.lk[li]=0;if(el<40||!G.lk[li])G.lk[li]=Math.min(2,(G.lk[li]||0)+(now-(G.lkT||0)>30?1:0));G.lkT=now}G.lf[li]=now;G.la[li]=Math.atan2(cy_-p0[1],cx_-p0[0])}
@@ -2972,6 +2974,29 @@ const GL=(()=>{
  // the nearest open water beside a province (for ships, submarines and blockades), worked out once per province
  const SEASPOT=new Map();function seaSpot(h){if(SEASPOT.has(h))return SEASPOT.get(h);const p=P[h];let out=p.c;if(p){const near=P.filter(q=>d3.geoDistance(q.c,p.c)<.2);const land=c=>near.some(q=>d3.geoContains(q.geo,c));
    find:for(const d of[1.6,2.4,3.4,4.6,6])for(let a=0;a<16;a++){const an=a/16*Math.PI*2,c=[p.c[0]+Math.cos(an)*d/Math.max(.25,Math.cos(p.c[1]*Math.PI/180)),Math.max(-85,Math.min(85,p.c[1]+Math.sin(an)*d))];if(!land(c)){out=c;break find}}}SEASPOT.set(h,out);return out}
+ // sea lanes: ships, submarines and carrier groups go round the land instead of across it. The world is cut into 2-degree squares, each marked land or water once; a route is the shortest chain of water squares, then straightened wherever a straight run stays at sea.
+ const SEA={g:null,W:180,H:76,st:2,lat0:-75};
+ function seaGrid(){if(SEA.g)return SEA.g;const {W:GW,H:GH,st:S,lat0}=SEA,g=new Uint8Array(GW*GH);
+  for(const p of P){if(!p||!p.geo)continue;let b;try{b=d3.geoBounds(p.geo)}catch(e){continue}const wrap=b[0][0]>b[1][0],j0=Math.max(0,Math.floor((b[0][1]-lat0)/S)-1),j1=Math.min(GH-1,Math.ceil((b[1][1]-lat0)/S)+1);
+   for(let j=j0;j<=j1;j++)for(let i=0;i<GW;i++){const lon=-180+(i+.5)*S;if(!wrap&&(lon<b[0][0]-S||lon>b[1][0]+S))continue;if(wrap&&lon<b[0][0]-S&&lon>b[1][0]+S)continue;if(g[j*GW+i])continue;const lat=lat0+(j+.5)*S;
+    /* a square is land if its middle or any corner region touches the province, so lanes keep a little clear of the coast */
+    for(const[ox,oy]of[[0,0],[-.7,-.7],[.7,-.7],[.7,.7],[-.7,.7]]){if(d3.geoContains(p.geo,[lon+ox,lat+oy])){g[j*GW+i]=1;break}}}}
+  /* the Panama and Suez canals are open water for ships */
+  for(const[lon,la,lb]of[[-79.6,6.5,11.5],[32.5,27.5,32.5]])for(let lat=la;lat<=lb;lat+=S){const i=((Math.floor((lon+180)/S)%GW)+GW)%GW,j=clamp(Math.floor((lat-lat0)/S),0,GH-1);g[j*GW+i]=0}
+  return SEA.g=g}
+ const seaCell=c=>{const {W:GW,H:GH,st:S,lat0}=SEA;return[((Math.floor((c[0]+180)/S)%GW)+GW)%GW,clamp(Math.floor((c[1]-lat0)/S),0,GH-1)]},seaPt=(i,j)=>[-180+(i+.5)*SEA.st,SEA.lat0+(j+.5)*SEA.st];
+ function seaNear(c,g){const {W:GW,H:GH}=SEA,[ci,cj]=seaCell(c);for(let r=0;r<8;r++){let best=null,bd=9;for(let dj=-r;dj<=r;dj++)for(let di=-r;di<=r;di++){if(Math.max(Math.abs(di),Math.abs(dj))!==r)continue;const j=cj+dj,i=((ci+di)%GW+GW)%GW;if(j<0||j>=GH||g[j*GW+i])continue;const d=d3.geoDistance(c,seaPt(i,j));if(d<bd){bd=d;best=[i,j]}}if(best)return best}return null}
+ const seaClear=(a,b,g)=>{const n=Math.max(2,Math.ceil(d3.geoDistance(a,b)/RAD/1.2)),ip=d3.geoInterpolate(a,b);for(let k=1;k<n;k++){const [i,j]=seaCell(ip(k/n));if(g[j*SEA.W+i])return false}return true};
+ function seaLane(from,to){const straight=d3.geoInterpolate(from,to);let g;try{g=seaGrid()}catch(e){return straight}const {W:GW,H:GH}=SEA,A0=seaNear(from,g),B0=seaNear(to,g);if(!A0||!B0)return straight;
+  const id=(i,j)=>j*GW+i,goal=id(B0[0],B0[1]),start=id(A0[0],A0[1]),gp=seaPt(B0[0],B0[1]),cost=new Map([[start,0]]),prev=new Map(),open=[[d3.geoDistance(seaPt(A0[0],A0[1]),gp),start]],done=new Set();let found=start===goal,guard=0;
+  while(open.length&&!found&&guard++<20000){let bi=0;for(let k=1;k<open.length;k++)if(open[k][0]<open[bi][0])bi=k;const cur=open.splice(bi,1)[0][1];if(done.has(cur))continue;done.add(cur);if(cur===goal){found=true;break}const ci=cur%GW,cj=(cur-ci)/GW,cp=seaPt(ci,cj);
+   for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){if(!di&&!dj)continue;const j=cj+dj,i=((ci+di)%GW+GW)%GW;if(j<0||j>=GH)continue;const nid=id(i,j);if(g[nid]||done.has(nid))continue;if(di&&dj&&(g[id(i,cj)]||g[id(ci,j)]))continue; /* no squeezing diagonally between two land squares */const np=seaPt(i,j),c=cost.get(cur)+d3.geoDistance(cp,np);if(c<(cost.has(nid)?cost.get(nid):1e9)){cost.set(nid,c);prev.set(nid,cur);open.push([c+d3.geoDistance(np,gp),nid])}}}
+  if(!found)return straight;const cells=[];for(let c=goal;c!==undefined;c=prev.get(c)){cells.unshift(c);if(c===start)break}
+  let pts=[from,...cells.map(c=>seaPt(c%GW,(c-c%GW)/GW)),to];
+  /* straighten: from each point jump to the farthest later point that can be reached without touching land */
+  const out=[pts[0]];for(let a=0;a<pts.length-1;){let b=pts.length-1;while(b>a+1&&!seaClear(pts[a],pts[b],g))b--;out.push(pts[b]);a=b}pts=out;
+  const seg=[];let tot=0;for(let k=1;k<pts.length;k++){const d=d3.geoDistance(pts[k-1],pts[k]);seg.push([tot,d,d3.geoInterpolate(pts[k-1],pts[k])]);tot+=d}if(!(tot>0))return straight;
+  return s=>{const x=clamp(s,0,1)*tot;for(let k=seg.length-1;k>=0;k--)if(x>=seg[k][0]||k===0)return seg[k][2](seg[k][1]>0?Math.min(1,(x-seg[k][0])/seg[k][1]):0)}}
  function drawShip(x,y,th,sz,wake){ctx.save();ctx.translate(x,y);ctx.rotate(th);ctx.scale(sz,sz);
   if(wake){ctx.strokeStyle='rgba(225,240,255,.5)';ctx.lineWidth=.9;ctx.beginPath();ctx.moveTo(-6,-1.6);ctx.lineTo(-17,-4.6);ctx.moveTo(-6,1.6);ctx.lineTo(-17,4.6);ctx.stroke();ctx.strokeStyle='rgba(225,240,255,.25)';ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(-22,0);ctx.stroke()}
   ctx.beginPath();ctx.moveTo(8.5,0);ctx.lineTo(4,-2.6);ctx.lineTo(-6.5,-2.6);ctx.lineTo(-7.5,0);ctx.lineTo(-6.5,2.6);ctx.lineTo(4,2.6);ctx.closePath();ctx.fillStyle='#8f99a6';ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(5,9,14,.9)';ctx.stroke();
