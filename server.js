@@ -597,7 +597,7 @@ function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
-  const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || Date.now() - l.end > 24 * 36e5) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, rows: (l.recap.rows || []).map(({ u, ...r }) => ({ ...r, me: u === uid })), me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
+  const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || l.hide || Date.now() - l.end > 24 * 36e5) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, rows: (l.recap.rows || []).map(({ u, ...r }) => ({ ...r, me: u === uid })), me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
   return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
@@ -1738,6 +1738,7 @@ function chaosTrack() { const c = S.chaos, W = mkWorld(); c.stat = c.stat || {};
   if (c.lead && c.leadH) for (const h of c.leadH) { const o = W.OWN[h]; if (o && o.u !== c.lead && S.users[o.u] && !BOTS.isBot(o.u)) { c.bounty[o.u] = (c.bounty[o.u] || 0) + 1; addNote(o.u, 'event', `💀 Bounty! You took ${core.pname(h)} from the leader: it counts double.`); persist(); } }
   if (lead !== c.lead) { c.lead = lead; persist(); broadcast('config', effCfg()); if (lead) systemMessage(`👑 ${W.A[lead].name} leads the Chaos world and now carries the bounty. Take their land for double points!`); }
   c.leadH = lead ? core.hexesOf(W, lead) : []; }
+if (S.chaosLast && !S.chaosHid1) { S.chaosLast.hide = true; S.chaosHid1 = 1; } // one-time: the owner took down the Nov 25 Chaos world results (a new Chaos round shows its own)
 function chaosRecap(rank) { const c = S.chaos, nm = u => (rank.find(r => r.u === u) || {}).name || ((c.start || {})[u] || {}).name || '', st = c.stat || {}, best = (f) => { let b = null; for (const [u, x] of Object.entries(st)) { const v = f(u, x); if (v > 0 && nm(u) && (!b || v > b.v)) b = { name: nm(u), v }; } return b; };
   const fin = Object.fromEntries(rank.map(r => [r.u, r.provs])), worst = (c.cata || []).slice().sort((a, b) => b.dev + b.n - (a.dev + a.n))[0], kinds = { quake: 0, volcano: 0, tsunami: 0 }; for (const x of c.cata || []) kinds[x.kind] = (kinds[x.kind] || 0) + 1;
   const top1 = f => { const r = rank.slice().sort((a, b) => f(b) - f(a))[0]; return r && f(r) > 0 ? { name: r.name, v: f(r) } : null; };
@@ -3051,14 +3052,14 @@ async function adminRoute(p, req, res, me) {
       for (const k of ['cd', 'income', 'xp']) if (c[k] != null && isFinite(+c[k])) nc[k] = Math.max(0.1, Math.min(10, +c[k]));
       if (c.protectH != null && isFinite(+c.protectH)) nc.protectH = Math.max(0, Math.min(720, +c.protectH));
       if (c.electionH != null && isFinite(+c.electionH)) nc.electionH = Math.max(6, Math.min(720, +c.electionH));
-      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss', 'supply', 'acAuto', 'soften', 'joint']) if (c[k] != null) nc[k] = !!c[k];
+      for (const k of ['war', 'signups', 'botRetire', 'eventsOn', 'conquest', 'weakRule', 'nukeTest', 'councilAuto', 'aiBoss', 'supply', 'acAuto', 'soften', 'joint', 'storeCaps']) if (c[k] != null) nc[k] = !!c[k];
       if (c.lastStandH != null && isFinite(+c.lastStandH)) nc.lastStandH = Math.max(0, Math.min(168, +c.lastStandH));
       if (c.motd != null) nc.motd = String(c.motd).slice(0, 1000);
       if (c.donateUrl != null) { const d = String(c.donateUrl).trim(); if (d && !/^https:\/\/[^\s"'<>]+$/i.test(d)) return send(res, 400, { error: 'The donation link must start with https://' }); nc.donateUrl = d || WP.DEFCFG.donateUrl; }
       if (c.bots != null && isFinite(+c.bots)) nc.bots = Math.max(0, Math.min(30, Math.round(+c.bots)));
       if (S.config.noAI) { nc.bots = 0; nc.aiBoss = false; } // the all-AI-off switch wins until it is turned back off
       if (['yes', 'retaliate', 'no'].includes(c.botWar)) nc.botWar = c.botWar;
-      const diff = Object.keys(nc).filter(k => nc[k] !== S.config[k] && !(S.config[k] === undefined && nc[k] === true && ['supply', 'acAuto', 'soften', 'joint'].includes(k)) /* never set before and still on: not a change */).map(k => `${k}: ${S.config[k] === undefined ? 'default' : S.config[k]} → ${nc[k]}`).join('; ');
+      const diff = Object.keys(nc).filter(k => nc[k] !== S.config[k] && !(S.config[k] === undefined && nc[k] === true && ['supply', 'acAuto', 'soften', 'joint', 'storeCaps'].includes(k)) /* never set before and still on: not a change */).map(k => `${k}: ${S.config[k] === undefined ? 'default' : S.config[k]} → ${nc[k]}`).join('; ');
       S.config = nc; persist(); broadcast('config', effCfg()); audit(me.name, 'Changed game settings', null, diff || 'no changes');
       return send(res, 200, { ok: true, config: nc });
     }

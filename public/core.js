@@ -639,7 +639,7 @@ function Core(PD, CARDS) {
   // ---- money ledger: where a nation's treasury came from and went, per day (UTC), kept for 8 days. Private to the owner.
   // Every change to the treasury is filed under a heading; whatever nobody filed is caught by finSync and filed under the heading it is given.
   const FIN = { days: 8,
-    i: { tax: 'Taxes you collected', taxauto: 'Automatic tax income', prov: 'Outlying provinces', market: 'Market sales', trade: 'Aid, deals and gifts received', loans: 'Bonds issued (borrowed)', casino: 'Casino winnings', attacks: 'War loot', covert: 'Spy operations', rewards: 'Rewards, missions and bonuses', develop: 'Trade routes', tribute: 'Tribute from vassals', exped: 'Expeditions', projects: 'Project refunds', nuclear: 'Nuclear and Golden Dome', military: 'Selling military units', expand: 'Expansion', ops: 'Operations and decisions', council: 'World Council', auto: 'Events and other automatic income', other: 'Other income' },
+    i: { tax: 'Taxes you collected', taxauto: 'Automatic tax income', prov: 'Outlying provinces', market: 'Market sales', ovf: 'Warehouse overflow sold', trade: 'Aid, deals and gifts received', loans: 'Bonds issued (borrowed)', casino: 'Casino winnings', attacks: 'War loot', covert: 'Spy operations', rewards: 'Rewards, missions and bonuses', develop: 'Trade routes', tribute: 'Tribute from vassals', exped: 'Expeditions', projects: 'Project refunds', nuclear: 'Nuclear and Golden Dome', military: 'Selling military units', expand: 'Expansion', ops: 'Operations and decisions', council: 'World Council', auto: 'Events and other automatic income', other: 'Other income' },
     o: { bud_mil: 'Budget: military', bud_health: 'Budget: health', bud_edu: 'Budget: education', bud_infra: 'Budget: infrastructure', bud_other: 'Budget: other', dome: 'Golden Dome upkeep', units: 'Elite unit upkeep', warcost: 'Cost of being at war', interest: 'Interest on debt', nuclear: 'Nuclear program, inspections and Dome', military: 'Recruiting and building forces', attacks: 'Attacks and strikes', research: 'Research', develop: 'Development and upgrades', expand: 'Expansion and new provinces', market: 'Market purchases', trade: 'Aid, deals and donations sent', loans: 'Debt repaid', casino: 'Casino losses', projects: 'Megaprojects', covert: 'Spy operations', ops: 'Operations, decisions and laws', council: 'World Council and fines', admin: 'Administration over capacity', tribute: 'Tribute to your overlord', exped: 'Expeditions', tax: 'Taxes', auto: 'Events and other automatic costs', other: 'Other spending' } };
   function finAdd(W, n, cat, amt) { // amt: + money in, - money out
     if (!n || n.ai || !amt || !isFinite(amt)) return; const f = n.fin || (n.fin = { d: {} }); f.d = f.d || {};
@@ -889,7 +889,7 @@ function Core(PD, CARDS) {
     return null;
   }
   // everything a player needs to judge an attack, computed the same way the battle is
-  function attackPlan(W, u, h, X, AIR) {
+  function attackPlan(W, u, h, X, AIR, mode) {
     const me = W.A[u], v = owner(W, h), d = v && W.A[v]; if (!me || !d) return null;
     const r = reachBy(W, u, h); if (!r) return null;
     const SEA = r.rt === 'sea' || r.rt === 'ocean', AIRB = r.rt === 'air', perShip = PER_SHIP[r.rt] || 0;
@@ -897,15 +897,16 @@ function Core(PD, CARDS) {
     X = X == null ? Math.floor(maxX * .8) : Math.max(0, Math.min(maxX, Math.floor(X))); AIR = AIR == null ? Math.floor((me.air || 0) * .8) : Math.max(0, Math.min(me.air || 0, Math.floor(AIR)));
     if (AIRB) { AIR = Math.max(AIR, Math.min(me.air || 0, Math.ceil(X / AIRBORNE.per))); X = Math.min(X, AIR * AIRBORNE.per); } // the aircraft carry the troops
     const mult = routeMult(r, me), cx = routeCostX(r, me), base = atkCost(W, X);
-    const cost = { cash: Math.round(base.cash * cx), oil: Math.ceil(base.oil * cx) + AIR * 2, food: Math.ceil(base.food * cx) };
+    const armWhy = armorWhy(r.rt), ARM = mode === 'armor' && !armWhy;
+    const cost = { cash: Math.round(base.cash * cx), oil: Math.ceil(base.oil * cx * (ARM ? ARMOR.oilX : 1)) + AIR * 2, food: Math.ceil(base.food * cx), steel: ARM ? Math.ceil(X * ARMOR.steel) : 0 };
     const sup = jointSupport(W, u, v), supStr = sup.reduce((t, x) => t + x.str, 0);
-    const atk = (X + AIR * 20) * atkMult(me) * mult * (rogue(W, d) ? 1.15 : 1) * Math.sqrt(gapF(me, d)) + supStr, def = defense(W, h, u);
+    const atk = (X * (ARM ? ARMOR.atk : 1) + AIR * 20) * atkMult(me) * mult * (rogue(W, d) ? 1.15 : 1) * Math.sqrt(gapF(me, d)) + supStr, def = defense(W, h, u);
     // chance: average over the battle's random spread (attack ±15%, defense ±10%), times the chance of winning at sea first
     const grid = (a, b, sa, sb) => { let w = 0; for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) if (a * (1 - sa + 2 * sa * (i + .5) / 20) > b * (1 - sb + 2 * sb * (j + .5) / 20)) w++; return w / 400; };
     let chance = def > 0 ? grid(atk, def, .15, .1) : 1;
     if (SEA && d.ships > 0) chance *= grid((me.ships || 0) * 25 * techF(me), navalDefense(W, h), .15, .1);
     if (AIRB && d.air > 0) chance *= 1 - Math.min(.5, d.air / (d.air + AIR * 1.5) * .25); // some transports may be shot down
-    return { rt: r.rt, km: r.km, via: r.via, staged: r.staged, mult, costX: cx, X, AIR, maxX, perShip: AIRB ? AIRBORNE.per : perShip, cost, atk: Math.round(atk), def: Math.round(def), chance, sup, supStr: Math.round(supStr), bat: batOf(W, d, h), regroupMin: r.rt === 'ocean' || AIRB ? 60 : r.rt === 'march' ? 45 : 30 };
+    return { rt: r.rt, km: r.km, via: r.via, staged: r.staged, mult, costX: cx, X, AIR, maxX, perShip: AIRB ? AIRBORNE.per : perShip, cost, atk: Math.round(atk), def: Math.round(def), chance, sup, supStr: Math.round(supStr), bat: batOf(W, d, h), mode: ARM ? 'armor' : 'inf', armWhy, dev: devLvl(d, h), lossF: ARM ? ARMOR.loss : 1, regroupMin: r.rt === 'ocean' || AIRB ? 60 : r.rt === 'march' ? 45 : 30 };
   }
   const terrainF = (h, rt) => (P[h].m ? 1.25 : 1) * (P[h].r && rt === 'land' ? 1.15 : 1);
   const opLvl = (n, h) => n && n.outposts && n.outposts[h] ? Math.min(OUTLV.max, Math.max(1, (n.opl || {})[h] || 1)) : 0;
@@ -1006,6 +1007,26 @@ function Core(PD, CARDS) {
   const cdF = d => 1 - UPG.lvl.list.civil.f * lvlL(d, 'civil'); // civil defence: how much of the usual damage from bombs, missiles and nukes still lands
   const storeKeep = d => 1 - UPG.lvl.list.store.protect * lvlL(d, 'store'); // strategic reserve: the share of a stockpile that bombing, sabotage and raids can still reach
   const reserveCap = n => Math.floor(troopCap(n) * UPG.reserve.capF);
+  // STORAGE CAPS: food, oil and steel only fit in your warehouses. Each holds 48 hours of whichever is bigger, what you make or what you use, plus 24 hours per warehouse level (a week at level 5), and never less than a floor that grows with your land.
+  // Production that does not fit is sold on the world market at a forced-sale discount. Stock already above the cap is not taken: 2% of the extra is sold each hour until it fits.
+  // FOOD SPOILS: food beyond two days of what your people eat loses 0.5% of the extra each hour; every warehouse level slows that by 10%.
+  const STORE = { res: ['food', 'oil', 'steel'], baseH: 48, perLvH: 24, floor: 50000, perProv: 5000, sellF: .6, drainH: .02, spoil: { safeH: 48, floor: 20000, pctH: .005, lvlCut: .1 } };
+  function storeCaps(W, u, p, c) { const n = W.A[u]; if (!n) return {}; p = p || production(W, u); c = c || consumption(n); const lv = lvlL(n, 'store'), H = STORE.baseH + STORE.perLvH * lv, fl = STORE.floor + STORE.perProv * hexesOf(W, u).length, o = {};
+    for (const r of STORE.res) o[r] = Math.max(fl, Math.round(6 * H * Math.max(p[r] || 0, c[r] || 0))); return o; }
+  const storeRoom = (W, u, r) => { if (!STORE.res.includes(r)) return Infinity; const n = W.A[u]; return Math.max(0, storeCaps(W, u)[r] - Math.floor((n.res || {})[r] || 0)); };
+  const spoilSafe = (n, c) => Math.max(STORE.spoil.floor, Math.round((c || consumption(n)).food * 6 * STORE.spoil.safeH));
+  const spoilRate = n => STORE.spoil.pctH * (1 - STORE.spoil.lvlCut * lvlL(n, 'store')); // share of the extra food lost per hour
+  const storeOn = W => W.cfg.storeCaps !== false;
+  // one 10-minute step: spoil food, then sell whatever no longer fits. pre = the stock before this step's production was added
+  function storeStep(W, u, p, c, pre) { const n = W.A[u]; if (!n || (n.ai && n.ai.boss) || !storeOn(W)) return; const day = Math.floor(W.now / 864e5); if (!n.ovf || n.ovf.d !== day) n.ovf = { d: day, q: {}, got: 0, spoil: 0 };
+    const safe = spoilSafe(n, c); if (n.res.food > safe) { const lost = Math.floor((n.res.food - safe) * spoilRate(n) / 6); if (lost > 0) { n.res.food -= lost; n.ovf.spoil += lost; } }
+    const cap = storeCaps(W, u, p, c), s = spreads(W, u);
+    for (const r of STORE.res) { const have = n.res[r] || 0; if (have <= cap[r]) continue;
+      const fresh = Math.max(0, have - Math.max(pre[r] || 0, cap[r])), old = Math.max(0, Math.min(have, pre[r] || 0) - cap[r]), drain = Math.ceil(old * STORE.drainH / 6);
+      let q = fresh + drain; if (mkOn(W)) { const room = Math.floor(mkRoomSell(W, r)); if (q > room) { const waste = Math.max(0, fresh - room); n.res[r] -= waste; n.ovf.w = (n.ovf.w || 0) + waste; q = Math.min(room, q); } }
+      if (q <= 0) continue; const got = Math.round(RES[r].p * (W.m.price[r] || 1) * s.sell * STORE.sellF * q);
+      n.res[r] -= q; n.cash += got; n.exp = (n.exp || 0) + got; n.ovf.q[r] = (n.ovf.q[r] || 0) + q; n.ovf.got += got; if (mkOn(W)) { W.MK.stock[r] = mkStock(W, r) + q; W.mkch = W.mkch || 1; } }
+    finSync(W, n, 'ovf'); }
   function upgrade(W, u, grp, k) { const n = W.A[u]; if (!n) fail('Found a nation first.'); if (grp !== 'min' && grp !== 'lvl') fail('Unknown upgrade.'); const G = UPG[grp]; if (!has(G.list, k)) fail('Unknown upgrade.');
     const l = grp === 'min' ? minL(n, k) : lvlL(n, k); if (l >= G.max) fail(`${G.list[k].n} is already at its top level.`); const c = upCost(W, u, grp, k); if ((n.cash || 0) < c) fail(`Level ${l + 1} costs ${money(c)}.`);
     n.cash -= c; n.up = n.up || {}; n.up[grp] = { ...(n.up[grp] || {}), [k]: l + 1 }; gainXP(W, u, 10); log(n, `${G.list[k].n} raised to level ${l + 1} (${money(c)}).`, W); touch(W, u); return { msg: `${G.list[k].n} is now level ${l + 1}.` }; }
@@ -1208,7 +1229,12 @@ function Core(PD, CARDS) {
     return { msg: msg + clear, ok, clear: !!clear };
   }
 
-  function attack(W, u, h, X, AIR, rng, mkVassal) { dropShield(W.A[u]);
+  // ARMORED ASSAULT: tanks and APCs instead of a plain infantry invasion. Hits 60% harder, loses about half as many troops and kills more defenders,
+  // but burns steel (one per five troops) and three times the oil, needs a land route (a border or a march), and wrecks two development levels of what it takes, with half the loot.
+  // An infantry invasion takes a province with its development intact.
+  const ARMOR = { atk: 1.6, loss: .5, lossD: 1.3, steel: .2, oilX: 3, drop: 2, loot: .5, routes: ['land', 'march'] };
+  const armorWhy = (rt) => ARMOR.routes.includes(rt) ? null : 'Tanks need a land route: a border or a march. Use infantry for sea, overseas and airborne invasions.';
+  function attack(W, u, h, X, AIR, rng, mkVassal, mode) { dropShield(W.A[u]); const ARM = mode === 'armor';
     const me = W.A[u]; h = Number(h); if (!Number.isInteger(h) || !P[h]) fail('Unknown province.'); const why = canAttack(W, u, h); if (why) fail(why);
     X = Math.floor(Number(X)); AIR = Math.max(0, Math.floor(Number(AIR) || 0));
     if (!(X >= 10) || X > me.troops) fail('Commit at least 10 troops, and no more than you have.');
@@ -1216,11 +1242,12 @@ function Core(PD, CARDS) {
     const RCH = reachBy(W, u, h), rt = RCH.rt, SEA = rt === 'sea' || rt === 'ocean', OCEAN = rt === 'ocean', MARCH = rt === 'march', AIRB = rt === 'air', perShip = PER_SHIP[rt] || 0, shipsNeeded = SEA ? Math.ceil(X / perShip) : 0;
     if (AIRB && AIR * AIRBORNE.per < X) fail(`An airborne invasion of ${num(X)} troops needs ${num(Math.ceil(X / AIRBORNE.per))} aircraft to fly them in (${num(AIRBORNE.per)} troops each). Commit more aircraft or fewer troops.`);
     if (shipsNeeded > me.ships) fail(`${OCEAN ? 'An overseas' : 'A sea'} invasion of ${num(X)} troops needs ${num(shipsNeeded)} warships to carry them (${num(perShip)} troops each). You have ${me.ships}.`);
-    const c = atkCost(W, X), cx = routeCostX(RCH, me); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx); c.food = Math.ceil(c.food * cx); if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food) fail(`This operation requires ${money(c.cash)}, ${num(c.oil + AIR * 2)} oil and ${num(c.food)} food.`);
+    if (ARM) { const w = armorWhy(rt); if (w) fail(w); }
+    const c = atkCost(W, X), cx = routeCostX(RCH, me); c.cash = Math.round(c.cash * cx); c.oil = Math.ceil(c.oil * cx * (ARM ? ARMOR.oilX : 1)); c.food = Math.ceil(c.food * cx); c.steel = ARM ? Math.ceil(X * ARMOR.steel) : 0; if (me.cash < c.cash || me.res.oil < c.oil + AIR * 2 || me.res.food < c.food || (me.res.steel || 0) < c.steel) fail(`This operation requires ${money(c.cash)}, ${num(c.oil + AIR * 2)} oil${c.steel ? `, ${num(c.steel)} steel` : ''} and ${num(c.food)} food.`);
     const v = owner(W, h), d = W.A[v];
-    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.cd.attack = W.now + tq(W, 15 * MIN); me.regroup = W.now + tq(W, (OCEAN || AIRB ? 60 : MARCH ? 45 : 30) * MIN); const retal = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : retal ? 0 : Math.round((hitRecently(W, u, v) ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u);
+    me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.res.steel -= c.steel; me.cd.attack = W.now + tq(W, 15 * MIN); me.regroup = W.now + tq(W, (OCEAN || AIRB ? 60 : MARCH ? 45 : 30) * MIN); const retal = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : retal ? 0 : Math.round((hitRecently(W, u, v) ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : me.gov === 'dic' ? 1 : 2), 0, 100); me.stability = clamp(me.stability - 1.5, 0, 100);
-    const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null };
+    const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null, mode: ARM ? 'armor' : 'inf' };
     // 1) naval battle for sea invasions
     if (SEA && d.ships > 0) {
       const atkN = me.ships * 25 * techF(me) * (.85 + rng() * .3), defN = navalDefense(W, h) * (.9 + rng() * .2), rn = defN / (atkN + defN);
@@ -1245,11 +1272,11 @@ function Core(PD, CARDS) {
         result.sanctioned = sanctioned(me); return { msg: 'The airdrop was shot down.', battle: result }; } }
     // 2) land battle with air support
     const SUP = jointSupport(W, u, v), supStr = SUP.reduce((t, x) => t + x.str, 0), batK = batOf(W, d, h);
-    const atk = ((X + AIR * 20) * atkMult(me) * routeMult(RCH, me) * (rogue(W, d) ? 1.15 : 1) * Math.sqrt(gapF(me, d)) + supStr) * (.85 + rng() * .3), def = defense(W, h, u) * (.9 + rng() * .2); const win = atk > def, ra = def / (atk + def);
+    const atk = ((X * (ARM ? ARMOR.atk : 1) + AIR * 20) * atkMult(me) * routeMult(RCH, me) * (rogue(W, d) ? 1.15 : 1) * Math.sqrt(gapF(me, d)) + supStr) * (.85 + rng() * .3), def = defense(W, h, u) * (.9 + rng() * .2); const win = atk > def, ra = def / (atk + def);
     if (SUP.length) { result.joint = []; for (const x of SUP) { const n = W.A[x.a], lt = Math.min(n.troops || 0, Math.round(x.X * ra * .6)), la = Math.min(n.air || 0, Math.round(x.air * ra * .3)); n.troops -= lt; n.air = (n.air || 0) - la; n.cd = n.cd || {}; n.cd.joint = W.now + tq(W, JOINT.cdMin * MIN); n.jcd = n.cd.joint; result.joint.push({ name: x.name, X: x.X, air: x.air, lost: lt, airLost: la });
       log(n, `Your forces joined ${me.name}'s assault on ${pname(h)}, ${d.name}: ${num(x.X)} troops sent, ${num(lt)} lost. ${win ? 'The province fell.' : 'The attack was repelled.'}`, W); note(W, x.a, 'war', `⚔ ${num(x.X)} of your troops joined ${me.name}'s assault on ${pname(h)} (${win ? 'won' : 'lost'}): ${num(lt)} lost.`); gainXP(W, x.a, win ? 10 : 3); touch(W, x.a); } }
     if (batK) result.bat = batK;
-    const lossA = Math.min(X, Math.round(X * ra * .6)), lossD = Math.min(d.troops, Math.round(d.troops * .5 * (1 - ra) * .5));
+    const lossA = Math.min(X, Math.round(X * ra * .6 * (ARM ? ARMOR.loss : 1))), lossD = Math.min(d.troops, Math.round(d.troops * .5 * (1 - ra) * .5 * (ARM ? ARMOR.lossD : 1)));
     const airLostA = Math.min(AIR, Math.round(AIR * ra * .3)), airLostD = Math.min(d.air, Math.round(d.air * .5 * (1 - ra) * .3));
     me.troops -= lossA; me.air -= airLostA; d.troops = Math.max(0, d.troops - lossD); d.air -= airLostD;
     let loot = 0;
@@ -1257,10 +1284,10 @@ function Core(PD, CARDS) {
     if (win && isCap && mkVassal) { result.vassal = true; loot = Math.max(0, Math.round(d.cash * VASSAL.loot)); me.cash += loot; d.cash -= loot; endWar(W, u, v); for (const x of vassalsOf(W, v)) { delete W.A[x].overlord; delete W.A[x].vassalT; touch(W, x); } d.overlord = u; d.vassalT = W.now; delete d.lastStand; gainXP(W, u, 150);
       log(me, `${d.name} surrendered and is now your vassal: it pays you tribute every 10 minutes. You took ${money(loot)} from its treasury.`, W); log(d, `${me.name} took your capital. You are now its vassal and pay it tribute. You may declare independence after ${VASSAL.freeH} hours.`, W);
       note(W, v, 'attack', `👑 ${me.name} took your capital. You are now its vassal: you keep your land but pay tribute. You can declare independence in ${VASSAL.freeH} hours.`); news(W, u, `👑 ${d.name} has surrendered and become a vassal of ${me.name}.`); Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); seasonWin(W, u, v); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, vassal: 1, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0 }); touch(W, u, v); return { msg: `👑 ${d.name} surrendered and is now your vassal.`, battle: result }; }
-    else if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25)); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
+    else if (win && isCap) { result.conquered = true; if (d.wonders && Object.keys(d.wonders).length) { me.wonders = { ...(me.wonders || {}), ...d.wonders }; news(W, u, `${me.name} seized ${Object.keys(d.wonders).map(k => 'the ' + WONDERS[k].n).join(' and ')} from ${d.name}.`); d.wonders = {}; } loot = Math.max(0, Math.round(d.cash * .25 * (ARM ? ARMOR.loot : 1))); me.cash += loot; for (const r in RES) me.res[r] = (me.res[r] || 0) + Math.floor((d.res[r] || 0) * .5 * (ARM ? ARMOR.loot : 1)); me.hexes[h] = W.now; me.lastStand = 0; gainXP(W, u, 150); }
     else if (false) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; if (d.dev) delete d.dev[h]; if (d.conq) delete d.conq[h]; W.OWN = computeOwn(W.A); result.freed = true; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       log(me, `Your forces drove ${d.name} out of ${pname(h)}, but your empire is at its province limit (${maxHex(me)}), so the province is now free land.`, W); }
-    else if (win) { loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60))); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, 1); me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
+    else if (win) { const dl0 = devLvl(d, h); loot = Math.round(Math.max(0, Math.min(d.cash * .05, X * 60)) * (ARM ? ARMOR.loot : 1)); me.cash += loot; d.cash -= loot; delete d.hexes[h]; xferDev(W, v, u, h, ARM ? ARMOR.drop : 0); result.dev = { from: dl0, to: Math.max(0, dl0 - (ARM ? ARMOR.drop : 0)) }; me.hexes[h] = W.now; me.lastStand = 0; W.OWN[h] = { u, ts: W.now }; d.approval = clamp(d.approval - 4, 0, 100); d.stability = clamp(d.stability - 3, 0, 100); gainXP(W, u, 40);
       if (W.cfg.conquest && Object.keys(d.hexes).length === 1 && !d.lastStand) { d.lastStand = W.now; log(d, `Only your capital remains. In ${W.cfg.lastStandH ?? 24} hours it can be besieged — make peace, rally allies, fortify, or retake land.`, W); note(W, v, 'attack', `LAST STAND: ${d.name} has only its capital left. Enemies can besiege it in ${W.cfg.lastStandH ?? 24} hours.`); news(W, v, `${d.name} has lost all but its capital and is making a last stand.`); } }
     else gainXP(W, u, 5);
     Object.assign(result, { win, atk: Math.round(atk), def: Math.round(def), lossA, lossD, loot, airLostA, airLostD, sanctioned: sanctioned(me) }); if (win) seasonWin(W, u, v);
@@ -1272,7 +1299,7 @@ function Core(PD, CARDS) {
     // newly conquered land may rebel unless it is garrisoned
     if (win && !isCap && !result.freed) { me.conq = me.conq || {}; me.conq[h] = { t: W.now, from: v }; }
     for (const a of allies(W, v)) if (a !== u) note(W, a, 'war', `${me.name} ${win ? 'captured' : 'attacked'} ${pname(h)} from your ally ${d.name}.`);
-    aggrHit(W, u, v, 'battle'); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0 });
+    aggrHit(W, u, v, 'battle'); pushOut(W, u, { type: 'battle', to: v, h, X, win, lossA, lossD, loot, sea: SEA ? 1 : 0, ocean: OCEAN ? 1 : 0, air: AIRB ? 1 : 0, armor: ARM ? 1 : 0 });
     if (result.conquered) {
       const days = Math.max(0, (W.now - (d.created || W.now)) / 864e5);
       news(W, u, `${me.name} has conquered ${d.name}. ${d.name} has fallen after ${days < 1 ? 'less than a day' : Math.floor(days) + ' day' + (Math.floor(days) === 1 ? '' : 's')}.`);
@@ -1818,6 +1845,7 @@ function Core(PD, CARDS) {
     if (rogue(W, me)) fail('Your nation is a rogue state under a full international embargo. The world market is closed to you.');
     q = Math.floor(Number(q)); if (!(q > 0) || (q > 1e6 && !(buy && emer))) fail('Enter a valid quantity.'); // an emergency import is capped by what the nation needs, not by the order size
     const s = spreads(W, u), base = RES[r].p * (W.m.price[r] || 1); let msg;
+    if (buy && !emer && storeOn(W) && STORE.res.includes(r)) { const room = storeRoom(W, u, r); if (!room) fail(`Your warehouses are full of ${rName(r)} (${num(storeCaps(W, u)[r])}). Build more warehouse levels on the Development page to store more.`); if (q > room) fail(`Your warehouses only have room for ${num(room)} more ${rName(r)}.`); }
     if (buy && r === 'mun' && q > munRoom(me)) fail(munRoom(me) ? `Your depots only have room for ${num(munRoom(me))} more munitions.` : `Your depots are full (${num(MUN.cap(me))} munitions).`);
     if (buy && emer) { if (!mkOn(W) || r !== 'food') fail('Emergency imports are only for food while the world market has limited stock.'); const room = emerRoom(W, u); if (!room) fail(`Emergency food is only for a nation about to run out: it unlocks when your food would last less than ${MKT.emerLow} hours.`);
       q = Math.min(q, room); const cost = Math.round(emerUnit(W, u) * q); if (cost > me.cash) fail(`That emergency import costs ${money(cost)}.`); me.cash -= cost; me.res.food += q; me.imp = (me.imp || 0) + cost; msg = `Emergency import: ${num(q)} food for ${money(cost)} (three times the normal price).`; }
@@ -1852,7 +1880,7 @@ function Core(PD, CARDS) {
     if (n.autoT && W.now - n.autoT < AUTOBUY.everyMs) return false; n.autoT = W.now; let ch = false;
     for (const r of ks) {
       const o = n.auto[r]; if ((n.res[r] || 0) >= o.below) continue;
-      let q = o.q; if (r === 'mun') q = Math.min(q, munRoom(n)); let emer = false;
+      let q = o.q; if (r === 'mun') q = Math.min(q, munRoom(n)); if (storeOn(W) && STORE.res.includes(r)) { q = Math.min(q, storeRoom(W, u, r)); if (q <= 0) continue; } let emer = false; // never buy what the warehouses cannot hold
       if (mkOn(W) && q > 0) { const room = Math.min(Math.floor(mkStock(W, r)), mkLeft(W, u, r)); if (room < q) { if (r === 'food' && emerRoom(W, u)) { emer = true; q = Math.min(q, emerRoom(W, u)); } else if (room > 0) q = room; else { o.fail = mkStock(W, r) < 1 ? 'the world market is out of stock' : 'you reached your 24-hour import limit'; o.failT = W.now; if (!o.warnT || W.now - o.warnT > AUTOBUY.warnH * HOUR) { o.warnT = W.now; note(W, u, 'economy', `🛒 Auto-buy couldn't restock ${rName(r)}: ${o.fail}.`); log(n, `Auto-buy skipped for ${rName(r)}: ${o.fail}.`, W); } ch = true; continue; } } }
       const why = q <= 0 ? 'your depots are full' : embargoed(W, n) ? 'a World Council embargo closes the world market to you' : (n.blockade || 0) > W.now ? 'enemy warships are blockading your ports' : rogue(W, n) ? 'rogue states are shut out of the world market' : null;
       let cost = 0, unit = 0; if (!why) { unit = emer ? emerUnit(W, u) : autoUnit(W, u, r, q); cost = Math.round(unit * q); }
@@ -2254,7 +2282,7 @@ function Core(PD, CARDS) {
   // ---------- passive simulation (every 10 real minutes) ----------
   function tickOnce(W, u, rng) {
     const n = W.A[u], hs = hexesOf(W, u), p = production(W, u), c = consumption(n), g = GOV[n.gov], w = wars(W, u).filter(v => !(W.A[v] && W.A[v].ai && W.A[v].ai.boss)).length, b = budget(n);
-    for (const r in p) n.res[r] += p[r] - c[r];
+    const pre = { ...n.res }; for (const r in p) n.res[r] += p[r] - c[r]; storeStep(W, u, p, c, pre);
     n.cash += hs.filter(h => ['P', 'D'].includes(P[h].t) && h != n.cap).length * 2000 * W.cfg.income; finSync(W, n, 'prov');
     // government budget
     const spend = spendPerTick(n), domeK = domeUpkeep(W, n); n.cash -= spend + domeK; { const bs = (b.mil || 0) + (b.health || 0) + (b.edu || 0) + (b.infra || 0) || 1; for (const k of ['mil', 'health', 'edu', 'infra']) finAdd(W, n, 'bud_' + k, -spend * (b[k] || 0) / bs); finAdd(W, n, 'dome', -domeK); finSync(W, n, 'bud_other'); } n.spent = (n.spent || 0) * .993 + spend + domeK; n.rev = (n.rev || 0) * .993;
@@ -3113,7 +3141,7 @@ function Core(PD, CARDS) {
       case 'act': return act(W, u, String(c.k), c.arg, rng);
       case 'decide': return decide(W, u, String(c.id), c.o, rng);
       case 'joint': return jointSet(W, u, c.share);
-      case 'attack': return attack(W, u, c.h, c.x, c.air, rng, !!c.vassal);
+      case 'attack': return attack(W, u, c.h, c.x, c.air, rng, !!c.vassal, c.mode === 'armor' ? 'armor' : 'inf');
       case 'strike': return strike(W, u, String(c.v), String(c.kind), String(c.target), c.n, rng);
       case 'nuke': return buildNuke(W, u);
       case 'ntest': return nukeTest(W, u, rng, c.delay);
@@ -3191,7 +3219,7 @@ function Core(PD, CARDS) {
   }
 
 
-  return { INFRA_LV, infraLv, infraF, infraDesc, progNeed, MERC, HQ, SPACE, mercOn, hqLv, BATTER, batOf, batF, JOINT, jointSupport, supplyOn, OUTLV, SUPPLY, opLvl, supplyKm, supplyF, opUpCost, opUpCheck, provInfo, hexRaw, EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { INFRA_LV, infraLv, infraF, infraDesc, progNeed, ARMOR, armorWhy, STORE, storeCaps, storeRoom, spoilSafe, spoilRate, storeOn, storeStep, MERC, HQ, SPACE, mercOn, hqLv, BATTER, batOf, batF, JOINT, jointSupport, supplyOn, OUTLV, SUPPLY, opLvl, supplyKm, supplyF, opUpCost, opUpCheck, provInfo, hexRaw, EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, TREATY_BREAK, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
