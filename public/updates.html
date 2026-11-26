@@ -28,6 +28,12 @@ h1{font-family:Cinzel,Georgia,serif;font-size:40px;letter-spacing:.03em;margin:3
 <script>
 /* newest first; keep the last 10 */
 const UPDATES=[
+ {when:'Nov 25',title:'Fixed: budget page showed the army as funded when it was not',items:[
+  'The budget summary on the Economy page left out laws and wonders that change government spending (for example Free Market, −6%). So it could say your military share covered upkeep while the game actually paid less, and morale kept falling. It now uses exactly the same numbers as the game.',
+  'If the army is short, it now says by how much and the lowest military share that covers it. Small shares show a decimal (2.3% instead of 2%).',
+  'Tip: building warships, aircraft or troops raises upkeep, so leave a little room above the minimum, or use Fix budget on the Military page.',
+  '<b>The budget sliders now say what they do to GDP.</b> Health is worth up to ±15% of GDP, education ±30% and infrastructure ±8%. Under each slider a line shows where that score is heading with your budget and what it costs you in GDP, and says when you are paying for more than you need. (Suggested by New America.)'
+ ]},
  {when:'Nov 25',title:'Tanks, Armored Divisions and steel upkeep',items:[
   '<b>🛡 Armored Division:</b> a new prestige unit next to the Stealth Bomber Wing (Military page): $5B, 5,000 steel and 3,000 oil, tech 40. You need one to launch an armored assault. Buy up to 3: one gives +40% strength and 60% of the usual losses, two give +60% and 50%, three give +80% and 40%.',
   '<b>Build Tanks</b> is a new operation. Each tank carries 250 troops into an armored assault, and only troops with tanks get the armor bonus. Some tanks are lost in battle.',
