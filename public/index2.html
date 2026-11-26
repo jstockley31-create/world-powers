@@ -2754,7 +2754,7 @@ const GL=(()=>{
  function strike(fx,quiet){if(!fx||!P[fx.h]||SK.some(x=>x.fx.id===fx.id))return;const hv_=fx.heavy,sea_=hv_==='sub'||hv_==='blockade'||hv_==='carrier',from=P[fx.from]?(sea_||hv_==='bombard'||hv_==='subsalvo'?seaSpot(fx.from):P[fx.from].c):null,to=sea_?seaSpot(fx.h):P[fx.h].c,dist=from?d3.geoDistance(from,to):0,air_=fx.kind==='air';
   const dur=!from?0:fx.heavy==='stealth'?clamp(9000+dist*3500,9000,16000):fx.heavy==='subsalvo'?clamp(3200+dist*2000,3200,5000):air_?clamp(3800+dist*1300,3800,6500):fx.heavy==='hypersonic'?clamp(3200+dist*900,3200,5200):fx.heavy==='orbital'?4200:fx.heavy==='artillery'||fx.heavy==='bombard'?clamp(2400+dist*2500,2400,4200):sea_?clamp(6000+dist*3000,6000,9000):fx.heavy==='ballistic'?clamp(10000+dist*3000,10000,16500):clamp(6500+dist*2400,6500,11000),ago=Math.max(0,Date.now()-(fx.t||Date.now()));
   const R=seedOf(fx.id),n=hv_==='bombard'?clamp(Math.round((fx.n||1)/15),4,6):hv_==='blockade'?3:hv_==='carrier'?4:hv_==='stealth'?1:air_?clamp(Math.round((fx.n||5)/8),3,7):clamp(fx.n||1,1,20),lostN=air_?Math.min(n-1,fx.lost?Math.max(1,Math.round(n*fx.lost/Math.max(1,fx.n))):0):Math.min(n,fx.icept||0); /* every missile reaches the target and explodes there, except the ones a Golden Dome shoots down */
-  const ml=hv_==='carrier'?1:air_?((n-1)/2)*.034:(n-1)*Math.min(.085,.5/n), /* the carrier group also sails home again */D=reduce?0:dur,cycle=D*(1+ml)+1800+1600,loops=!D?0:Math.max(4,Math.ceil(75000/cycle)); // replays for about 75 seconds so everyone has time to find it
+  const ml=hv_==='carrier'?1:air_?((n-1)/2)*.034:(n-1)*Math.min(.085,.5/n), /* the carrier group also sails home again */D=reduce?0:dur,cycle=D*(1+ml)+1800+1600,loops=!D?0:Math.max(2,Math.ceil(35000/cycle)); // replays for about 35 seconds so people have time to find it
   SK.push({fx,from,to,dist,dur:D,ml,loops,cycle,t0:performance.now()-ago,n,lostN,stops:Array.from({length:n},()=>.55+R()*.3),jit:Array.from({length:12},()=>[R()*2-1,R()*2-1]),ip:from?d3.geoInterpolate(from,to):null});
   while(SK.length>80)SK.shift();if(!fx.dirty&&!fx.noburn){const b=BURN.get(fx.h),hit=(fx.t||Date.now())+D;burn(fx.h,hit,quiet?(b?b.n:1):(b&&hit-b.t<SMOKE_MS?b.n:0)+1)}kick();smokeLoop()}
  // a province on fire: last hit time and number of hits (from the server at login, then live)
@@ -2775,7 +2775,7 @@ const GL=(()=>{
    // a dirty bomb: a drifting green radioactive cloud over the province for 24 hours
    for(const rc of C.radClouds({now},n))if(P[rc.h]&&dot(unit(P[rc.h].c),cvv)>-.1)drawRad(rc,cvv,now); /* one cloud per province hit */
    // Golden Dome: a translucent golden dome raised over the heart of the nation
-   const G=domeGeo(n);if(G&&dot(unit(G.c),cvv)>.22)drawDome(u,G,cvv)}}
+   const G=domeGeo(n);if(G&&dot(unit(G.c),cvv)>.22){drawDome(u,G,cvv);drawBatteries(u,G,cvv)}}}
  const radSites=()=>{const now=Date.now(),out=[];for(const n of Object.values(A))if(n)for(const rc of C.radClouds({now},n))if(P[rc.h])out.push(P[rc.h].c);return out};
  function drawRad(rd,cvv,now){smokeLoop();const c=P[rd.h].c,km=(C.DIRTY&&C.DIRTY.km)||260,life=Math.min(1,(rd.until-now)/(4*36e5)),grow=Math.min(1,(now-rd.t)/(90e3)),a0=Math.max(.25,life)*(.4+.6*grow),pk=radius()/6371,cosL=Math.cos(c[1]*RAD),t=now/1000;
   ringPath(c,km);ctx.fillStyle=`rgba(150,230,70,${.07*a0})`;ctx.fill();ctx.setLineDash([5,6]);ctx.strokeStyle=`rgba(180,255,100,${.6*a0})`;ctx.lineWidth=1.2;ctx.stroke();ctx.setLineDash([]);
@@ -2783,7 +2783,7 @@ const GL=(()=>{
   for(let i=0;i<18;i++){const ang=i*2.39996+t*(.012+(i%3)*.004),rr=km*(.1+.65*((i*37)%11)/11)*(.5+.5*grow),dx=Math.cos(ang)*rr,dy=Math.sin(ang)*rr*.8,p=[c[0]+dx/111/Math.max(.2,cosL),c[1]+dy/111];if(dot(unit(p),cvv)<.05)continue;const xy=proj(p),sz=Math.max(9,(110+70*((i*53)%7)/7)*pk*(.6+.4*grow)),wob=1+.08*Math.sin(t*.7+i);blit('radc',G_RADC,xy[0],xy[1],sz*wob,a0*(.55+.3*((i*13)%5)/5))}
   if(dot(unit(c),cvv)>Math.cos(1.45)){const g=proj(c),fs=Math.round(clamp(10+st.scale*3,11,22));ctx.font=`bold ${fs}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=3;ctx.strokeStyle='rgba(5,9,14,.8)';ctx.strokeText('☢',g[0],g[1]);ctx.fillStyle=`rgba(200,255,120,${.95*a0})`;ctx.fillText('☢',g[0],g[1])}}
  // the dome: a half-ellipsoid over the capital, raised up the screen like a dome standing on the map, with ribs, a highlight and a flash where missiles hit it
- const DGEO=new Map(),DHIT=new Map(),DLAT=[0,15,30,45,60,75,90];
+ const DGEO=new Map(),DHIT=new Map(),DRIP=new Map(),DLAT=[0,15,30,45,60,75,90];
  function domeGeo(n){if(!n||!n.dome||!P[n.cap])return null;const hx=Object.keys(n.hexes||{}),key=n.cap+':'+hx.length+':'+(n.dome.lvl||1);let g=DGEO.get(n);const emp=n.dome.ready<=Date.now()?C.domeEmp(null,n):0,on=n.dome.ready<=Date.now()&&!n.dome.off&&!emp&&(n.cash||0)>=0;if(g&&g.key===key){g.on=on;g.emp=emp;return g}
   const c=P[n.cap].c,km=C.domeKm?C.domeKm(n):600,d=km/6371; // drawn at its real reach: only provinces inside it are protected
   g={key,c,km,d,hd:d*.9,on,emp,rings:DLAT.map(t=>t===90?null:ringPts(c,km*Math.cos(t*RAD)))};DGEO.set(n,g);return g}
@@ -2801,6 +2801,7 @@ const GL=(()=>{
   const poly=pts=>{ctx.beginPath();let pen=false;for(let i=0,n=pts.length;i<n;i++){if(stp>1&&i%stp&&i!==n-1&&pts[i]&&pts[i-1]&&pts[i+1])continue;const q=pts[i];if(!q){pen=false;continue}pen?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);pen=true}};
   {let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,n=0;for(const q of R[0])if(q){n++;x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])}
    G.scr=n>20&&on?{bx:(x0+x1)/2,by:(y0+y1)/2,ax:Math.max(4,(x1-x0)/2),ay:Math.max(3,(y1-y0)/2),hp:G.hd*Rg,t:performance.now()}:null}
+  if(!DOME_SHELL)return; /* the shield itself is invisible, as in real life: only its missile batteries are drawn. Its outline is still worked out above, because that is where missiles are met */
   if(G.emp){ /* knocked out by an EMP: the shell stays up but turns an electric blue, flickers like a failing circuit and throws off sparks; it stops nothing until it comes back */
    const fl=.55+.45*Math.abs(Math.sin(now/90))*(Math.sin(now/1300)>-.6?1:.3);
    poly(R[0]);ctx.fillStyle=`rgba(90,160,255,${.12*fl})`;ctx.fill();for(let i=0;i<6;i++){poly(R[i]);ctx.fillStyle=`rgba(${110+i*8},${170+i*8},255,${.05*fl})`;ctx.fill()}
@@ -2823,7 +2824,63 @@ const GL=(()=>{
   // glowing rim where the dome meets the ground
   poly(R[0]);ctx.save();ctx.shadowColor='rgba(255,200,70,.9)';ctx.shadowBlur=12+14*hit;ctx.strokeStyle=`rgba(255,${214+40*hit},${102+120*hit},.95)`;ctx.lineWidth=2+1.5*hit;ctx.stroke();ctx.restore();
   // a soft highlight on the upper left of the shell
-  if(top&&G.scr){const q=G.scr,hx=q.bx-q.ax*.35,hy=q.by-q.hp*.6,rr=Math.max(q.ax,q.hp)*.75,g=ctx.createRadialGradient(hx,hy,0,hx,hy,rr);g.addColorStop(0,`rgba(255,248,215,${.26+.1*sh+.35*hit})`);g.addColorStop(1,'rgba(255,248,215,0)');ctx.save();ctx.beginPath();ctx.ellipse(q.bx,q.by,q.ax,q.ay+q.hp,0,Math.PI,0);ctx.ellipse(q.bx,q.by,q.ax,q.ay,0,0,Math.PI);ctx.clip();ctx.fillStyle=g;ctx.fillRect(hx-rr,hy-rr,rr*2,rr*2);ctx.restore()}}
+  if(top&&G.scr){const q=G.scr,hx=q.bx-q.ax*.35,hy=q.by-q.hp*.6,rr=Math.max(q.ax,q.hp)*.75,g=ctx.createRadialGradient(hx,hy,0,hx,hy,rr);g.addColorStop(0,`rgba(255,248,215,${.26+.1*sh+.35*hit})`);g.addColorStop(1,'rgba(255,248,215,0)');ctx.save();ctx.beginPath();ctx.ellipse(q.bx,q.by,q.ax,q.ay+q.hp,0,Math.PI,0);ctx.ellipse(q.bx,q.by,q.ax,q.ay,0,0,Math.PI);ctx.clip();ctx.fillStyle=g;ctx.fillRect(hx-rr,hy-rr,rr*2,rr*2);ctx.restore()}
+  domeRipple(u,G)}
+ // shield flash: where an interceptor kills a missile, golden ripples run over the shell from that spot (kept inside the dome's outline)
+ function domeRipple(u,G){const rp=DRIP.get(u),q=G.scr;if(!rp||!q)return;const age=(performance.now()-rp.t)/1100;if(age>=1||age<0)return;
+  ctx.save();ctx.beginPath();ctx.ellipse(q.bx,q.by,q.ax,q.ay+q.hp,0,Math.PI,0);ctx.ellipse(q.bx,q.by,q.ax,q.ay,0,0,Math.PI);ctx.clip();
+  const span=Math.max(q.ax,q.hp)*1.5,g=ctx.createRadialGradient(rp.x,rp.y,0,rp.x,rp.y,span*(.25+.75*age));g.addColorStop(0,`rgba(255,244,190,${.55*(1-age)})`);g.addColorStop(.5,`rgba(255,214,110,${.22*(1-age)})`);g.addColorStop(1,'rgba(255,214,110,0)');ctx.fillStyle=g;ctx.fillRect(q.bx-q.ax,q.by-q.ay-q.hp,q.ax*2,q.ay*2+q.hp);
+  for(let i=0;i<3;i++){const a=age-i*.13;if(a<=0)continue;ctx.beginPath();ctx.arc(rp.x,rp.y,6+a*span,0,7);ctx.strokeStyle=`rgba(255,${236-i*10},${160-i*20},${(.85-i*.2)*(1-age)})`;ctx.lineWidth=(2.4-i*.6)*(1-a*.5);ctx.stroke()}
+  ctx.restore()}
+ // the dome's missile batteries: four small launchers round the capital, seen once you zoom in. They turn toward a threat and flash when they fire.
+ const DOME_SHELL=false,BAT_KM=65,BAT_OFF=[[-1,1],[1,1],[1,-1],[-1,-1]];
+ function drawBatteries(u,G,cvv){if(st.scale<1.5||dot(unit(G.c),cvv)<.3){G.ls=null;return}const c0=proj(G.c);if(c0[0]<-40||c0[0]>st.w+40||c0[1]<-40||c0[1]>st.h+40){G.ls=null;return}
+  const now=performance.now(),z=clamp(.55+st.scale*.24,.8,2.6),minR=13+st.scale*3.4,cosL=Math.max(.2,Math.cos(G.c[1]*RAD)),live=G.on&&!G.emp;
+  G.lf=G.lf||[0,0,0,0];G.lk=G.lk||[0,0,0,0];G.la=G.la||[-2.2,-.95,-.95,-2.2];
+  G.ls=BAT_OFF.map(([ox,oy])=>{const p=proj([G.c[0]+ox*BAT_KM/111/cosL,G.c[1]+oy*BAT_KM/111]);let dx=p[0]-c0[0],dy=p[1]-c0[1];const L=Math.hypot(dx,dy)||1;if(L<minR){dx*=minR/L;dy*=minR/L}return[c0[0]+dx,c0[1]+dy]});G.lsT=now;
+  if(G.emp){const fl=.55+.45*Math.abs(Math.sin(Date.now()/90));ctx.save();ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillStyle=`rgba(190,228,255,${.6+.4*fl})`;ctx.shadowColor='rgba(0,0,0,.85)';ctx.shadowBlur=4;ctx.fillText('⚡ DOME DOWN',c0[0],Math.min(...G.ls.map(p=>p[1]))-7*z);ctx.restore()}
+  G.ls.forEach(([x,y],i)=>{const rest=i===0||i===3?-2.2:-.95,fired=now-G.lf[i];if(fired>2600)G.la[i]+=(rest-G.la[i])*.06;const a=G.la[i];
+   ctx.save();ctx.translate(x,y);
+   /* ground shadow, then the carrier vehicle: a low tracked hull seen from above */
+   ctx.fillStyle='rgba(0,0,0,.42)';ctx.beginPath();ctx.ellipse(.8*z,1.6*z,6.4*z,3*z,0,0,7);ctx.fill();
+   ctx.fillStyle='#22272e';ctx.fillRect(-5*z,-2.9*z,10*z,1.1*z);ctx.fillRect(-5*z,1.8*z,10*z,1.1*z);
+   ctx.fillStyle=live?'#7d868f':'#4a5057';ctx.strokeStyle='rgba(10,14,20,.85)';ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(-4.6*z,-2*z);ctx.lineTo(3.6*z,-2*z);ctx.lineTo(4.8*z,-.9*z);ctx.lineTo(4.8*z,.9*z);ctx.lineTo(3.6*z,2*z);ctx.lineTo(-4.6*z,2*z);ctx.closePath();ctx.fill();ctx.stroke();
+   ctx.fillStyle=live?'#aab2ba':'#666c73';ctx.fillRect(-4.2*z,-1.6*z,7.4*z,.7*z);
+   ctx.fillStyle='#2a3038';ctx.beginPath();ctx.arc(0,0,1.7*z,0,7);ctx.fill();
+   /* the raised launch rack with four missiles side by side: white bodies with grey bands, sharp dark noses and tail fins. A fired rail stays empty for a few seconds while it reloads */
+   ctx.rotate(a);const gone=live&&fired<3500?(fired<3500&&G.lk&&G.lk[i]>1?2:1):0,body=live?'#eef1f4':'#8d949b',band=live?'#7f8891':'#5d646b',nose=live?'#4b535c':'#3d4349';
+   ctx.fillStyle='#30363d';ctx.fillRect(-2.6*z,-3.3*z,5.4*z,6.6*z);ctx.fillStyle='#454d56';ctx.fillRect(-2.6*z,-.35*z,7*z,.7*z);
+   for(let m=0;m<4;m++){if(m<gone)continue;const my=(m-1.5)*1.75*z,x0=-3.6*z+(m%2)*.5*z;
+    ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(x0+.4*z,my+.25*z,9.6*z,1*z);
+    ctx.fillStyle=nose==='#3d4349'?'#555b62':'#59626b';ctx.beginPath();ctx.moveTo(x0+.6*z,my);ctx.lineTo(x0-1*z,my-1.25*z);ctx.lineTo(x0+1.6*z,my-.5*z);ctx.lineTo(x0+1.6*z,my+.5*z);ctx.lineTo(x0-1*z,my+1.25*z);ctx.closePath();ctx.fill();
+    ctx.fillStyle=body;ctx.fillRect(x0,my-.52*z,8.2*z,1.04*z);ctx.fillStyle=band;ctx.fillRect(x0+1.9*z,my-.52*z,1.5*z,1.04*z);ctx.fillRect(x0+5.2*z,my-.52*z,1.3*z,1.04*z);
+    ctx.fillStyle='rgba(255,255,255,.55)';ctx.fillRect(x0,my-.52*z,8.2*z,.28*z);
+    ctx.fillStyle=band;ctx.beginPath();ctx.moveTo(x0+6.9*z,my-.52*z);ctx.lineTo(x0+7.5*z,my-.95*z);ctx.lineTo(x0+7.9*z,my-.52*z);ctx.moveTo(x0+6.9*z,my+.52*z);ctx.lineTo(x0+7.5*z,my+.95*z);ctx.lineTo(x0+7.9*z,my+.52*z);ctx.fill();
+    ctx.fillStyle=nose;ctx.beginPath();ctx.moveTo(x0+8.2*z,my-.52*z);ctx.lineTo(x0+11*z,my);ctx.lineTo(x0+8.2*z,my+.52*z);ctx.closePath();ctx.fill()}
+   if(live&&fired<240){const f=1-fired/240;ctx.rotate(-a);const mx=Math.cos(a)*8*z,my=Math.sin(a)*8*z;blit('flash',G_FLASH,mx,my,(4+5*f)*z,f);blit('head',G_HEAD,mx,my,2.4*z,f)}
+   ctx.restore();
+   /* back-blast smoke rolling off the pad after a launch */
+   if(live&&fired<1500){const t=fired/1500;for(let j=0;j<3;j++)blit('puff',G_PUFF,x-Math.cos(a)*(3+j*3*t)*z+(j-1)*1.5*z,y-Math.sin(a)*(3+j*3*t)*z-t*3*z,(2.6+j*1.6+t*5)*z,(.55-j*.12)*(1-t))}})}
+ // interceptors: nn missiles leave the nearest batteries, climb on curving smoke trails and meet the target at (ix,iy). tt = ms until the kill (negative afterwards, while the trails fade)
+ function domeShots(G,ix,iy,tt,sz,nn,T){nn=nn||2;T=T||1300;if(reduce||tt>T||tt<-1500)return;const now=performance.now(),c0=proj(G.c);
+  const L=G.ls&&now-(G.lsT||0)<500?G.ls:[[-4,3],[4,3],[4,-3],[-4,-3]].map(o=>[c0[0]+o[0],c0[1]+o[1]]),ord=L.map((p,i)=>[i,Math.hypot(p[0]-ix,p[1]-iy)]).sort((a,b)=>a[1]-b[1]);
+  for(let k=0;k<nn;k++){const li=ord[k%4][0],p0=L[li],lag=k*150,dur=T-lag+k*80,el=T-tt-lag;if(el<0)continue;
+   const u=el/dur,e=Math.pow(Math.min(1,u),1.55),dx=ix-p0[0],dy=iy-p0[1],len=Math.hypot(dx,dy)||1,bend=len*.3*(k%2?-1:1),cx_=(p0[0]+ix)/2-dy/len*bend,cy_=(p0[1]+iy)/2+dx/len*bend-len*.32;
+   const pos=t=>[(1-t)*(1-t)*p0[0]+2*(1-t)*t*cx_+t*t*ix,(1-t)*(1-t)*p0[1]+2*(1-t)*t*cy_+t*t*iy];
+   if(el<220&&G.lf){if(G.lk){if(now-G.lf[li]>600)G.lk[li]=0;if(el<40||!G.lk[li])G.lk[li]=Math.min(2,(G.lk[li]||0)+(now-(G.lkT||0)>30?1:0));G.lkT=now}G.lf[li]=now;G.la[li]=Math.atan2(cy_-p0[1],cx_-p0[0])}
+   const after=Math.max(0,el-dur),fade=Math.max(0,1-after/1300);if(fade<=0)continue;
+   /* the smoke trail: thin and bright near the motor, swelling and drifting as it ages; after the kill the whole trail hangs in the air and fades */
+   const N=after>0?22:16,t0=after>0?0:Math.max(0,e-.62);
+   ctx.lineCap='round';for(let i=0;i<N;i++){const ta=t0+(e-t0)*i/N,tb=t0+(e-t0)*(i+1)/N,pa=pos(ta),pb=pos(tb),age=(e-tb)+after/1300*.6;ctx.strokeStyle=`rgba(236,240,246,${Math.max(0,(.8-age*.75))*fade})`;ctx.lineWidth=(1+age*3.2)*sz;ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke()}
+   for(let i=0;i<N;i++){const t=t0+(e-t0)*i/N,p=pos(t),age=(e-t)+after/1300*.6,w=Math.sin(i*1.9+k*2+li)*age*5*sz;blit('smoke',G_SMOKE,p[0]+w,p[1]-age*4*sz,(1.2+age*6)*sz,(.62-age*.4)*fade)}
+   if(u<1){const h=pos(e),b=pos(Math.max(0,e-.03)),th=Math.atan2(h[1]-b[1],h[0]-b[0]),g2=pos(Math.max(0,e-.1));
+    ctx.lineCap='round';ctx.strokeStyle='rgba(255,226,150,.85)';ctx.lineWidth=1.5*sz;ctx.beginPath();ctx.moveTo(g2[0],g2[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();
+    blit('flame',G_FLAME,b[0],b[1],3*sz,.95);blit('head',G_HEAD,h[0],h[1],2.2*sz,.9);
+    ctx.save();ctx.translate(h[0],h[1]);ctx.rotate(th);const q=sz*.95;ctx.strokeStyle='rgba(8,12,18,.75)';ctx.lineWidth=.5;
+    ctx.fillStyle='#59626b';ctx.beginPath();ctx.moveTo(-3.4*q,0);ctx.lineTo(-5*q,-1.5*q);ctx.lineTo(-2.4*q,-.6*q);ctx.lineTo(-2.4*q,.6*q);ctx.lineTo(-5*q,1.5*q);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#eef1f4';ctx.beginPath();ctx.rect(-4*q,-.62*q,6.4*q,1.24*q);ctx.fill();ctx.stroke();ctx.fillStyle='#7f8891';ctx.fillRect(-2.2*q,-.62*q,1.2*q,1.24*q);ctx.fillRect(.5*q,-.62*q,1*q,1.24*q);
+    ctx.fillStyle='#4b535c';ctx.beginPath();ctx.moveTo(2.4*q,-.62*q);ctx.lineTo(5*q,0);ctx.lineTo(2.4*q,.62*q);ctx.closePath();ctx.fill();ctx.restore()}
+   else if(k>0&&after<320){const q=after/320;blit('flash',G_FLASH,ix+k*3*sz,iy-k*2*sz,(4+7*q)*sz,1-q)}}}
 
  const TX=[];
  function ntest(at){if(!at)return;TX.push({at,v:unit(at),t0:performance.now(),wall:Date.now()});kickTX();smokeLoop()}
@@ -3037,10 +3094,12 @@ const GL=(()=>{
      for(const[f,o,big]of[[0,0,1],[-1,-1,0],[-1,1,0],[-2,0,0]]){const sx=a.xy[0]+dx*f*9*sz*(home?-1:1)-dy*o*8*sz,sy=a.xy[1]+dy*f*9*sz*(home?-1:1)+dx*o*8*sz;drawShip(sx,sy,th,sz*(big?1.35:.85),true)}}continue}
    if(k.hitS===undefined)domeHit(k,lift);if(k.dG){const G=domeGeo(A[k.dG]),t=G&&domeTouch(G,at,.3);if(t!=null)k.hitS=t}
    for(let j=0;j<k.n;j++){const lost=j>=k.n-k.lostN,ord=lost?j-(k.n-k.lostN):j+k.lostN,lag=air_?Math.abs(j-(k.n-1)/2)*.034:ord*Math.min(.085,.5/k.n),ic=!air_&&lost&&(j-(k.n-k.lostN))<(k.fx.icept||0),stop=lost?(k.hitS!=null&&!air_?(ic?k.hitS-j*.004:Math.min(k.stops[j],k.hitS)):k.stops[j]):1,s=Math.min(prog-lag,stop);if(s<=0||(!lost&&prog-lag>=1))continue;
-    const dead=lost&&prog-lag>stop,deadT=dead?(prog-stop)*k.dur/(air_?1600:700):0;if(dead&&deadT>1)continue;
+    const dead=lost&&prog-lag>stop,deadT=dead?(ic?(prog-lag-stop)*k.dur/1700:(prog-stop)*k.dur/(air_?1600:700)):0;if(dead&&deadT>1)continue;
     const a=at(s),b=at(Math.max(0,s-.012));if(!a.vis)continue;let dx=a.xy[0]-b.xy[0],dy=a.xy[1]-b.xy[1];const L=Math.hypot(dx,dy)||1;dx/=L;dy/=L;
     const sz=air_?Math.max(1.1,Math.min(2.2,.7+st.scale*.5)):Math.max(1.2,Math.min(2.3,.75+st.scale*.6)),off=air_?(dr_?((j%4)-1.5)*8*sz+(j%3-1)*2*sz:(j-(k.n-1)/2)*(bm_?26:13)*sz):(j%2?-1:1)*Math.ceil(j/2)*3.5,px=a.xy[0]-dy*off,py=a.xy[1]+dx*off,th=Math.atan2(dy,dx),gx=a.g[0]-dy*off,gy=a.g[1]+dx*off;
     const hv=k.fx.heavy,hl_=hv==='raid';
+    /* Golden Dome: two interceptors rise from the capital's batteries to meet each missile the dome stops */
+    if(ic&&k.dG&&k.hitS!=null){const Gd=domeGeo(A[k.dG]),tt=(stop-(prog-lag))*k.dur;if(Gd&&tt<1300&&tt>-1500){let ipx=px,ipy=py;if(!dead){const a2=at(stop),b2=at(Math.max(0,stop-.012));let ex=a2.xy[0]-b2.xy[0],ey=a2.xy[1]-b2.xy[1];const L2=Math.hypot(ex,ey)||1;ex/=L2;ey/=L2;ipx=a2.xy[0]-ey*off;ipy=a2.xy[1]+ex*off}domeShots(Gd,ipx,ipy,tt,sz*.8,2,1300)}}
     if(!air_&&(hv==='artillery'||hv==='bombard'||hv==='sub'||hv==='blockade'||hv==='orbital')){
      if(hv==='orbital'){if(j===0&&tgVis){const sp=satPos(tg,h,r),ch=Math.min(1,prog),fl=.6+.4*Math.sin(now/60);blit('emp',G_EMP,sp[0],sp[1],(8+10*ch)*sz*.6,.35+.5*ch*fl);drawSat(sp[0],sp[1],1.5*sz*.7,now);
        ctx.setLineDash([3,6]);ctx.strokeStyle=`rgba(150,215,255,${.15+.55*ch*fl})`;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(sp[0],sp[1]);ctx.lineTo(tg[0],tg[1]);ctx.stroke();ctx.setLineDash([]);
@@ -3054,7 +3113,13 @@ const GL=(()=>{
     // contrail: two strokes (whole tail faint, the newest half brighter) instead of one per segment
     const sth_=k.fx.heavy==='stealth',tail=air_?.26:.22;ctx.lineCap='round';if(!dr_&&!hl_&&!sth_)for(const[part,al,lw]of(air_?[[1,.07,5],[1,.2,1.5],[.45,.5,1.9]]:[[1,.1,9],[1,.22,5],[.55,.36,3],[.14,.85,1.7]])){if(dead&&part<1)continue;ctx.strokeStyle=air_?`rgba(235,242,255,${al*(dead?1-deadT:1)})`:hy_?`rgba(${part<.2?'255,240,220':'170,150,255'},${Math.min(1,al*1.25)*(dead?1-deadT:1)})`:`rgba(222,224,230,${al*(dead?1-deadT:1)})`;ctx.lineWidth=lw;ctx.beginPath();let pen=false;for(let q=0;q<=6;q++){const ss=Math.max(0,s-tail*part*(1-q/6)),pp=at(ss);if(!pp.vis){pen=false;continue}const xx=pp.xy[0]-dy*off,yy=pp.xy[1]+dx*off;pen?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);pen=true}ctx.stroke()}
     if(!air_&&!dead&&!hy_&&!(bal_&&Math.sin(Math.PI*s)>.4)){const NP=coarse?4:9;for(let q=1;q<=NP;q++){const ss=s-.028*q;if(ss<=0)break;const pp=at(ss);if(!pp.vis)continue;const ag=q/NP;blit('puff',G_PUFF,pp.xy[0]-dy*off+Math.sin(q*1.7+j)*1.2*ag,pp.xy[1]+dx*off-ag*2,(1.6+ag*4.2)*sz,.5*(1-ag)+.06)}}
-    if(dead){if(!air_){if(ic){if(k.dG&&deadT<.2&&(DHIT.get(k.dG)||0)<now-300)DHIT.set(k.dG,now);const e=1-deadT;blit('flash',G_FLASH,px,py,(7+5*e)*sz,e);blit('gold',G_GOLD,px,py,(9+6*deadT)*sz,e);for(let q=0;q<8;q++){const an=q/8*Math.PI*2+j,dd=(3+16*deadT)*sz;ctx.fillStyle=`rgba(255,${225+(q%2)*30},150,${.95*e})`;ctx.fillRect(px+Math.cos(an)*dd-1,py+Math.sin(an)*dd-1,2,2)}ctx.strokeStyle=`rgba(255,240,180,${.95*e})`;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(px,py,(3+12*deadT)*sz,0,7);ctx.stroke()}else blit('burst',G_BURST,px,py,9,1-deadT);continue}
+    if(dead){if(!air_){if(ic){const q=deadT,jr=k.jit[j%12];if(k.dG&&q<.12&&(DHIT.get(k.dG)||0)<now-300){DHIT.set(k.dG,now);DRIP.set(k.dG,{x:px,y:py,t:now})}
+       /* the kill: a white flash, a fireball, a shock ring, burning fragments that arc away and fall, and a smoke cloud left hanging */
+       for(let m=0;m<5;m++){const a_=m*1.26+j,gr=(4+11*q)*sz;blit('smokeD',G_SMOKED,px+Math.cos(a_)*(3+7*q)*sz+jr[0]*2,py+Math.sin(a_)*(2+5*q)*sz-q*7*sz,gr,.5*Math.min(1,q*6)*(1-q))}
+       if(q<.5){const f=1-q/.5;blit('gold',G_GOLD,px,py,(10+14*q)*sz,.85*f);blit('flash',G_FLASH,px,py,(6+12*q)*sz,f)}
+       if(q<.1)blit('head',G_HEAD,px,py,(8+60*q)*sz,1-q/.1);
+       if(q<.42){const f=1-q/.42;ctx.strokeStyle=`rgba(255,240,190,${.9*f})`;ctx.lineWidth=(1.8*f+.4)*sz*.8;ctx.beginPath();ctx.arc(px,py,(3+40*q)*sz,0,7);ctx.stroke()}
+       if(q<.75){const f=1-q/.75,fp=t=>{const d=1-Math.pow(1-t,2.2);return d};ctx.lineCap='round';for(let m=0;m<11;m++){const a_=m*.571+j*1.3+jr[1],v=(14+((m*7)%5)*5)*sz,x1=px+Math.cos(a_)*v*fp(q),y1=py+Math.sin(a_)*v*fp(q)+q*q*26*sz,q0=Math.max(0,q-.05),x0=px+Math.cos(a_)*v*fp(q0),y0=py+Math.sin(a_)*v*fp(q0)+q0*q0*26*sz;ctx.strokeStyle=`rgba(255,${Math.round(230-150*q)},${Math.round(120-90*q)},${f})`;ctx.lineWidth=(m%3?1:1.6)*sz*.7;ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();if(m%4===0)blit('ember',G_EMBER,x1,y1,2.2*sz,f)}}}else blit('burst',G_BURST,px,py,9,1-deadT);continue}
      const f=Math.min(1,deadT),pos=t=>[px+(gx-px)*t*t,py+(gy-py)*t*t];if(f<.82){for(let q=4;q>=1;q--){const tq=Math.max(0,f-q*.06),pp=pos(tq);blit('smokeD',G_SMOKED,pp[0],pp[1],(1.6+q*1.1)*sz,.5-q*.08)}
       const pp=pos(f);blit('fire',G_FIRE,pp[0],pp[1],2.4*sz,.9);dr_?drawDrone(pp[0],pp[1],th+f*7,sz*.7*(1-f*.25),'#565b62','rgba(5,9,14,.9)',0):bm_?drawBomber(pp[0],pp[1],th+f*5,sz*1.1*(1-f*.25),'#3a3f45','rgba(5,9,14,.9)'):drawJet(pp[0],pp[1],th+f*7,sz*(1-f*.25),'#565b62','rgba(5,9,14,.9)')}
      if(f>.72)blit('burst',G_BURST,gx,gy,(6+f*6)*sz,(1-f)/.28);continue}
@@ -3082,7 +3147,8 @@ const GL=(()=>{
   if(d3.geoDistance(ctr,f.from)<1.55){ctx.beginPath();ctx.arc(lp[0],lp[1],5,0,7);ctx.fillStyle='rgba(255,170,60,.9)';ctx.fill()}
   if(prog<1&&d3.geoDistance(ctr,f.to)<1.55){ctx.strokeStyle=`rgba(255,60,50,${.5+.5*pulse})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(tg[0],tg[1],9+pulse*5,0,7);ctx.stroke();ctx.beginPath();ctx.moveTo(tg[0]-16,tg[1]);ctx.lineTo(tg[0]+16,tg[1]);ctx.moveTo(tg[0],tg[1]-16);ctx.lineTo(tg[0],tg[1]+16);ctx.lineWidth=1;ctx.stroke()}
   if(f.icept&&!f.hitT&&f.dU){const G=domeGeo(A[f.dU]),t=G&&domeTouch(G,air,.45);if(t!=null&&t>prog-.002)f.ic=t}
-  if(f.icept&&prog>=f.ic){const p=air(f.ic),q=(el-f.dur*f.ic)/3400;if(f.dU&&!f.hitT){f.hitT=1;DHIT.set(f.dU,performance.now())}if(p.vis){const x=p.xy[0],y=p.xy[1],R=r*.11*Math.pow(Math.min(1,q*2.2),.5);
+  if(f.icept&&f.dU){const Gd=domeGeo(A[f.dU]),p=air(f.ic),tt=(f.ic-prog)*f.dur;if(Gd&&p.vis&&tt<2000&&tt>-1500)domeShots(Gd,p.xy[0],p.xy[1],tt,1.5,3,2000)}
+  if(f.icept&&prog>=f.ic){const p=air(f.ic),q=(el-f.dur*f.ic)/3400;if(f.dU&&!f.hitT){f.hitT=1;DHIT.set(f.dU,performance.now());if(p.vis)DRIP.set(f.dU,{x:p.xy[0],y:p.xy[1],t:performance.now()})}if(p.vis){const x=p.xy[0],y=p.xy[1],R=r*.11*Math.pow(Math.min(1,q*2.2),.5);
     if(q<.12){ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=`rgba(255,240,190,${.7*(1-q/.12)})`;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.restore()}
     blit('gold',G_GOLD,x,y,R*1.5,1-q);blit('flash',G_FLASH,x,y,R,Math.max(0,1-q*1.6));
     for(let k=0;k<3;k++){const t=q*1.4-k*.15;if(t<=0||t>=1)continue;ctx.strokeStyle=`rgba(255,214,102,${.85*(1-t)})`;ctx.lineWidth=2.5*(1-t)+.5;ctx.beginPath();ctx.arc(x,y,R*(.3+1.6*t),0,7);ctx.stroke()}
