@@ -2583,6 +2583,9 @@ const GL=(()=>{
   overlay(ctr,w,h,r)}
  const baseCv=document.createElement('canvas'),bctx=baseCv.getContext('2d');
  // flags beside nation names: each flag drawn once into an image, redrawn when it changes
+ // a bought flag frame on the globe label too: the same colours as on the page, drawn as a 2px border with a soft glow
+ const LFR={silver:[['#f5f5f5',0],['#9aa0a6',.5],['#e8eaed',1]],gold:[['#fff1b8',0],['#c99a33',.35],['#f2d27a',.65],['#8a6414',1]],diamond:[['#e0f7ff',0],['#7dd3fc',.35],['#ffffff',.65],['#a5b4fc',1]],inferno:[['#ffb347',0],['#ff3d00',.35],['#ffd166',.65],['#b3001b',1]]},LGL={silver:'rgba(0,0,0,0)',gold:'rgba(242,201,76,.55)',diamond:'rgba(125,211,252,.8)',inferno:'rgba(255,90,0,.8)'};
+ function labFrame(k,x,y,w,h){const p=2,st_=LFR[k]||LFR.gold,g=ctx.createLinearGradient(x-p,y-p,x+w+p,y+h+p);for(const[c,o]of st_)g.addColorStop(o,c);ctx.save();ctx.shadowColor=LGL[k]||'rgba(0,0,0,0)';ctx.shadowBlur=k==='silver'?0:7;ctx.fillStyle=g;ctx.fillRect(x-p,y-p,w+p*2,h+p*2);ctx.restore();if(k==='silver'){ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=1;ctx.strokeRect(x-p-.5,y-p-.5,w+p*2+1,h+p*2+1)}}
  const FIMG=new Map();let fimgT=0;
  function flagImg(u,n){if(!n.flag)return null;const k=JSON.stringify(n.flag);let o=FIMG.get(u);if(o&&o.k===k)return o.ok?o.img:null;
   const img=new Image();o={k,img,ok:false};FIMG.set(u,o);img.onload=()=>{o.ok=true;clearTimeout(fimgT);fimgT=setTimeout(()=>{st.baseOk=false;redraw()},120)};
@@ -2691,7 +2694,7 @@ const GL=(()=>{
    const fi=flagImg(u,n),fw=fi?Math.round(fs*1.35):0,fh=Math.round(fw*2/3),gap=fi?4:0,tot=tw+fw+gap;
    const x0=xy[0]-tot/2-3,x1=xy[0]+tot/2+3,y0=ly-fs/2-2,y1=ly+fs/2+2;
    if(u!==uid&&(x0<2||x1>w-2||y0<2||y1>h-2||boxes.some(b=>x0<b[2]&&x1>b[0]&&y0<b[3]&&y1>b[1])))continue;boxes.push([x0,y0,x1,y1]);
-   const tx=xy[0]+(fw+gap)/2;if(fi){const fx0=Math.round(xy[0]-tot/2),fy0=Math.round(ly-fh/2);ctx.fillStyle='rgba(5,9,14,.7)';ctx.fillRect(fx0-1,fy0-1,fw+2,fh+2);ctx.drawImage(fi,fx0,fy0,fw,fh)}
+   const tx=xy[0]+(fw+gap)/2;if(fi){const fx0=Math.round(xy[0]-tot/2),fy0=Math.round(ly-fh/2),fk=n.cos&&n.cos.frame&&WPCore.COSMETICS.frame.items[n.cos.frame]?n.cos.frame:null;if(fk){labFrame(fk,fx0,fy0,fw,fh)}else{ctx.fillStyle='rgba(5,9,14,.7)';ctx.fillRect(fx0-1,fy0-1,fw+2,fh+2)}ctx.drawImage(fi,fx0,fy0,fw,fh)}
    ctx.lineWidth=3.5;ctx.strokeStyle='rgba(5,9,14,.85)';ctx.strokeText(t,tx,ly);ctx.fillStyle='#fff';ctx.fillText(t,tx,ly)}
   ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;ctx.beginPath();path({type:'Sphere'});ctx.stroke()}
  // a strike frame: the cached globe plus the moving parts (much cheaper than redrawing every province)
