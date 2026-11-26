@@ -105,7 +105,9 @@ function writeNow() {
 }
 function persist(now) { if (now) { clearTimeout(saveTimer); saveTimer = null; return writeNow(); } if (!saveTimer) saveTimer = setTimeout(() => { saveTimer = null; writeNow(); }, 1500); }
 persist(true);
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { persist(true); process.exit(0); });
+// shutting down for an update: tell every open page first (they show a calm "installing an update" note and reconnect quickly), refuse new actions so a retried click can never run twice, save, then exit
+let SHUTTING = false;
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { if (SHUTTING) return; SHUTTING = true; try { if (typeof broadcast === 'function') broadcast('updating', { t: Date.now() }); } catch (e) {} persist(true); setTimeout(() => process.exit(0), 400); });
 let lastAlert = 0;
 function logErr(msg) {
   health.errors.unshift({ t: Date.now(), msg: String(msg).slice(0, 600) }); health.errors.length = Math.min(health.errors.length, 100); console.error(msg);
@@ -3183,6 +3185,7 @@ const siteUrl = req => process.env.SITE_URL ? String(process.env.SITE_URL).repla
 SUPP = makeSupporters({ S, send, readBody, persist, setDoc, sendTo, broadcast, addNote, flag, logErr, MOD, WP, siteUrl, chaosBuy, chaosInfo });
 async function handle(req, res) {
   let p; try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return notFound(req, res); }
+  if (SHUTTING && req.method !== 'GET' && p.startsWith('/api/')) return send(res, 503, { error: 'The game is installing an update. Your order will go through in a few seconds.', updating: true });
   const minute = Math.floor(Date.now() / 60000); health.reqs.set(minute, (health.reqs.get(minute) || 0) + 1);
   if (S.ipBans.length && ipBlocked(ipOf(req))) { let adm = null; try { adm = auth(req); } catch (e) {} if (!(adm && adm.admin)) { // an admin is never locked out by a block on their own network
     if (p.startsWith('/api/')) return send(res, 403, { error: 'Access from your network has been blocked by the administrators.' });
