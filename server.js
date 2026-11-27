@@ -76,12 +76,12 @@ const BURN_MS = 24 * HOUR; S.burn = S.burn && typeof S.burn === 'object' && !Arr
 function burnList() { const now = Date.now(), out = []; for (const [h, b] of Object.entries(S.burn)) { if (now - b.t < BURN_MS) out.push([+h, b.t, b.n]); else delete S.burn[h]; } return out; }
 S.council = S.council || { props: [], active: {} };
 S.blocs = Object.assign(Object.create(null), S.blocs && typeof S.blocs === 'object' ? S.blocs : {}); // alliances (teams)
-S.crisis = S.crisis || null; S.crisisHist = S.crisisHist || []; S.games = S.games || null; S.gamesHist = S.gamesHist || []; S.dis = Array.isArray(S.dis) ? S.dis : []; if (!S.nextGames) S.nextGames = Date.now() + 12 * HOUR; if (!S.nextDis) S.nextDis = Date.now() + 3 * HOUR; if (!S.nextCrisis) S.nextCrisis = Date.now() + 36 * HOUR; // world crises
+S.crisis = S.crisis || null; S.crisisHist = S.crisisHist || []; S.games = S.games || null; S.gamesHist = S.gamesHist || []; S.dis = Array.isArray(S.dis) ? S.dis : []; S.camps = Array.isArray(S.camps) ? S.camps : []; if (!S.nextGames) S.nextGames = Date.now() + 12 * HOUR; if (!S.nextDis) S.nextDis = Date.now() + 3 * HOUR; if (!S.nextCrisis) S.nextCrisis = Date.now() + 36 * HOUR; // world crises
 // the Council no longer raises inspection votes on its own (nuclear nations pay a daily inspection fee instead): withdraw any that are still open
 for (const p of S.council.props || []) if (p.status === 'open' && p.auto && p.type === 'inspect') { p.status = 'failed'; p.result = 'withdrawn'; p.end = Date.now(); }
 if (S.mapVersion !== MAP_VERSION) {
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/') || k.startsWith('online/') || (k.startsWith('chat/') && k !== 'chat/_system')) delete S.docs[k];
-  S.council = { props: [], active: {} }; S.event = null; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.mapVersion = MAP_VERSION;
+  S.council = { props: [], active: {} }; S.event = null; S.blocs = Object.create(null); S.crisis = null; S.games = null; S.dis = []; S.camps = []; S.mapVersion = MAP_VERSION;
 }
 // every id-keyed map gets no prototype, so ids like "__proto__" or "constructor" can never match anything
 for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) S[k] = Object.assign(Object.create(null), S[k]);
@@ -605,7 +605,7 @@ function snapshot(uid) {
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
   const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || l.hide || Date.now() - l.end > 24 * 36e5) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, rows: (l.recap.rows || []).map(({ u, ...r }) => ({ ...r, me: u === uid })), me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
-  return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), camps: S.camps, mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -655,7 +655,7 @@ function effCfg() {
   return c;
 }
 const bossBreatherH = () => { const h = +((S.config.boss || {}).breatherH); return isFinite(h) && h >= 0 ? h : 48; };
-const extW = () => ({ games: S.games, dis: S.dis, mkt: S.mkt });
+const extW = () => ({ games: S.games, dis: S.dis, mkt: S.mkt, camps: S.camps });
 // FAIR SCORING: every 10 minutes each nation's score is sampled; rankings use the average of the last 12 hours (core.score reads it as n.rs)
 S.scoreHist = S.scoreHist || {};
 function fairSample() { try { const W = mkWorld(); if (!core.fairOn(W)) return; const now = Date.now(), cut = now - core.FAIR.avgH * HOUR;
@@ -684,6 +684,7 @@ function commit(W) {
   if (W.crch) { W.crch = false; persist(); broadcast('crisis', crisisView()); }
   if (W.gch) { W.gch = false; persist(); broadcast('games', S.games); }
   if (W.disch) { W.disch = false; persist(); broadcast('dis', disView()); }
+  if (W.campch) { W.campch = false; persist(); broadcast('camps', S.camps); }
   if (W.mkch) { const full_ = W.mkch === 2; W.mkch = 0; persist(); broadcast('mkt', mktView(full_)); }
   if (W.changed.size) persist();
   for (const nt of W.notes) addNote(nt.u, nt.kind, nt.text);
@@ -819,6 +820,10 @@ function disasterStrike(W, u, kind) {
   if (kind === 'fire' || kind === 'quake') S.burn[h] = { t: Date.now(), n: kind === 'fire' ? 8 : 4 };
   systemMessage(`${WP.DISASTER[kind].ic} DISASTER: ${/^[aeiou]/i.test(WP.DISASTER[kind].n) ? 'an' : 'a'} ${WP.DISASTER[kind].n.toLowerCase()} has struck ${rec.place} in ${rec.name}. Send relief from your Overview page to earn prestige.`); return rec;
 }
+// rebel camps: a new one appears on unclaimed land every couple of hours (up to the cap); old ones pack up after two days
+function campLoop(W) { const now = Date.now(); if (S.config.camps === false) { if (S.camps.length) { S.camps.length = 0; W.campch = true; } return; }
+  for (let i = S.camps.length - 1; i >= 0; i--) if (S.camps[i].until <= now || W.OWN[S.camps[i].h]) { S.camps.splice(i, 1); W.campch = true; }
+  if (now < (S.nextCamp || 0)) return; const first = !S.nextCamp; S.nextCamp = now + WP.CAMP.everyH * HOUR * (.6 + rng() * .8); for (let i = 0; i < (first ? 3 : 1); i++) if (core.campSpawn(W, rng)) W.campch = true; } // the first time, three camps appear at once so there is something to fight straight away
 function disLoop(W) {
   const now = Date.now(), c = disCfg();
   for (const d of S.dis) { if (d.until <= now || d.done || !W.A[d.u] || BOTS.isBot(d.u) && rng() > .5) continue; // AI nations chip in for others now and then (up to 40% of the appeal)
@@ -1563,7 +1568,7 @@ setInterval(() => { const se = S.seasons && S.seasons.cur, now = Date.now(); if 
 // the real world comes back exactly as it was saved and the prizes are paid into each player's real nation.
 // Accounts, chat, mail, notes, the Hall of Fame, casino records and admin data are never touched.
 const FRESH_FILE = path.join(DATA_DIR, 'season-realworld.json');
-const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'bossAnn', 'bossRem', 'overPause', 'overPauseSet', 'mkt'];
+const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'camps', 'nextCamp', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'bossAnn', 'bossRem', 'overPause', 'overPauseSet', 'mkt'];
 function freshSave(se) {
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m && (m.fallen || m.rem)) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
@@ -1579,7 +1584,7 @@ function freshSave(se) {
 function freshClear() {
   const now = Date.now();
   for (const k of Object.keys(S.docs)) if (k.startsWith('nations/')) delete S.docs[k];
-  S.council = { props: [], active: {} }; S.blocs = Object.create(null); S.crisis = null; S.crisisHist = []; S.games = null; S.gamesHist = []; S.dis = [];
+  S.council = { props: [], active: {} }; S.blocs = Object.create(null); S.crisis = null; S.crisisHist = []; S.games = null; S.gamesHist = []; S.dis = []; S.camps = []; S.nextCamp = 0;
   S.nextGames = now + 12 * HOUR; S.nextDis = now + 3 * HOUR; S.nextCrisis = now + 36 * HOUR; S.event = null; S.nextEvent = now + 6 * HOUR; S.lastEventKey = null;
   S.fallen = []; S.nukes = []; S.strikes = []; S.strikeLog = []; S.ntests = []; S.ntestPending = []; S.burn = {}; S.bm = { list: [] }; S.freedQ = 0; S.freedLast = []; S.freedAt = 0; S.bossFell = 0; S.overPause = 0; S.overPauseSet = 1;
   for (const m of Object.values(S.meta)) if (m) { m.fallen = null; m.rem = {}; }
@@ -1921,7 +1926,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     try { bossWatch(W); } catch (e) { logErr('bossWatch: ' + e.message); }
     try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); councilDaily(W); nukeAccLoop(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);
@@ -2696,6 +2701,13 @@ const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tec
 async function adminRoute(p, req, res, me) {
   if (!isStaff(me)) return send(res, 403, { error: 'Admins only.' });
   // the owner burns money from their own treasury, to help the economy (owner only, never a co-admin, never another nation)
+  if (p === '/api/admin/exscn' && !me.admin) return send(res, 403, { error: 'Only the owner can do that.' });
+  if (p === '/api/admin/exscn' && req.method === 'POST') { const b = await readBody(req, 8 * 1024), L = Array.isArray(S.config.exScn) ? S.config.exScn : (S.config.exScn = []); const T = (x, n) => String(x == null ? '' : x).replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
+    if (b.op === 'del') { const i = L.findIndex(x => x.id === String(b.id)); if (i < 0) return send(res, 400, { error: 'That scenario is already gone.' }); L.splice(i, 1); }
+    else { if (L.length >= 300) return send(res, 400, { error: 'There are already 300 custom scenarios. Delete some first.' }); const k = ['mountains', 'desert', 'jungle', 'ocean', 'arctic', 'any'].includes(b.k) ? b.k : 'any', o = { id: crypto.randomBytes(4).toString('hex'), k, ic: T(b.ic, 8) || '🧭', q: T(b.q, 220), a: T(b.a, 40), b: T(b.b, 40), g: T(b.g, 200), x: T(b.x, 200), s: T(b.s, 200), t: Date.now() };
+      if (!o.q || !o.a || !o.b || !o.g || !o.x || !o.s) return send(res, 400, { error: 'Fill in the situation, both orders and all three outcomes.' }); L.push(o); }
+    audit(me.name, b.op === 'del' ? 'Removed an expedition situation' : 'Added an expedition situation', null); persist(); broadcast('config', effCfg()); return send(res, 200, { ok: true, list: L, msg: b.op === 'del' ? 'Scenario removed.' : 'Scenario added. Expeditions can meet it from now on.' }); }
+  if (p === '/api/admin/exscn' && req.method === 'GET') return send(res, 200, { list: Array.isArray(S.config.exScn) ? S.config.exScn : [], built: Object.fromEntries(Object.entries(WP.EXSCN).map(([k, v]) => [k, v.length])) });
   if (p === '/api/admin/incog' && req.method === 'POST') { if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' }); const b = await readBody(req, 256); const uu = S.users[me.id]; uu.incog = me.incog = !!b.on; if (me.incog) setDoc('online', me.id, null); persist(); return send(res, 200, { ok: true, incog: me.incog, msg: me.incog ? 'Incognito is on: nobody sees you online.' : 'Incognito is off: you show as online again.' }); }
   if (p === '/api/admin/burnself' && req.method === 'POST') { if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' }); const b = await readBody(req, 512), amt = Math.floor(+b.amt || 0); if (!(amt >= 1e6)) return send(res, 400, { error: 'Burn at least $1M.' });
     const W = mkWorld(), n = W.A[me.id]; if (!n) return send(res, 400, { error: 'Found a nation first.' }); if ((n.cash || 0) < amt) return send(res, 400, { error: `Your treasury holds ${WP.money(Math.floor(n.cash || 0))}.` });
@@ -3543,7 +3555,7 @@ async function handle(req, res) {
       commit(W); if (pendFound) seasonPendingApply(me.id);
       // your own nation comes back with the answer, so the screen updates the moment the action is done (no waiting on the live stream)
       const fell = b.c === 'attack' ? (W.fallen || []).find(f => f.by === me.id && !BOTS.isBot(f.id)) : null; /* a player's capital fell: the attacker may leave them a last message */
-      return send(res, 200, { ok: true, fell: fell ? { id: fell.id, t: fell.t, name: fell.name, mins: LASTWORDS_MIN } : undefined, msg: r.msg, battle: r.battle, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });
+      return send(res, 200, { ok: true, fell: fell ? { id: fell.id, t: fell.t, name: fell.name, mins: LASTWORDS_MIN } : undefined, msg: r.msg, battle: r.battle, camp: r.camp, wg: r.wg, trek: r.trek, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });
     }
 
     // ---- last words: the conqueror of a player's capital may leave one short message on that player's fall screen ----
