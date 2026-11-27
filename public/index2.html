@@ -3764,7 +3764,7 @@ document.addEventListener('input',e=>{const t=e.target;if(!flagDraft||!t.closest
  if(t.dataset.fpick!=null){const k=t.dataset.fpick;if(k==='ec')flagDraft.ec=t.value;else flagDraft.c[+k]=t.value;fedPrev()}});
 document.addEventListener('change',e=>{const t=e.target;if(flagDraft&&t.closest&&t.closest('#fedit')&&(t.dataset.frange||t.dataset.fpick!=null))fedRefresh()});
 // ---------- prestige: World Wonders, grand projects, prestige units, show-off cosmetics ----------
-const {UWONDERS,UW,GRAND,GRANDC,PUNITS,WARCOST,COSMETICS}=WPCore;
+const {UWONDERS,UW,GRAND,GRANDC,grandP,PUNITS,WARCOST,COSMETICS}=WPCore;
 const cosChat=n=>n&&n.cos&&n.cos.chat&&COSMETICS.chat.items[n.cos.chat]?' cc-'+n.cos.chat:'';
 const frameWrap=(n,html)=>n&&!n.flag&&n.cos&&n.cos.frame&&COSMETICS.frame.items[n.cos.frame]?`<span class="ffr ff-${esc(n.cos.frame)}">${html}</span>`:html;
 function profBadges(n){if(!n)return'';const o=[];const m=n.cos&&n.cos.mon&&COSMETICS.mon.items[n.cos.mon];if(m)o.push(`<span class="tag gold" title="Capital monument">${m.ic} ${esc(m.n)}</span>`);
@@ -3791,7 +3791,7 @@ function pPrestige(parts){const n=me,rk=C.rankOf(n.xp),now=Date.now();
    else if(cd>now)act=`<span class="mu">Failed. Try again in <span data-until="${cd}">${fmtT(cd-now)}</span></span>`;else if(rk<GRANDC.rank)act=`<span class="mu">Needs the rank of ${esc(RANKS[GRANDC.rank][1])}</span>`;
    else if(gpOn)act='<span class="mu">Another project is under way</span>';else act=`<button class="btn sm gold" data-act="gpl" data-a="${k}" ${n.cash>=G.cost?'':'disabled'}>Launch · ${moneyS(G.cost)}</button>`;
    return`<div class="won gpw${done?' own':''}"><div class="uwh"><span class="uwi">${G.ic}</span><div><b>${esc(G.n)}</b><small class="mu">${esc(G.d)} +${num(G.pr)} prestige.</small></div></div>
-    <div class="gpodds"><span class="gpc" style="--p:${G.p*100}"><b>${Math.round(G.p*100)}%</b></span><small class="mu">chance of success · ${G.h} hours · a failure loses the whole ${moneyS(G.cost)}</small></div><div class="uwact">${act}</div></div>`}).join('');
+    ${(()=>{const gp=grandP?grandP(n,k):G.p,fl=(n.gpn||{})[k]||0;return`<div class="gpodds"><span class="gpc" style="--p:${gp*100}"><b>${Math.round(gp*100)}%</b></span><small class="mu">chance of success${fl&&!done?` (up from ${Math.round(G.p*100)}% after ${fl} failed tr${fl>1?'ies':'y'})`:''} · ${G.h} hours · a failure loses the whole ${moneyS(G.cost)}${done?'':', but each failure adds 10% to the next try'}</small></div>`})()}<div class="uwact">${act}</div></div>`}).join('');
  const cos=Object.entries(COSMETICS).map(([slot,S_])=>{const own=(n.cosOwn||{})[slot]||[],cur=(n.cos||{})[slot];
    const prev=(k,it)=>slot==='chat'?`<span class="who cc-${k}">${esc(n.name)}</span>`:slot==='mon'?`<span class="cmon">${it.ic}</span>`:`<span class="ffr ff-${k}">${n.flag?WPCore.flagSVG(n.flag,36,24):`<span class="dot" style="background:${esc(n.color)};width:36px;height:24px;border-radius:2px"></span>`}</span>`;
    return panel(S_.n,`<p class="mu" style="margin-top:0;font-size:13px">${esc(S_.d)} Buy once, switch between the ones you own for free.</p><div class="cosg">${Object.entries(S_.items).map(([k,it])=>{const has=own.includes(k),on=cur===k;
@@ -5510,7 +5510,7 @@ case'lwskip':{const b=lwBattle;lwBattle=null;closeModal();if(b)battleReport(b);b
  case'czfrotate':{ask('Reveal your server seed?','You will see the secret seed behind your past bets and can check every one of them. A new secret seed (with a new fingerprint) is used from your next bet.','Reveal',async()=>{try{CZF=await WP.api('POST','/api/casino/fair',{op:'rotate'});czfAt=Date.now();toast('Seed revealed. New fingerprint in use.');render()}catch(e){toast(e.message)}});break}
  case'uwb':{const Wd=UWONDERS[a],pr=(me.uw||{})[a];ask(pr?`Build stage ${pr.stage+1} of the ${Wd.n}?`:`Start building the ${Wd.n}?`,`Each stage costs ${moneyS(Wd.cost/UW.stages)}. If another nation finishes first, you get half your money back.`,pr?'Build stage':'Start building',()=>cmd({c:'uwonder',k:a}));break}
  case'uwab':ask(`Abandon the ${UWONDERS[a].n}?`,'Half of what you spent comes back to your treasury; the rest is lost.','Abandon',()=>cmd({c:'uwonder',k:a,abandon:true}));break;
- case'gpl':{const G=GRAND[a];ask(`Launch the ${G.n}?`,`It costs ${moneyS(G.cost)} now. In ${G.h} hours it succeeds (${Math.round(G.p*100)}% chance) or fails, and a failure loses all of the money.`,'Launch',()=>cmd({c:'grand',k:a}));break}
+ case'gpl':{const G=GRAND[a];ask(`Launch the ${G.n}?`,`It costs ${moneyS(G.cost)} now. In ${G.h} hours it succeeds (${Math.round((grandP?grandP(me||{},a):G.p)*100)}% chance) or fails, and a failure loses all of the money.`,'Launch',()=>cmd({c:'grand',k:a}));break}
  case'sbdo':{const k=b,K=C.STANDBY.k[k],q=Math.floor(+(($('sbq_'+k)||{}).value)||0);if(!(q>0)){toast('Enter how many '+K.n+'.');break}
    if(a==='disband'){const st=Math.floor(q*K.scrap*C.STANDBY.scrapF);ask(`Disband ${num(q)} ${K.n}?`,`They are gone for good${st?`. You get back ${num(st)} steel as scrap`:''}. Stood-down ${K.n} are disbanded first.`,'Disband',()=>cmd({c:'standby',op:'disband',k,q}));break}
    const r=await cmd({c:'standby',op:a,k,q},false);if(r)toast(r.msg);break}
