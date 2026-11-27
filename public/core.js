@@ -1457,7 +1457,7 @@ function Core(PD, CARDS) {
   // HEAVY WEAPONS: ballistic missiles, naval bombardment, cyber attacks and EMP strikes. Each has its own cooldown, separate from air and missile strikes.
   const coastOf = (W, u) => hexesOf(W, u).filter(isCoastal);
   function canHeavy(W, u, v, k) {
-    const H = HEAVY[k]; if (!H) return 'Unknown weapon.'; const why = canStrike(W, u, v, true); if (why) return why; const me = W.A[u], d = W.A[v];
+    const H = has(HEAVY, k) ? HEAVY[k] : null; if (!H) return 'Unknown weapon.'; const why = canStrike(W, u, v, true); if (why) return why; const me = W.A[u], d = W.A[v];
     if ((me.tech || 0) < H.tech) return `${H.n} requires tech level ${H.tech}.`;
     if (rankOf(me.xp) < H.rank) return `${H.n} requires the rank of ${RANKS[H.rank][1]}.`;
     if (left(W, me, 'hv_' + k)) return `Your next ${hvN(H)} is ready in ${fmtT(left(W, me, 'hv_' + k))}.`;
