@@ -280,7 +280,7 @@ function auth(req) {
   return { id: s.uid, ...u, token: t };
 }
 function newSession(uid) { for (const [t, s] of Object.entries(S.sessions)) if (s.exp < Date.now()) delete S.sessions[t]; const token = crypto.randomBytes(32).toString('hex'); S.sessions[tokHash(token)] = { uid, exp: Date.now() + SESSION_DAYS * 864e5 }; persist(); return token; }
-const pub = u => ({ id: u.id, name: u.name, email: u.email, guest: !!u.guest, admin: !!u.admin, coadmin: !u.admin && !!u.coadmin, ...(u.admin || u.coadmin ? { adminPath: S.adminPath } : {}) });
+const pub = u => ({ id: u.id, name: u.name, email: u.email, guest: !!u.guest, admin: !!u.admin, coadmin: !u.admin && !!u.coadmin, ...(u.admin ? { incog: !!u.incog } : {}), ...(u.admin || u.coadmin ? { adminPath: S.adminPath } : {}) });
 function meta(uid) { return S.meta[uid] || (S.meta[uid] = { ips: [], lastSeen: 0 }); }
 const today = (t = Date.now()) => new Date(t).toISOString().slice(0, 10);
 function stat(key, uid) { const d = S.stats[today()] || (S.stats[today()] = { active: [], signups: 0, cmds: 0, chat: 0, mail: 0, nations: 0 }); if (key === 'active') { if (!d.active.includes(uid)) d.active.push(uid); } else d[key] = (d[key] || 0) + 1; }
@@ -2696,6 +2696,7 @@ const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tec
 async function adminRoute(p, req, res, me) {
   if (!isStaff(me)) return send(res, 403, { error: 'Admins only.' });
   // the owner burns money from their own treasury, to help the economy (owner only, never a co-admin, never another nation)
+  if (p === '/api/admin/incog' && req.method === 'POST') { if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' }); const b = await readBody(req, 256); const uu = S.users[me.id]; uu.incog = me.incog = !!b.on; if (me.incog) setDoc('online', me.id, null); persist(); return send(res, 200, { ok: true, incog: me.incog, msg: me.incog ? 'Incognito is on: nobody sees you online.' : 'Incognito is off: you show as online again.' }); }
   if (p === '/api/admin/burnself' && req.method === 'POST') { if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' }); const b = await readBody(req, 512), amt = Math.floor(+b.amt || 0); if (!(amt >= 1e6)) return send(res, 400, { error: 'Burn at least $1M.' });
     const W = mkWorld(), n = W.A[me.id]; if (!n) return send(res, 400, { error: 'Found a nation first.' }); if ((n.cash || 0) < amt) return send(res, 400, { error: `Your treasury holds ${WP.money(Math.floor(n.cash || 0))}.` });
     core.finSync(W, n); n.cash -= amt; core.finAdd(W, n, 'other', -amt); core.touch(W, me.id); commit(W); S.econ.selfBurn = Math.round((S.econ.selfBurn || 0) + amt); (S.econ.burns = S.econ.burns || []).push({ t: Date.now(), self: 1, took: amt, hit: 1, by: me.name }); S.econ.burns = S.econ.burns.slice(-20); audit(me.name, 'Burned money', n.name, WP.moneyS(amt)); persist();
@@ -3651,7 +3652,7 @@ async function handle(req, res) {
       if (req.method === 'PUT') {
         if (limited('w:' + me.id, 30, 10e3)) return send(res, 429, { error: 'Slow down.' });
         let d = await readBody(req, 160 * 1024); // up to 40 messages of 1,000 characters
-        if (col === 'online') { d = { t: Date.now() }; touch(me.id, req); }
+        if (col === 'online') { d = { t: Date.now() }; touch(me.id, req); if (me.admin && me.incog) { if (S.docs['online/' + me.id]) setDoc('online', me.id, null); return send(res, 200, { ok: true, incog: true }); } } // incognito: the owner plays without showing as online
         else {
           if (isMuted(me.id)) return send(res, 403, { error: 'You are muted by the administrators.' });
           if (limited('chat:' + me.id, 12, 20e3)) return send(res, 429, { error: 'You are sending messages too quickly.' });
