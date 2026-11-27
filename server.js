@@ -2690,6 +2690,11 @@ function warRoom(W, nations) {
 const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tech', 'train', 'infra', 'fort', 'tax', 'approval', 'stability', 'aggr', 'debt', 'unemp', 'infl'];
 async function adminRoute(p, req, res, me) {
   if (!isStaff(me)) return send(res, 403, { error: 'Admins only.' });
+  // the owner burns money from their own treasury, to help the economy (owner only, never a co-admin, never another nation)
+  if (p === '/api/admin/burnself' && req.method === 'POST') { if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' }); const b = await readBody(req, 512), amt = Math.floor(+b.amt || 0); if (!(amt >= 1e6)) return send(res, 400, { error: 'Burn at least $1M.' });
+    const W = mkWorld(), n = W.A[me.id]; if (!n) return send(res, 400, { error: 'Found a nation first.' }); if ((n.cash || 0) < amt) return send(res, 400, { error: `Your treasury holds ${WP.money(Math.floor(n.cash || 0))}.` });
+    core.finSync(W, n); n.cash -= amt; core.finAdd(W, n, 'other', -amt); core.touch(W, me.id); commit(W); S.econ.selfBurn = Math.round((S.econ.selfBurn || 0) + amt); (S.econ.burns = S.econ.burns || []).push({ t: Date.now(), self: 1, took: amt, hit: 1, by: me.name }); S.econ.burns = S.econ.burns.slice(-20); audit(me.name, 'Burned money', n.name, WP.moneyS(amt)); persist();
+    return send(res, 200, { ok: true, msg: `🔥 ${WP.moneyS(amt)} burned. It is gone from the world for good.`, total: S.econ.selfBurn }); }
   coadm: if (!me.admin) { // a co-admin: only the allowed actions, never against an admin or another co-admin, and every request is logged
     const act = p.replace('/api/admin/', '').split('/')[0], b0 = req.method === 'POST' ? await readBody(req, 16 * 1024).catch(() => ({})) : null;
     req._body = b0;
