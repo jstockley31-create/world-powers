@@ -85,6 +85,8 @@ if (S.mapVersion !== MAP_VERSION) {
 }
 // every id-keyed map gets no prototype, so ids like "__proto__" or "constructor" can never match anything
 for (const k of ['users', 'sessions', 'docs', 'meta', 'mail', 'notes', 'push', 'stats', 'actlog', 'botsig']) S[k] = Object.assign(Object.create(null), S[k]);
+S.wgs = S.wgs && typeof S.wgs === 'object' ? S.wgs : {}; S.wgSum = S.wgSum && typeof S.wgSum === 'object' ? S.wgSum : {};
+const wgOf = uid => { for (const g of Object.values(S.wgs)) if (g.a === uid || g.b === uid) return g; return null; };
 if (!S.migGPN) { // grand projects: credit past failures so the new rising chance counts them (from fail notes kept; at least 1 if a failure is on record)
   const GN = { genome: 'Human Genome Project', collider: 'Super Collider', moon: 'Moon Landing', mars: 'Mars Colony', agi: 'Artificial Superintelligence' };
   for (const [key, d] of Object.entries(S.docs || {})) { if (!key.startsWith('nations/') || !d || !d.gpfail) continue; const uid = key.slice(8), nt = S.notes[uid] || [];
@@ -541,7 +543,7 @@ const noLeaders = o => JSON.parse(JSON.stringify(o, (k, v) => k === 'leader' && 
 
 // ---------- what other players may see ----------
 function publicView(n) {
-  return { name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
+  return { wgz: n.wgz || undefined, name: n.name, color: n.color, gov: n.gov, created: n.created, cap: n.cap, hexes: n.hexes, xp: n.xp, pop: n.pop, troops: n.troops, ships: n.ships, air: n.air, tech: n.tech, train: n.train, infra: n.infra, fort: n.fort,
     approval: n.approval, stability: n.stability, aggr: n.aggr, bloc: n.bloc || null, bat: n.bat && Object.keys(n.bat).length ? Object.fromEntries(Object.entries(n.bat).filter(([, o]) => o && o.t > Date.now())) : undefined, joint: n.joint || 0, jcd: (n.cd && n.cd.joint) || 0, merc: n.merc && n.merc.until > Date.now() ? { k: n.merc.k, until: n.merc.until } : undefined, space: n.space || 0, spaceFirst: n.spaceFirst || 0, pu: n.pu && Object.keys(n.pu).length ? n.pu : undefined /* prestige units are parked in plain sight on the globe */, up: n.up && (n.up.routes || []).length ? { routes: n.up.routes } : undefined /* only the list of trade routes: a partner must be able to see a route opened to them */, dev: n.dev || {}, prestige: n.prestige || 0, rs: n.rs, blocT: n.blocT, tally: n.tally ? { pwins: n.tally.pwins || 0, aidV: n.tally.aidV || 0 } : undefined, medals: n.medals || null, regroup: n.regroup, lastStand: n.lastStand || 0, overlord: n.overlord || null, vassalT: n.vassalT || 0, office: n.office || 0, outposts: n.outposts || null, titles: n.titles || null, badges: n.badges || null, shield: n.shield || 0, gens: (n.gens || []).map(g => ({ name: g.name, type: g.type, stars: g.stars })), laws: n.laws || [], wonders: n.wonders || {}, proj: n.proj ? { k: n.proj.k, stage: n.proj.stage } : null, uwon: n.uwon || null, uw: n.uw ? Object.fromEntries(Object.entries(n.uw).map(([k, x]) => [k, { stage: x.stage, next: x.next }])) : null, gpdone: n.gpdone || null, gpn: n.gpn || null, gp: n.gp ? Object.fromEntries(Object.entries(n.gp).map(([k, x]) => [k, { until: x.until }])) : null, pu: n.pu || null, cos: n.cos || null, flag: n.flag || null, motto: n.motto || '', ach: n.ach || {}, nuke: n.nuke || 0, warhead: n.warhead ? (n.warhead.ready <= Date.now() ? 2 : 1) : 0, nuked: n.nuked || null, dome: n.dome ? { t: n.dome.t, ready: n.dome.ready, lvl: n.dome.lvl || 1, off: (n.cash || 0) < 0, emp: (n.empT || 0) > Date.now() ? n.empT : 0 } : null, rads: (n.rads || []).filter(r => r.until > Date.now()).map(r => ({ h: r.h, t: r.t, until: r.until })), rad: n.rad && n.rad.until > Date.now() ? { h: n.rad.h, t: n.rad.t, until: n.rad.until } : undefined, fallout: n.fallout || 0, winter: n.winter || 0, rogue: n.rogue || 0, armsEmb: n.armsEmb || 0, condemned: n.condemned || 0, ceasefire: n.ceasefire || 0, guarantee: n.guarantee || 0, inspected: n.inspected || 0, frozen: n.frozen ? { amt: n.frozen.amt, until: n.frozen.until } : null, conqN: Object.keys(n.conq || {}).length, rel: n.rel, trades: n.trades, res: { oil: n.res && n.res.oil > 0 ? 1 : 0 }, ai: n.ai ? { p: n.ai.p, boss: !!n.ai.boss, ...(n.ai.defX ? { defX: n.ai.defX } : {}), ...(n.ai.atkX ? { atkX: n.ai.atkX } : {}) } : undefined,
     gdp: n.gdp, gdpHist: (n.gdpHist || []).map(({ c, ...x }) => x) /* the hourly history holds the treasury too: other players never get it */, debt: n.debt, unemp: n.unemp, infl: n.infl, morale: n.morale, defaulted: n.defaulted, embargo: n.embargo, blockade: n.blockade || 0, blockH: n.blockH == null ? null : n.blockH, nextElection: n.nextElection, lastElection: n.lastElection,
     out: (n.out || []).filter(e => e.type === 'news' || e.type === 'battle').slice(0, 30).map(e => e.type === 'battle' ? { id: e.id, t: e.t, type: e.type, to: e.to, h: e.h, X: e.X, win: e.win, lossA: e.lossA, lossD: e.lossD, sea: e.sea, vassal: e.vassal || 0 } : e) };
@@ -573,10 +575,10 @@ const SLIMK = ['gdpHist', 'out', 'trades'], lastBig = new Map();
 function flushPub() { pubT = null; if (!clients.size) { PUBQ.clear(); return; } const ids = [...PUBQ]; PUBQ.clear();
   for (const id of ids) { const n = S.docs['nations/' + id]; const pv = n == null ? null : publicView(n); const pub = `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: pv })}\n\n`;
     let slim = pub; if (pv) { const prev = lastBig.get(id) || {}, now = {}, keep = []; const sv = { ...pv }; for (const k of SLIMK) { now[k] = JSON.stringify(pv[k] === undefined ? null : pv[k]); if (prev[k] === now[k]) { delete sv[k]; keep.push(k); } } lastBig.set(id, now); if (keep.length) { sv._k = keep; slim = `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: sv })}\n\n`; } } else lastBig.delete(id);
-    for (const c of clients) if (!(c.uid === id && n != null)) writeRaw(c, c.slim ? slim : pub); } }
+    for (const c of clients) if (!(c.uid === id && n != null) && !(c.uid && wgOf(c.uid))) writeRaw(c, c.slim ? slim : pub); } }
 function sendNation(id, now) {
   if (!clients.size) return; const n = S.docs['nations/' + id];
-  if (n != null) { let own = null; for (const c of clients) if (c.uid === id) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } }
+  if (n != null && !wgOf(id)) { let own = null; for (const c of clients) if (c.uid === id) { own = own || `event: doc\ndata: ${JSON.stringify({ col: 'nations', id, data: n })}\n\n`; writeRaw(c, own); } }
   PUBQ.add(id); if (now || n == null) { clearTimeout(pubT); flushPub(); } else if (!pubT) pubT = setTimeout(flushPub, 700);
 }
 function setDoc(col, id, data) { const key = col + '/' + id; if (data == null) delete S.docs[key]; else S.docs[key] = data; persist(); if (col === 'nations') sendNation(id); else broadcast('doc', { col, id, data: data == null ? null : data }); }
@@ -603,9 +605,10 @@ function sendBlocs() { for (const c of clients) write(c, 'blocs', blocsView(c.ui
 function snapshot(uid) {
   const cols = {}; for (const c of COLS) cols[c] = {};
   for (const [p, d] of Object.entries(S.docs)) { const [c, id] = p.split('/'); if (!cols[c]) continue; cols[c][id] = c === 'nations' && id !== uid ? publicView(d) : d; }
+  const wg_ = wgOf(uid); if (wg_) { cols.nations = {}; for (const u of [wg_.a, wg_.b]) if (wg_.A[u]) cols.nations[u] = u === uid ? wg_.A[u] : publicView(wg_.A[u]); } // in war games you see only the two of you
   const users = {}; for (const [id, u] of Object.entries(S.users)) if (!u.banned) users[id] = id === uid ? u.name : pubName(id); // others: nation name only
   const chaosRecapV = (() => { const l = S.chaosLast; if (!l || !l.recap || l.hide || Date.now() - l.end > 24 * 36e5) return null; const i = (l.rank || []).findIndex(r => r.u === uid); return { end: l.end, mins: l.mins, ...l.recap, rows: (l.recap.rows || []).map(({ u, ...r }) => ({ ...r, me: u === uid })), me: i >= 0 ? { place: i + 1, gain: l.rank[i].gain } : null }; })();
-  return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), camps: S.camps, mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
+  return { chaosRecap: chaosRecapV, seasonPend: (meta(uid).seasonPending || []).map(g => ({ lines: (g.lines || []).slice(0, 6), cash: g.cash || 0, xp: g.xp || 0 })).slice(-5), lastSeason: (HOF[HOF.length - 1] || {}).name || '', voteAt: meta(uid).voteT || 0, voteS: meta(uid).voteS || {}, cols, users, config: (({ boss, ...c }) => c)(effCfg()), awaySince: meta(uid).prevSeen || 0, council: councilViewFor(uid), polls: pollFor(uid), nukes: S.nukes.filter(x => Date.now() - x.t < 12 * HOUR), blocs: blocsView(uid), crisis: crisisView(), games: S.games, dis: disView(), camps: wg_ ? [] : S.camps, wg: wg_ ? { id: wg_.id, v: wg_.a === uid ? wg_.b : wg_.a, start: wg_.start, end: wg_.end } : null, wgSum: S.wgSum[uid] || null, mkt: mktView(true), duels: duelsView(), event: S.event, notes: (S.notes[uid] || []).slice(0, 60), mailUnread: (S.mail[uid] || []).filter(m => m.box === 'in' && !m.read).length, prefs: prefsOf(uid), muted: meta(uid).muted || [], vapid: PUSH.vapidPublic(S.vapid), pushOn: (S.push[uid] || []).length > 0, fallen: S.docs['nations/' + uid] ? null : (meta(uid).fallen || null), fallenList: fallenPub(), sup: SUPP ? SUPP.badges() : {}, strikes: S.strikes.filter(x => Date.now() - x.t < 20 * 60e3), ver: gameFile().etag, burn: burnList(), ntests: S.ntests.filter(x => Date.now() - (x.fired || x.t) < 3 * 60e3 && !x.missed), ntestPending: S.ntestPending, finale: FIN && !FIN.preview && Date.now() < FIN.end + 20000 ? { ...FIN, now: Date.now() } : null, finaleReplay: finaleReplayFor(uid), spyOpt: spyOptList(), opVotes: opVotesFor(uid) };
 }
 // a visible heartbeat every 20 seconds: browsers that hear nothing for a while know their stream has stalled and reconnect
 setInterval(() => { const hb = `event: hb\ndata: ${Date.now()}\n\n`; for (const c of clients) writeRaw(c, hb); }, 20000).unref();
@@ -820,6 +823,62 @@ function disasterStrike(W, u, kind) {
   if (kind === 'fire' || kind === 'quake') S.burn[h] = { t: Date.now(), n: kind === 'fire' ? 8 : 4 };
   systemMessage(`${WP.DISASTER[kind].ic} DISASTER: ${/^[aeiou]/i.test(WP.DISASTER[kind].n) ? 'an' : 'a'} ${WP.DISASTER[kind].n.toLowerCase()} has struck ${rec.place} in ${rec.name}. Send relief from your Overview page to earn prestige.`); return rec;
 }
+// ===================== WAR GAMES: a private one-hour battle between two players =====================
+// When both agree, their real nations are frozen exactly as they are (nothing ticks, nobody can attack them) and the two fight
+// on copies in a world that holds only the two of them. When the hour is up, or either side ends it, both get a detailed
+// summary and their real nations carry on from the frozen point, with every timer moved on by the time the battle took.
+const WG_OK = new Set(['act', 'decide', 'attack', 'strike', 'heavy', 'mun', 'tax', 'budget', 'autofire', 'autobuy', 'dome', 'domeup', 'domefix', 'outpost', 'outpostrm', 'pu', 'reserve', 'standby', 'upg', 'program', 'develop', 'refine', 'office', 'hideguide', 'market', 'law', 'gov']);
+const WG_NUKE = new Set(['nuke', 'ntest', 'warhead', 'launch', 'dirty', 'disarm']);
+const wgClone = o => JSON.parse(JSON.stringify(o));
+function wgWorld(g) { const cfg = { ...effCfg(), weakRule: false, protectH: 0, war: true, conquest: true, chaos: undefined, fresh: null, boost: undefined }; return core.world(g.A, cfg, Date.now(), null, null, {}, null, { games: null, dis: [], mkt: null, camps: [] }); }
+function wgBegin(a, b) {
+  const da = S.docs['nations/' + a], db = S.docs['nations/' + b]; if (!da || !db || wgOf(a) || wgOf(b) || S.fresh || chaosOn()) return false;
+  const now = Date.now(), end = now + WP.WARGAME.h * HOUR, id = crypto.randomBytes(5).toString('hex');
+  const g = { id, a, b, start: now, end, snap: { [a]: wgClone(da), [b]: wgClone(db) }, A: {}, log: [] };
+  for (const [u, v] of [[a, b], [b, a]]) { const n = wgClone(S.docs['nations/' + u]); n.rel = { [v]: { war: now - 3 * HOUR } }; // already at war and mobilized: the fighting can start at once
+    for (const k of ['bloc', 'overlord', 'vassalT', 'shield', 'exped', 'wg', 'wgin', 'wgz', 'embargo', 'trades', 'tap', 'lastStand', 'regroup']) delete n[k]; n.cd = { ...(n.cd || {}) }; delete n.cd.attack; n.lastTick = now; g.A[u] = n; }
+  S.wgs[id] = g; da.wgz = end; db.wgz = end; // the real nations: frozen
+  for (const u of [a, b]) { sendNation(u, true); addNote(u, 'war', `🎯 War games with ${(u === a ? db : da).name} have begun: one hour, just the two of you. Your real nation is frozen and comes back exactly as it was.`); }
+  persist(); for (const u of [a, b]) sendTo(u, 'reload', { t: now }); return true;
+}
+function wgSend(g) { for (const c of clients) { if (c.uid !== g.a && c.uid !== g.b) continue; for (const u of [g.a, g.b]) { const n = g.A[u]; if (n) write(c, 'doc', { col: 'nations', id: u, data: u === c.uid ? n : publicView(n) }); } } }
+function wgCommit(g, W) {
+  for (const nt of W.notes || []) if (nt.u === g.a || nt.u === g.b) sendTo(nt.u, 'wgnote', { text: nt.text });
+  for (const fx of W.strikeFx || []) { for (const u of [g.a, g.b]) sendTo(u, 'strike', fx); g.log.push({ t: Date.now(), by: fx.by, k: 'strike', kind: fx.kind, n: fx.n || 0, hits: fx.hits || 0, icept: fx.icept || 0, place: fx.place || '' }); }
+  for (const fx of W.armFx || []) for (const u of [g.a, g.b]) sendTo(u, 'armor', fx);
+  g.log = g.log.slice(-200); persist(); wgSend(g);
+  if ((W.fallen || []).length) wgFinish(g, 'A capital fell.');
+}
+function wgCmd(g, me, b, res) {
+  const c = String(b && b.c || '');
+  if (c === 'wargame' && b.op === 'end') { wgFinish(g, `${(g.A[me.id] || {}).name || 'One side'} ended the battle early.`); return send(res, 200, { ok: true, msg: 'War games ended.' }); }
+  if (WG_NUKE.has(c)) return send(res, 400, { error: 'No nuclear weapons in war games: conventional forces only.' });
+  if (!WG_OK.has(c)) return send(res, 400, { error: 'That is not available during war games. End the battle to go back to the normal game.' });
+  if (Date.now() >= g.end) { wgFinish(g, 'Time is up.'); return send(res, 400, { error: 'The war games are over.' }); }
+  const W = wgWorld(g); let r;
+  try { r = core.exec(W, me.id, b, rng); } catch (e) { if (e.user) return send(res, 400, { error: e.message }); throw e; }
+  if (r.battle) { const x = r.battle; g.log.push({ t: Date.now(), by: me.id, k: 'battle', h: x.h, place: core.pname(x.h), win: !!x.win, X: x.X || 0, air: x.air || 0, lossA: x.lossA || 0, lossD: x.lossD || 0, airA: x.airLostA || 0, airD: x.airLostD || 0, atk: x.atk || 0, def: x.def || 0, mode: x.mode, naval: x.naval ? { win: !!x.naval.win, lostA: x.naval.lostA, lostD: x.naval.lostD } : undefined }); }
+  else if (c === 'heavy' && !(W.strikeFx || []).length) g.log.push({ t: Date.now(), by: me.id, k: 'heavy', msg: String(r.msg || '').slice(0, 200) });
+  wgCommit(g, W);
+  return send(res, 200, { ok: true, msg: r.msg, battle: r.battle, promoted: null, selHex: W.selHex != null ? W.selHex : null, me: g.A[me.id] || null });
+}
+function wgFinish(g, why) {
+  if (!S.wgs[g.id]) return; delete S.wgs[g.id]; const now = Date.now(), d = now - g.start;
+  const side = u => { const s0 = g.snap[u], e = g.A[u] || s0, h0 = Object.keys(s0.hexes || {}), h1 = Object.keys(e.hexes || {}); const f = k => ({ start: Math.round(s0[k] || 0), end: Math.round(e[k] || 0) });
+    return { id: u, name: s0.name, color: s0.color, troops: f('troops'), air: f('air'), ships: f('ships'), tanks: f('tanks'), cash: f('cash'), prov: { start: h0.length, end: h1.length }, took: h1.filter(h => !h0.includes(h)).map(h => core.pname(+h)), lost: h0.filter(h => !h1.includes(h)).map(h => core.pname(+h)),
+      attacks: g.log.filter(x => x.by === u && x.k === 'battle').length, wins: g.log.filter(x => x.by === u && x.k === 'battle' && x.win).length, strikes: g.log.filter(x => x.by === u && x.k !== 'battle').length }; };
+  const A_ = side(g.a), B_ = side(g.b), lossShare = s => s.troops.start > 0 ? Math.max(0, s.troops.start - s.troops.end) / s.troops.start : 0;
+  let win = null; if (A_.took.length !== B_.took.length) win = A_.took.length > B_.took.length ? g.a : g.b; else if (g.log.length && Math.abs(lossShare(A_) - lossShare(B_)) > .005) win = lossShare(A_) < lossShare(B_) ? g.a : g.b;
+  const sum = { id: g.id, t: now, mins: Math.max(1, Math.round(d / 60e3)), why, win, sides: [A_, B_], log: g.log.slice(-80) };
+  for (const u of [g.a, g.b]) { const sn = g.snap[u]; if (!sn || !S.users[u]) continue;
+    chaosShift(sn, g.start, g.start + 400 * 864e5, d, false); if (typeof sn.lastTick === 'number') sn.lastTick += d; if (typeof sn.nextCard === 'number' && sn.nextCard <= g.start) sn.nextCard += d; delete sn.wgz; if (sn.wgin) { delete sn.wgin[g.a]; delete sn.wgin[g.b]; }
+    S.docs['nations/' + u] = sn; S.wgSum[u] = sum; sendNation(u, true);
+    addNote(u, 'war', `🎯 War games with ${(u === g.a ? B_ : A_).name} are over${win ? (win === u ? ': you won' : ': they won') : ': a draw'}. Your nation is back exactly as you left it. The full summary is on your screen.`); }
+  persist(); for (const u of [g.a, g.b]) sendTo(u, 'reload', { t: now });
+}
+function wgLoop() { const now = Date.now(); for (const g of Object.values(S.wgs)) { try { if (now >= g.end || !S.users[g.a] || !S.users[g.b] || !g.A[g.a] || !g.A[g.b]) { wgFinish(g, now >= g.end ? 'Time is up.' : 'One side is gone.'); continue; }
+    const W = wgWorld(g); let ch = false; for (const u of [g.a, g.b]) if (core.tick(W, u, true, rng)) ch = true; if (ch || W.changed.size) wgCommit(g, W); } catch (e) { logErr('War games: ' + (e.stack || e)); try { wgFinish(g, 'The battle was stopped.'); } catch (e2) {} } } }
+const wgFinishAll = why => { for (const g of Object.values(S.wgs)) try { wgFinish(g, why); } catch (e) { logErr(e.stack || e); } };
 // rebel camps: a new one appears on unclaimed land every couple of hours (up to the cap); old ones pack up after two days
 function campLoop(W) { const now = Date.now(); if (S.config.camps === false) { if (S.camps.length) { S.camps.length = 0; W.campch = true; } return; }
   for (let i = S.camps.length - 1; i >= 0; i--) if (S.camps[i].until <= now || W.OWN[S.camps[i].h]) { S.camps.splice(i, 1); W.campch = true; }
@@ -1569,7 +1628,7 @@ setInterval(() => { const se = S.seasons && S.seasons.cur, now = Date.now(); if 
 // Accounts, chat, mail, notes, the Hall of Fame, casino records and admin data are never touched.
 const FRESH_FILE = path.join(DATA_DIR, 'season-realworld.json');
 const FRESH_KEYS = ['council', 'blocs', 'crisis', 'crisisHist', 'games', 'gamesHist', 'dis', 'camps', 'nextCamp', 'nextGames', 'nextDis', 'nextCrisis', 'event', 'nextEvent', 'lastEventKey', 'fallen', 'nukes', 'strikes', 'strikeLog', 'ntests', 'ntestPending', 'burn', 'bm', 'freedQ', 'freedLast', 'freedAt', 'bossFell', 'bossAnn', 'bossRem', 'overPause', 'overPauseSet', 'mkt'];
-function freshSave(se) {
+function freshSave(se) { wgFinishAll('The world changed.');
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m && (m.fallen || m.rem)) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
   const snap = { v: 1, map2: !!S.map2, t: Date.now(), season: se.id, name: se.name, nations, keys: Object.fromEntries(FRESH_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH };
@@ -1646,7 +1705,7 @@ function chaosShift(o, from, to, d, all, depth = 0) {
     else if (v && typeof v === 'object') chaosShift(v, from, to, d, all || k === 'cd' || k === 'unrest' || k === 'gpfail' || k === 'cb', depth + 1);
   }
 }
-function chaosSave() {
+function chaosSave() { wgFinishAll('The world changed.');
   const nations = {}; for (const [k, v] of Object.entries(S.docs)) if (k.startsWith('nations/')) nations[k.slice(8)] = v;
   const meta_ = {}; for (const [u, m] of Object.entries(S.meta)) if (m) meta_[u] = { fallen: m.fallen || null, rem: m.rem || null };
   const snap = { v: 1, map2: !!S.map2, t: Date.now(), nations, keys: Object.fromEntries(CHAOS_KEYS.map(k => [k, S[k] === undefined ? null : S[k]])), meta: meta_, rh: RH, fresh: S.fresh || null };
@@ -1926,7 +1985,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     try { bossWatch(W); } catch (e) { logErr('bossWatch: ' + e.message); }
     try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); councilDaily(W); nukeAccLoop(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);
@@ -3417,6 +3476,9 @@ async function handle(req, res) {
 
     const me = auth(req);
     if (!me) return send(res, 401, { error: 'Not signed in.' });
+    // in war games the real nation is frozen: only the battle itself, chat and reading are open
+    if (req.method !== 'GET' && wgOf(me.id) && !(p === '/api/cmd' || p.startsWith('/api/doc/') || p === '/api/wg/seen' || p.startsWith('/api/admin/') || p === '/api/logout' || p.startsWith('/api/mail') || p.startsWith('/api/notes') || p.startsWith('/api/push') || p.startsWith('/api/prefs'))) return send(res, 423, { error: 'That is paused during war games. End the battle to go back to the normal game.' });
+    if (p === '/api/wg/seen' && req.method === 'POST') { delete S.wgSum[me.id]; persist(); return send(res, 200, { ok: true }); }
     if (p === '/api/dev' || p.startsWith('/api/dev/')) { try { const b = req.method === 'POST' ? await readBody(req, 6 * 1024) : null; if (b) touch(me.id, req); return send(res, 200, devHandle(me, p, req.method, b || {}, new URL(req.url, 'http://x').searchParams)); } catch (e) { return send(res, e.status || 400, { error: e.message || 'Something went wrong.' }); } }
     if (chaosOn() && ['/api/supporter/chest', '/api/supporter/rush', '/api/supporter/instant'].includes(p) && req.method === 'POST') return send(res, 423, { error: 'Supporter perks are paused during Chaos world so you don\'t lose them when the real world comes back. Claim them as soon as it ends.' });
     if (p === '/api/supporter' || p.startsWith('/api/supporter/')) { if (p !== '/api/supporter' && limited('sup:' + me.id, 20, 60e3)) return send(res, 429, { error: 'Slow down.' }); touch(me.id, req); if (await SUPP.handle(req, res, p, me)) return; }
@@ -3530,6 +3592,7 @@ async function handle(req, res) {
       touch(me.id, req); health.cmds++; stat('cmds');
       { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
       if (b && b.c) { const g = hcGate(me.id, b.c === 'act'); if (g) return send(res, g.jail ? 423 : 428, g); } // now and then, a quick human check before an operation (any kind)
+      { const g = wgOf(me.id); if (g) return wgCmd(g, me, b || {}, res); }
       const W = mkWorld();
       if ((S.fresh || core.fairOn(W)) && ['aid', 'offer'].includes(b.c) && typeof b.v === 'string' && b.v !== me.id && sharesNetwork(me.id, b.v)) return send(res, 400, { error: S.fresh ? 'During the season you can\'t send aid or trade offers to an account on the same network as yours.' : 'You can\'t send aid or trade offers to an account on the same network as yours.' });
       if ((S.fresh || core.fairOn(W)) && b.c === 'relief') { const d = (S.dis || []).find(x => x.id === String(b.id)); if (d && d.u !== me.id && sharesNetwork(me.id, d.u)) return send(res, 400, { error: (S.fresh ? 'During the season you can\'t' : 'You can\'t') + ' send relief to an account on the same network as yours.' }); }
@@ -3553,6 +3616,7 @@ async function handle(req, res) {
       const pendFound = b.c === 'found' && !S.fresh && S.meta[me.id] && (S.meta[me.id].seasonPending || []).length;
       if (W.casinoEv) casinoRecord(W);
       commit(W); if (pendFound) seasonPendingApply(me.id);
+      if (W.wgStart) { if (!wgBegin(W.wgStart.a, W.wgStart.b)) r.msg = 'War games could not start right now.'; }
       // your own nation comes back with the answer, so the screen updates the moment the action is done (no waiting on the live stream)
       const fell = b.c === 'attack' ? (W.fallen || []).find(f => f.by === me.id && !BOTS.isBot(f.id)) : null; /* a player's capital fell: the attacker may leave them a last message */
       return send(res, 200, { ok: true, fell: fell ? { id: fell.id, t: fell.t, name: fell.name, mins: LASTWORDS_MIN } : undefined, msg: r.msg, battle: r.battle, camp: r.camp, wg: r.wg, trek: r.trek, promoted: W.promoted || null, selHex: W.selHex != null ? W.selHex : null, covert: r.ok, casino: r.casino ? { ...r.casino, tot: casinoTotals() } : undefined, me: S.docs['nations/' + me.id] || null });

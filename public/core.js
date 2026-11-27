@@ -121,7 +121,7 @@ const GRAND = {
 const CAMP = { max: 6, everyH: 2, lifeH: 48, cdMin: 30, minX: 10, lv: [{ n: 'Rebel outpost', ic: '⛺', f: .1, loot: 1.5, xp: 25 }, { n: 'Rebel camp', ic: '🏕', f: .2, loot: 3.5, xp: 50 }, { n: 'Rebel stronghold', ic: '🏰', f: .35, loot: 8, xp: 100 }], lossA: .5, costF: .5 };
 // WAR GAMES: two nations agree to an hour of mock battles. Each mock attack uses the real battle rules against the real defenses, but
 // nothing is spent and nobody loses a soldier. Both sides see every result.
-const WARGAME = { h: 1, cdSec: 20, offerH: 12, xp: 30, xpMin: 3, xpEveryH: 20 };
+const WARGAME = { h: 1, offerH: 12 };
 const GRANDC = { rank: 3, failCdH: 12, failAp: 5, pStep: .1, pMax: .9 };
 // each failure in a row on the same project adds 10 points to its next chance, up to 90%
 const grandP = (n, k) => { const G = GRAND[k]; if (!G) return 0; return Math.min(Math.max(G.p, GRANDC.pMax), G.p + GRANDC.pStep * ((n && n.gpn && n.gpn[k]) || 0)); };
@@ -1031,6 +1031,7 @@ function Core(PD, CARDS) {
   function canAttack(W, u, h) {
     const me = W.A[u]; if (!me) return 'Found a nation first.'; if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     const v = owner(W, h); if (!v || v === u) return 'Not a foreign province.'; const n = W.A[v];
+    if ((n.wgz || 0) > W.now) return `${n.name} is away at war games and cannot be touched until they end.`;
     if (n.overlord === u || me.overlord === v) return n.overlord === u ? `${n.name} is your vassal. Release it first to fight it.` : `You are ${n.name}'s vassal. Declare independence first.`;
     if (rankOf(me.xp) < 2) return `You must reach the rank of Mayor (300 XP) to wage war. You have ${num(me.xp)} XP.`;
     if (!atWar(W, u, v)) return `You are not at war with ${n.name}. Declare war first.`;
@@ -1515,6 +1516,7 @@ function Core(PD, CARDS) {
   // air and missile strikes: damage without invading
   function canStrike(W, u, v, noRearm) {
     const me = W.A[u], n = W.A[v]; if (!me) return 'Found a nation first.'; if (!n || v === u) return 'Unknown nation.';
+    if ((n.wgz || 0) > W.now) return `${n.name} is away at war games and cannot be touched until they end.`;
     if (n.overlord === u || me.overlord === v) return n.overlord === u ? `${n.name} is your vassal.` : `You are ${n.name}'s vassal.`;
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     if (rankOf(me.xp) < 2) return 'You must reach the rank of Mayor to wage war.';
@@ -1870,6 +1872,7 @@ function Core(PD, CARDS) {
   const struckBy = (W, me, v) => !!(me && ((me.nuked && me.nuked.by === v && W.now - me.nuked.t < 72 * HOUR) || ((me.nukedBy || {})[v] && W.now - me.nukedBy[v] < 72 * HOUR)));
   function canLaunch(W, u, v) {
     const me = W.A[u], d = W.A[v]; if (!me) return 'Found a nation first.'; if (!d || v === u) return 'Unknown nation.';
+    if ((d.wgz || 0) > W.now) return `${d.name} is away at war games and cannot be touched until they end.`;
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     if (W.m.nonukes) return 'A World Council nuclear weapons ban is in force: no launches until it expires.';
     if (!warheadReady(W, me)) return me.warhead ? `Your warhead is not armed yet: ${fmtT(me.warhead.ready - W.now)} left.` : 'You have no armed warhead.';
@@ -2123,6 +2126,7 @@ function Core(PD, CARDS) {
   const covertLock = (W, u, op) => { const o = COVERT[op], n = W.A[u]; if (!o || !o.tier || !n) return ''; if ((n.tech || 0) < o.tech) return `${o.n} unlocks at tech ${o.tech} (you have ${Math.floor(n.tech || 0)}).`; if (rankOf(n.xp) < o.rank) return `${o.n} requires the rank of ${RANKS[o.rank][1]}.`; return ''; };
   function covertCheck(W, u, op, v, paid) {
     const me = W.A[u], them = has(W.A, v) ? W.A[v] : null; if (!me) fail('Found a nation first.'); if (!them) fail('Unknown nation.');
+    if ((them.wgz || 0) > W.now) fail(`${them.name} is away at war games and cannot be touched until they end.`);
     if (!has(COVERT, op)) fail('Unknown operation.'); const o = COVERT[op];
     if (v === u && op !== 'rig') fail('You cannot target yourself with that operation.');
     if (op === 'heist' && !((them.cash || 0) > 0)) fail(`${them.name}'s treasury is empty.`);
@@ -2604,6 +2608,7 @@ function Core(PD, CARDS) {
     return false;
   }
   function tick(W, u, active, rng) {
+    if (W.A[u] && (W.A[u].wgz || 0) > W.now) return false; // frozen for war games: nothing happens to the real nation
     const n = W.A[u]; let changed = false; finSync(W, n);
     const k = Math.floor((W.now - n.lastTick) / TICK);
     if (k > 0) { if (active) for (let i = 0; i < Math.min(k, 12); i++) tickOnce(W, u, rng); else if ((n.aggr || 0) > 0) n.aggr = Math.max(0, n.aggr - k * W.m.aggrDecay); /* aggression keeps cooling while the leader is offline */ n.lastTick += k * TICK; changed = true; }
@@ -2612,7 +2617,6 @@ function Core(PD, CARDS) {
     if (n.nuke) { if (!n.iaeaAt) { n.iaeaAt = W.now + tq(W, INSPECT.everyH * HOUR); changed = true; } else if (W.now >= n.iaeaAt) { const fee = inspectFee(n), pay = Math.max(0, Math.min(fee, n.cash)); n.cash -= pay; if (fee > pay) n.debt = (n.debt || 0) + (fee - pay); n.iaeaAt = W.now + tq(W, INSPECT.everyH * HOUR); n.iaeaPaid = fee;
       log(n, `Mandatory international nuclear inspections: ${money(fee)} charged${fee > pay ? ` (${money(fee - pay)} added to your debt)` : ''}. Every nuclear nation pays this once a day.`, W); note(W, u, 'economy', `☢ Daily nuclear inspection fee: ${money(fee)}.`); changed = true; } } finSync(W, n, 'nuclear');
     if (expedResolve(W, u, rng)) changed = true; finSync(W, n, 'exped');
-    if (n.wg && n.wg.end <= W.now) { wgEnd(W, u, false); changed = true; }
     if (n.gp && Object.keys(n.gp).length && grandResolve(W, u, rng)) changed = true;
     if (n.sdBack && sdTick(W, u)) changed = true;
     finSync(W, n, 'projects'); if (autoBuyTick(W, u)) changed = true; finSync(W, n, 'market');
@@ -2796,32 +2800,18 @@ function Core(PD, CARDS) {
       if (free.length) { const near = free.filter(h => land(h).some(k => W.OWN[k])), pool = near.length >= 3 && R() < .7 ? near : free, h = pool[Math.floor(R() * pool.length)], r = R(); W.CAMPS.push({ h, lv: r < .5 ? 0 : r < .85 ? 1 : 2, t: W.now, until: W.now + tq(W, CAMP.lifeH * HOUR) }); ch = true; } }
     if (ch) W.campch = true; return ch; }
 
-  // ================= war games (mock battles between two willing nations) =================
-  const wgOn = (W, n) => !!(n && n.wg && n.wg.end > W.now && W.A[n.wg.v]);
-  function wgEnd(W, u, early) { const n = W.A[u], g = n && n.wg; if (!g) return false; const o = W.A[g.v]; delete n.wg; const s = g.s || {};
-    const line = `🎯 War games with ${o ? o.name : 'your partner'} ${early ? 'were called off' : 'are over'}. You ran ${num(s.n || 0)} mock attack${s.n === 1 ? '' : 's'} and won ${num(s.w || 0)}; they ran ${num(s.dn || 0)} against you and won ${num(s.dw || 0)}. No troops or money were lost.`;
-    n.cd = n.cd || {}; let xp = ''; if ((s.n || 0) + (s.dn || 0) >= WARGAME.xpMin && (n.cd.wgxp || 0) <= W.now) { gainXP(W, u, WARGAME.xp); n.cd.wgxp = W.now + tq(W, WARGAME.xpEveryH * HOUR); xp = ` +${WARGAME.xp} XP for the training.`; }
-    log(n, line + xp, W); note(W, u, 'war', line + xp); touch(W, u); return true; }
-  function wargame(W, u, c, rng) { const n = W.A[u]; if (!n) fail('Found a nation first.'); const op = String(c.op || ''), R = rng || Math.random; n.wgin = n.wgin || {};
+  // ================= war games =================
+  // Two players agree to a private one-hour battle. The server freezes their real nations (wgz) and runs the battle on copies, so this
+  // part only handles the invitation. A frozen nation does not tick and cannot be attacked, struck or spied on.
+  const wgFrozen = (W, n) => !!(n && (n.wgz || 0) > W.now);
+  const wgOn = wgFrozen;
+  function wargame(W, u, c) { const n = W.A[u]; if (!n) fail('Found a nation first.'); const op = String(c.op || ''); n.wgin = n.wgin || {};
     for (const k of Object.keys(n.wgin)) if (n.wgin[k] < W.now - WARGAME.offerH * HOUR || !W.A[k]) delete n.wgin[k];
-    if (op === 'offer') { const v = String(c.v), d = W.A[v]; if (!d || v === u) fail('Pick another nation.'); if (d.ai) fail('Only nations run by players can join war games.'); if (wgOn(W, n)) fail('You are already in war games.'); if (wgOn(W, d)) fail(`${d.name} is already in war games.`); if (atWar(W, u, v)) fail('You are at war with them: this would not be a game.');
-      d.wgin = d.wgin || {}; if (d.wgin[u] && d.wgin[u] > W.now - 10 * MIN) fail('You already invited them a few minutes ago.'); d.wgin[u] = W.now; note(W, v, 'war', `🎯 ${n.name} invites you to war games: one hour of mock battles where nothing is lost. Accept on the Military page.`); touch(W, u, v); return { msg: `Invitation sent to ${d.name}.` }; }
+    if (op === 'offer') { const v = String(c.v), d = W.A[v]; if (!d || v === u) fail('Pick another nation.'); if (d.ai) fail('Only nations run by players can join war games.'); if (wgFrozen(W, d)) fail(`${d.name} is already in war games.`); if (atWar(W, u, v)) fail('You are at war with them: this would not be a game.');
+      d.wgin = d.wgin || {}; if (d.wgin[u] && d.wgin[u] > W.now - 10 * MIN) fail('You already invited them a few minutes ago.'); d.wgin[u] = W.now; note(W, v, 'war', `🎯 ${n.name} invites you to war games: a private one-hour battle between your two nations. Your real nations are frozen and get everything back afterwards. Accept on the Military page.`); touch(W, u, v); return { msg: `Invitation sent to ${d.name}.` }; }
     if (op === 'accept' || op === 'decline') { const v = String(c.v), d = W.A[v]; if (!n.wgin[v]) fail('That invitation is no longer open.'); delete n.wgin[v]; if (op === 'decline' || !d) { if (d) note(W, v, 'war', `${n.name} declined your war games invitation.`); touch(W, u); return { msg: 'Invitation declined.' }; }
-      if (wgOn(W, n)) fail('You are already in war games.'); if (wgOn(W, d)) fail(`${d.name} has started war games with someone else.`); if (atWar(W, u, v)) fail('You are at war with them.');
-      const end = W.now + tq(W, WARGAME.h * HOUR), id = rid(); n.wg = { v, end, id, s: {}, last: null }; d.wg = { v: u, end, id, s: {}, last: null };
-      note(W, v, 'war', `🎯 ${n.name} accepted. War games are on for ${WARGAME.h} hour: run mock attacks from the Military page.`); log(n, `War games with ${d.name} have begun.`, W); log(d, `War games with ${n.name} have begun.`, W); touch(W, u, v); return { msg: `War games with ${d.name} are on for ${WARGAME.h} hour.` }; }
-    if (op === 'end') { if (!n.wg) fail('You are not in war games.'); const v = n.wg.v; wgEnd(W, u, true); if (W.A[v] && W.A[v].wg && W.A[v].wg.v === u) wgEnd(W, v, true); return { msg: 'War games ended.' }; }
-    if (op === 'attack') { if (!wgOn(W, n)) fail('You are not in war games right now.'); const g = n.wg, v = g.v, d = W.A[v], h = Number(c.h); if (!Number.isInteger(h) || !P[h] || owner(W, h) !== v) fail(`Pick one of ${d.name}'s provinces.`);
-      if ((g.cd || 0) > W.now) fail(`Your staff is still writing up the last exercise. Try again in ${Math.ceil((g.cd - W.now) / 1000)} seconds.`);
-      let X = Math.floor(Number(c.X)), AIR = Math.max(0, Math.min(n.air || 0, Math.floor(Number(c.AIR) || 0))); if (!(X >= 10) || X > (n.troops || 0)) fail('Commit at least 10 troops, and no more than you have.');
-      const r = reachBy(W, u, h) || { rt: 'land', km: 0 }, far = !reachBy(W, u, h), mult = far ? 1 : routeMult(r, n);
-      const atk0 = (X + AIR * 20) * atkMult(n) * mult * Math.sqrt(gapF(n, d)), def0 = defense(W, h, u), atk = atk0 * (.85 + R() * .3), def = def0 * (.9 + R() * .2), win = atk > def, ra = def / (atk + def);
-      let w = 0; for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) if (atk0 * (.85 + .3 * (i + .5) / 20) > def0 * (.9 + .2 * (j + .5) / 20)) w++;
-      const res = { t: W.now, by: u, h, X, AIR, win, atk: Math.round(atk), def: Math.round(def), chance: w / 400, lossA: Math.min(X, Math.round(X * ra * .6)), lossD: Math.min(d.troops || 0, Math.round((d.troops || 0) * .5 * (1 - ra) * .5)), airA: Math.min(AIR, Math.round(AIR * ra * .3)), rt: far ? 'drill' : r.rt, cap: !!(W.OWN[h] && W.OWN[h].cap), mtn: !!P[h].m, ratio: Math.round(atk0 / Math.max(1, def0) * 100) / 100 };
-      g.cd = W.now + WARGAME.cdSec * 1000; g.s.n = (g.s.n || 0) + 1; if (win) g.s.w = (g.s.w || 0) + 1; g.s.lA = (g.s.lA || 0) + res.lossA; g.last = res;
-      if (d.wg && d.wg.v === u) { d.wg.s.dn = (d.wg.s.dn || 0) + 1; if (win) d.wg.s.dw = (d.wg.s.dw || 0) + 1; d.wg.lastIn = res; }
-      note(W, v, 'war', `🎯 War games: ${n.name} ran a mock attack on ${pname(h)} with ${num(X)} troops and ${win ? 'would have taken it' : 'was beaten back'}. Nothing was lost.`); touch(W, u, v);
-      return { msg: win ? `Mock victory at ${pname(h)}.` : `Mock defeat at ${pname(h)}.`, wg: res }; }
+      if (wgFrozen(W, d)) fail(`${d.name} has started war games with someone else.`); if (atWar(W, u, v)) fail('You are at war with them.'); if (d.wgin) delete d.wgin[u];
+      W.wgStart = { a: v, b: u }; touch(W, u, v); return { msg: `War games with ${d.name} are starting.` }; }
     fail('Unknown war games order.'); }
 
   // ================= daily missions =================
@@ -3454,7 +3444,7 @@ function Core(PD, CARDS) {
       case 'wonder': return wonder(W, u, String(c.k), !!c.abandon);
       case 'exped': return c.op === 'pick' ? expedPick(W, u, String(c.v), rng) : expedition(W, u, String(c.k), String(c.risk || ''), rng);
       case 'camp': return campAttack(W, u, c.h, c.X, rng);
-      case 'wargame': return wargame(W, u, c, rng);
+      case 'wargame': return wargame(W, u, c);
       case 'mission': return c.op === 'swap' ? swapMission(W, u, c.i) : claimMission(W, u, c.i);
       case 'offer': return offer(W, u, String(c.v), c.give, c.want);
       case 'release': return releaseProv(W, u, c.h);
