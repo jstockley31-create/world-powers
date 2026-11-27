@@ -3310,6 +3310,7 @@ async function handle(req, res) {
     res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(BLOCK_PAGE); } }
   try {
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) return serveStatic(req, res, auth(req) ? gameFile() : LANDING);
+    if (req.method === 'GET' && (p === '/shop' || p === '/merch' || p === '/store')) { res.writeHead(302, { Location: 'https://worldpowersgame.printful.me/', 'Cache-Control': 'no-cache' }); return res.end(); } // the official shirt shop (Printful Quick Store)
     if (req.method === 'GET' && p === '/donate/paypal') { const d = /^https:\/\/[^\s"'<>]+$/i.test(S.config.donateUrl || '') ? S.config.donateUrl : WP.DEFCFG.donateUrl; res.writeHead(302, { Location: d, 'Cache-Control': 'no-store' }); return res.end(); } // the plain donation link (paypal.me)
     if (req.method === 'GET' && p === '/play') return serveStatic(req, res, gameFile());
     if (req.method === 'GET' && p === '/tutorial.mp4' && TUTV) return serveVideo(req, res);
