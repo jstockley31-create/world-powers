@@ -1288,7 +1288,7 @@ function Core(PD, CARDS) {
     const v = owner(W, h), d = W.A[v];
     me.cash -= c.cash; me.res.oil -= c.oil + AIR * 2; me.res.food -= c.food; me.res.steel -= c.steel; me.cd.attack = W.now + tq(W, 15 * MIN); me.regroup = W.now + tq(W, (OCEAN || AIRB ? 60 : MARCH ? 45 : 30) * MIN); const retal = defending(W, u, v); me.aggr = addAggr(W, me, v, rogue(W, d) ? 0 : retal ? 0 : Math.round((hitRecently(W, u, v) ? 5 : W.m.aggrPerAttack * (measure(W, d, 'guarantee') ? 2 : 1)) * aggrScale(W, v))); rogueCheck(W, u);
     me.approval = clamp(me.approval - (me.gov === 'dem' ? 4 : me.gov === 'dic' ? 1 : 2), 0, 100); me.stability = clamp(me.stability - 1.5, 0, 100);
-    const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null, mode: ARM ? 'armor' : 'inf', tanks: ARM ? AO.tk : 0, cov: ARM ? AO.cov : 0 };
+    const result = { h, X, air: AIR, route: rt, km: RCH.km, naval: null, mode: ARM ? 'armor' : 'inf', tanks: ARM ? AO.tk : 0, cov: ARM ? AO.cov : 0 }; if (ARM) (W.armFx = W.armFx || []).push({ id: rid(), by: u, to: v, from: me.cap, h, t: W.now }); /* seen on every globe: the tanks roll out from beside the capital */
     // 1) naval battle for sea invasions
     if (SEA && d.ships > 0) {
       const atkN = me.ships * 25 * techF(me) * (.85 + rng() * .3), defN = navalDefense(W, h) * (.9 + rng() * .2), rn = defN / (atkN + defN);
