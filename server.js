@@ -892,6 +892,8 @@ if (!S.sx.m5) { S.sx.m5 = (S.sx.log || []).map(x => ({ t: x.t, p: x.p })); for (
 if (!S.migSxChaos) { S.migSxChaos = 1; const c = S.chaosLast; if (c && c.t && c.end) S.sx.news = (S.sx.news || []).filter(x => x.split || !(x.t >= c.t && x.t <= c.end + 90e3)); }
 // one-time: the strikes on Kingdom of Varn on Nov 27 (6:30 to 8:15 PM Mountain) were meant for the Rising Power. Take their lines out of the market news.
 if (!S.migSxVarn) { S.migSxVarn = 1; const a = Date.parse('2026-11-28T01:30:00Z'), b = Date.parse('2026-11-28T03:15:00Z'); S.sx.news = (S.sx.news || []).filter(x => x.split || !(x.t >= a && x.t <= b && (x.ev || []).every(e => ['strike', 'war', 'nuke'].includes(e[0])))); }
+// one-time: also the "Peace signed" lines from that evening (6:30 to 10:30 PM Mountain), which came from Frogland's accidental war
+if (!S.migSxPeace) { S.migSxPeace = 1; const a = Date.parse('2026-11-28T01:30:00Z'), c = Date.parse('2026-11-28T05:30:00Z'); S.sx.news = (S.sx.news || []).filter(x => x.split || !(x.t >= a && x.t <= c && (x.ev || []).every(e => e[0] === 'peace'))); }
 const sxOn = () => S.config.sxOn !== false;
 const SX_DEF = { fee: SX.fee, cap: SX.capGdp };
 function sxApply() { const c = S.config.sx || {}; SX.fee = c.fee >= .0125 && c.fee <= .05 ? c.fee : SX_DEF.fee; SX.capGdp = c.cap >= .05 && c.cap <= 1 ? c.cap : SX_DEF.cap; S.sx.v = c.vol >= .5 && c.vol <= 2 ? c.vol : 1; }
