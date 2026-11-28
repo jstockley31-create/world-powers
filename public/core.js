@@ -850,13 +850,30 @@ function Core(PD, CARDS) {
   }
   // fresh-start season worlds (cfg.noAdmin): nukes come earlier with shorter waits, and the Golden Dome earlier still, so a defence always exists before the first warhead
   // and every nuclear consequence is timed for a 7-day season: half as long (so a victim can still recover before the end), with costs scaled to season wealth
-  const seasonNukes = on => { WARHEAD.holdH = on ? 12 : 24; WARHEAD.buildH = on ? 12 : 24; /* tech levels are the same in seasons: nukes and domes stay rare */
-    WARHEAD.warH = 0; /* no waiting period: a nation at war that has built and armed a warhead may launch it */ WARHEAD.rogueH = on ? 36 : 72; WARHEAD.nukedH = on ? 36 : 72; WARHEAD.falloutH = on ? 24 : 48; WARHEAD.winterH = on ? 18 : 36; WARHEAD.angerD = on ? 3 : 7; NUKE.upkeep = on ? 1.5e6 : 3e5; INSPECT.cap = on ? 1e9 : 80e6;
+  const seasonNukes = on => { WARHEAD.holdH = on ? 6 : 24; WARHEAD.buildH = on ? 6 : 24; /* tech levels are the same in seasons: nukes and domes stay rare */
+    WARHEAD.warH = 0; /* no waiting period: a nation at war that has built and armed a warhead may launch it */ WARHEAD.rogueH = on ? 24 : 72; ROGUE_MIN = (on ? 6 : 12) * HOUR; WARHEAD.nukedH = on ? 36 : 72; WARHEAD.falloutH = on ? 24 : 48; WARHEAD.winterH = on ? 18 : 36; WARHEAD.angerD = on ? 3 : 7; NUKE.upkeep = on ? 1.5e6 : 3e5; INSPECT.cap = on ? 1e9 : 80e6;
     // every other multi-day timer, sized for a 7-day season
     DOME.buildH = on ? 12 : 48; DOME.lv.h = on ? [0, 3, 4, 5, 6] : [0, 6, 8, 10, 12]; HEAVY.emp.cdH = on ? 36 : 72; HEAVY.orbital.cdH = on ? 24 : 48;
     CAPMOVE.cdH = on ? 24 : 72; CAPMOVE.holdH = on ? 12 : 24; CAPMOVE.weakH = on ? 12 : 24; VASSAL.freeH = on ? 24 : 48; COMEBACK.gapH = on ? 24 : 72; COMEBACK.shieldH = on ? 12 : 24;
     NTEST.cdD = on ? 2 : 7; DISARM.banD = on ? 2 : 7; BRIBE.windowD = on ? 2 : 7; NUKEACC.gapD = on ? 2 : 7; BLOC.inviteH = on ? 24 : 72; ROUTE_D = on ? 2 : 7; };
-  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], CAMPS: (ext && ext.camps) || [], MK: (ext && ext.mkt) || null, changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = chaosMods(mods(ev, council, now), cfg); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
+  // A 7-day season is too short for the real world's tech ladder and prices, so inside a season every tech requirement is scaled to 10%,
+  // the top ranks needed come down a step, and the big-ticket items cost a fraction. The real world keeps its own numbers: the originals
+  // are remembered the first time and put back whenever a real-world step runs.
+  const SEAS = { tech: .1, on: null, orig: null };
+  function seasonScale(on) { on = !!on; if (SEAS.on === on) return; const T = v => Math.max(1, Math.round(v * SEAS.tech));
+    const L = []; const reg = (o, k) => { if (o && typeof o[k] === 'number') L.push([o, k, o[k]]); else if (o && Array.isArray(o[k])) L.push([o, k, o[k].slice()]); };
+    if (!SEAS.orig) { for (const o of [NUKE, WARHEAD, DOME, DIRTY, MISSILE]) reg(o, 'tech'); reg(DOME.lv, 'tech'); for (const o of Object.values(HEAVY)) { reg(o, 'tech'); reg(o, 'cash'); } for (const o of Object.values(COVERT)) reg(o, 'tech'); for (const o of Object.values(PUNITS)) for (const k of ['tech', 'cost', 'up', 'steel', 'oil']) reg(o, k);
+      for (const k of ['rank', 'cash', 'inc', 'steel', 'oil', 'goods']) { reg(NUKE, k); reg(WARHEAD, k); reg(DOME, k); } for (const k of ['cash', 'steel', 'goods', 'oil']) reg(DOME.lv, k); reg(DIRTY, 'cash'); reg(DIRTY, 'rank');
+      for (const o of Object.values(GRAND)) reg(o, 'cost'); for (const o of Object.values(UWONDERS)) reg(o, 'cost'); for (const o of SPACE.stages) { reg(o, 'floor'); reg(o, 'h'); } reg(GRANDC, 'failCdH'); SEAS.orig = L; }
+    for (const [o, k, v] of SEAS.orig) o[k] = Array.isArray(v) ? v.slice() : v; SEAS.on = on; if (!on) return;
+    const mul = (o, k, f, min) => { if (typeof o[k] === 'number') o[k] = Math.max(min || 0, Math.round(o[k] * f)); else if (Array.isArray(o[k])) o[k] = o[k].map(v => Math.round(v * f)); };
+    for (const [o, k] of SEAS.orig) if (k === 'tech') { if (Array.isArray(o[k])) o[k] = o[k].map(T); else o[k] = T(o[k]); }
+    NUKE.rank = 5; WARHEAD.rank = 6; DOME.rank = 4; DIRTY.rank = 2;
+    mul(NUKE, 'cash', .1); mul(NUKE, 'inc', .4); mul(WARHEAD, 'cash', .03); mul(WARHEAD, 'inc', .15); mul(DOME, 'cash', .2); mul(DOME.lv, 'cash', .2); mul(DIRTY, 'cash', .3);
+    for (const o of [NUKE, WARHEAD, DOME]) for (const k of ['steel', 'oil', 'goods']) mul(o, k, .2); for (const k of ['steel', 'goods', 'oil']) mul(DOME.lv, k, .2);
+    for (const o of Object.values(HEAVY)) mul(o, 'cash', .3); for (const o of Object.values(PUNITS)) { mul(o, 'cost', .05); mul(o, 'up', .05); mul(o, 'steel', .25); mul(o, 'oil', .25); }
+    for (const o of Object.values(GRAND)) { mul(o, 'cost', .02); } for (const o of Object.values(UWONDERS)) mul(o, 'cost', .02); for (const o of SPACE.stages) { mul(o, 'floor', .03); mul(o, 'h', .5, 2); } GRANDC.failCdH = 6; }
+  function world(A, cfg, now, ev, council, blocs, crisis, ext) { now = now || Date.now(); NOADM = !!(cfg && cfg.noAdmin); seasonNukes(NOADM); seasonScale(NOADM); const W = { A, cfg: { ...DEFCFG, ...(cfg || {}) }, now, ev: ev || null, council: council || null, B: blocs || {}, CR: crisis || null, G: (ext && ext.games) || null, DIS: (ext && ext.dis) || [], CAMPS: (ext && ext.camps) || [], MK: (ext && ext.mkt) || null, changed: new Set(), news: [], notes: [], fallen: [] }; BL = W.B; W.m = chaosMods(mods(ev, council, now), cfg); if (W.CR && W.CR.key && now < W.CR.end && CRISES[W.CR.key] && CRISES[W.CR.key].during) for (const [k, v] of Object.entries(CRISES[W.CR.key].during)) W.m[k] *= v; W.OWN = computeOwn(A); return W; }
   const owner = (W, h) => W.OWN[h] && W.OWN[h].u;
   // a read-only pass (drawing a page) can freeze the world so province lists are worked out once per nation instead of on every call
   let HXC = null; const freeze = W => { HXC = { W, m: new Map() }; }, thaw = () => { HXC = null; };
@@ -912,7 +929,7 @@ function Core(PD, CARDS) {
   const tradeDeals = (W, u) => others(W, u).filter(v => pact(W, u, v, 'trade'));
   const sanctioned = n => (n.aggr || 0) >= 50;
   // rogue state ("the North Korea treatment"): 75+ aggression brings a full embargo and isolation for at least 24 hours
-  const ROGUE_AT = 75, ROGUE_MIN = 12 * HOUR;
+  const ROGUE_AT = 75; let ROGUE_MIN = 12 * HOUR; // 6 hours inside a season (set in seasonNukes)
   const rogue = (W, n) => !!n && (n.rogue || 0) > (W ? W.now : Date.now());
   const oilF = n => ((n.res && n.res.oil) || 0) > 0 ? 1 : .6;
   const cheap = n => GOV[n.gov].cheap || 1;
@@ -1414,7 +1431,7 @@ function Core(PD, CARDS) {
   const incCost = (W, u, B) => nukeFlat(W) ? B.cash0 : Math.max(B.cash, W.A[u] ? Math.round(taxIncome(W, u) * B.inc / 1e6) * 1e6 : 0);
   const dirtyCost = (W, u) => incCost(W, u, DIRTY), warheadCost = (W, u) => incCost(W, u, WARHEAD);
   const AI_AGGR_CAP = 34, addAggr = (W, me, v, x) => { const d = W.A[v]; if (!(x > 0)) return me.aggr || 0; x *= 1 - UPG.min.list.foreign.f * minL(me, 'foreign'); const a = me.aggr || 0; return Math.min(100, d && d.ai ? Math.max(a, Math.min(AI_AGGR_CAP, a + x)) : a + x); };
-  const aggrScale = (W, v) => { const d = W.A[v]; return !d ? 1 : d.ai ? (d.ai.boss ? 0 : 1 / 3) : 4 / 3; };
+  const aggrScale = (W, v) => { const d = W.A[v]; return !d ? 1 : d.ai ? (d.ai.boss ? 0 : 1 / 3) : NOADM ? 1 : 4 / 3; }; // in a season, attacking a player adds a quarter less aggression: a week of war should not make everyone a rogue state
   const PACT_CAUSE = { h: 24, noteH: 6 };
   // an attack on one is an attack on all: everyone in the victim's alliance (and its pact allies) gets a just cause against the attacker, and is told
   function rallyAllies(W, u, v, how) { const me = W.A[u], d = W.A[v]; if (!me || !d || u === v) return; const b = blocOf(W, v), set = new Set([...(b ? b.members || [] : []), ...allies(W, v)]); set.delete(v); set.delete(u);
@@ -2199,7 +2216,7 @@ function Core(PD, CARDS) {
     const me = W.A[u]; if (!me) fail('Found a nation first.'); if (!has(RES, r)) fail('Unknown commodity.');
     if (embargoed(W, me)) fail('You are under a World Council embargo and cannot trade on the world market.');
     if ((me.blockade || 0) > W.now) fail(`Enemy warships are blockading your ports: no market trade for ${fmtT(me.blockade - W.now)}.`);
-    if (rogue(W, me)) fail('Your nation is a rogue state under a full international embargo. The world market is closed to you.');
+    if (rogue(W, me) && !NOADM) fail('Your nation is a rogue state under a full international embargo. The world market is closed to you.'); // in a season a rogue state can still use the market, at the worse prices every sanctioned nation pays
     q = Math.floor(Number(q)); if (!(q > 0) || (q > 1e6 && !(buy && emer))) fail('Enter a valid quantity.'); // an emergency import is capped by what the nation needs, not by the order size
     const s = spreads(W, u), base = RES[r].p * (W.m.price[r] || 1); let msg;
     if (buy && !emer && storeOn(W) && STORE.res.includes(r)) { const room = storeRoom(W, u, r); if (!room) fail(`Your warehouses are full of ${rName(r)} (${num(storeCaps(W, u)[r])}). Build more warehouse levels on the Development page to store more.`); if (q > room) fail(`Your warehouses only have room for ${num(room)} more ${rName(r)}.`); }
@@ -2753,7 +2770,7 @@ function Core(PD, CARDS) {
       const was = rogue(W, n); if (!was) n.rogueT = W.now; n.rogue = Math.max(n.rogue || 0, W.now + tq(W, ROGUE_MIN));
       if (!was) {
         news(W, u, `☠ ${n.name} has been declared a rogue state. The world has imposed a full embargo.`);
-        log(n, 'Your nation has been declared a rogue state: full trade embargo, trade agreements cancelled, allies have walked away, and the world may attack you freely. It lasts at least 12 hours and ends only when your aggression falls below 50.', W);
+        log(n, `Your nation has been declared a rogue state: ${NOADM ? 'trade agreements cancelled, worse market prices' : 'full trade embargo, trade agreements cancelled'}, allies have walked away, and the world may attack you freely. It lasts at least ${ROGUE_MIN / HOUR} hours and ends only when your aggression falls below 50.`, W);
         note(W, u, 'war', '☠ Your nation is now a rogue state under full international embargo.');
         for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${n.name}, which has been declared a rogue state.`); touch(W, a); }
         for (const v of others(W, u)) if (!W.A[v].ai) note(W, v, 'war', `☠ ${n.name} has been declared a rogue state. Attacking it adds no aggression, and you fight it at +15% strength.`);
@@ -2977,6 +2994,7 @@ function Core(PD, CARDS) {
   const wgOn = wgFrozen;
   function wargame(W, u, c) { const n = W.A[u]; if (!n) fail('Found a nation first.'); const op = String(c.op || ''); n.wgin = n.wgin || {};
     for (const k of Object.keys(n.wgin)) if (n.wgin[k] < W.now - WARGAME.offerH * HOUR || !W.A[k]) delete n.wgin[k];
+    if ((op === 'offer' || op === 'accept') && W.cfg && (W.cfg.fresh || W.cfg.chaos)) fail('War games are switched off during a season. They are back when the real world returns.');
     if (op === 'offer') { const v = String(c.v), d = W.A[v]; if (!d || v === u) fail('Pick another nation.'); if (d.ai) fail('Only nations run by players can join war games.'); if (wgFrozen(W, d)) fail(`${d.name} is already in war games.`); if (atWar(W, u, v)) fail('You are at war with them: this would not be a game.');
       d.wgin = d.wgin || {}; if (d.wgin[u] && d.wgin[u] > W.now - 10 * MIN) fail('You already invited them a few minutes ago.'); d.wgin[u] = W.now; note(W, v, 'war', `🎯 ${n.name} invites you to war games: a private one-hour battle between your two nations. Your real nations are frozen and get everything back afterwards. Accept on the Military page.`); touch(W, u, v); return { msg: `Invitation sent to ${d.name}.` }; }
     if (op === 'accept' || op === 'decline') { const v = String(c.v), d = W.A[v]; if (!n.wgin[v]) fail('That invitation is no longer open.'); delete n.wgin[v]; if (op === 'decline' || !d) { if (d) note(W, v, 'war', `${n.name} declined your war games invitation.`); touch(W, u); return { msg: 'Invitation declined.' }; }
