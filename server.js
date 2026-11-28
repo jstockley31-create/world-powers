@@ -888,6 +888,8 @@ const SX = WP.SX, SXK = WP.SXK, SX_ALL = [...SXK, SX.idx.k], SX_TICK = SX.tickMi
 if (!S.sx || !S.sx.p) S.sx = { p: Object.fromEntries(SXK.map(k => [k, SX.base])), F: {}, comp: {}, bud: {}, n: 0, log: [], m5: [], hr: [], news: [], fees: 0, vol: 0, chain: '', next: 0, last: Date.now(), mk: null };
 // one-time: the exchange used to step every 5 minutes. Keep that day of prices for the charts, and shrink the running event average to the new small steps.
 if (!S.sx.m5) { S.sx.m5 = (S.sx.log || []).map(x => ({ t: x.t, p: x.p })); for (const k of Object.keys(S.sx.comp || {})) S.sx.comp[k] /= SX_TICK / SX_STEP; }
+// one-time: the exchange reported the last Chaos world's strikes and nukes as market news. Take those lines out.
+if (!S.migSxChaos) { S.migSxChaos = 1; const c = S.chaosLast; if (c && c.t && c.end) S.sx.news = (S.sx.news || []).filter(x => x.split || !(x.t >= c.t && x.t <= c.end + 90e3)); }
 const sxOn = () => S.config.sxOn !== false;
 const SX_DEF = { fee: SX.fee, cap: SX.capGdp };
 function sxApply() { const c = S.config.sx || {}; SX.fee = c.fee >= .0125 && c.fee <= .05 ? c.fee : SX_DEF.fee; SX.capGdp = c.cap >= .05 && c.cap <= 1 ? c.cap : SX_DEF.cap; S.sx.v = c.vol >= .5 && c.vol <= 2 ? c.vol : 1; }
@@ -932,7 +934,7 @@ function sxFill(W, now) { let any = false;
   return any; }
 // the world loop notes what happened in the world; the next price step uses it
 let sxEvQ = [];
-function sxGather(W) { const now = Date.now(), X = S.sx, ev = sxEvents(W, X.last || now - 30e3, now); X.last = now; if (ev.length) sxEvQ.push(...ev); }
+function sxGather(W) { const now = Date.now(), X = S.sx; if (chaosOn()) { X.last = now; return; } /* Chaos world is a separate pretend world: its wars, strikes and nukes are not news for the exchange */ const ev = sxEvents(W, X.last || now - 30e3, now); X.last = now; if (ev.length) sxEvQ.push(...ev); }
 // a price step, every few seconds
 function sxFast() { if (SHUTTING) return; const now = Date.now(), X = S.sx, ev = sxEvQ; sxEvQ = [];
   const r = WP.sxStep(X, [sxNorm(), ...SXK.map(sxNorm)], ev), news = [];
