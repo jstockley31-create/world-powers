@@ -880,6 +880,87 @@ function wgFinish(g, why) {
 function wgLoop() { const now = Date.now(); for (const g of Object.values(S.wgs)) { try { if (now >= g.end || !S.users[g.a] || !S.users[g.b] || !g.A[g.a] || !g.A[g.b]) { wgFinish(g, now >= g.end ? 'Time is up.' : 'One side is gone.'); continue; }
     const W = wgWorld(g); let ch = false; for (const u of [g.a, g.b]) if (core.tick(W, u, true, rng)) ch = true; if (ch || W.changed.size) wgCommit(g, W); } catch (e) { logErr('War games: ' + (e.stack || e)); try { wgFinish(g, 'The battle was stopped.'); } catch (e2) {} } } }
 const wgFinishAll = why => { for (const g of Object.values(S.wgs)) try { wgFinish(g, why); } catch (e) { logErr(e.stack || e); } };
+// ===================== WORLD STOCK EXCHANGE =====================
+// Prices live on the server only. A price step uses fresh randomness drawn at that moment, so the next price cannot be known by anyone
+// in advance (it is not stored anywhere, not even in a backup). Orders fill at the NEXT step, never at the price on screen. Nobody's
+// trades move a price. Every step is chained to the one before by a fingerprint, so the record cannot be quietly rewritten.
+const SX = WP.SX, SXK = WP.SXK, SX_ALL = [...SXK, SX.idx.k], SX_TICK = SX.tickMin * 60e3;
+if (!S.sx || !S.sx.p) S.sx = { p: Object.fromEntries(SXK.map(k => [k, SX.base])), F: {}, comp: {}, bud: {}, n: 0, log: [], hr: [], news: [], fees: 0, vol: 0, chain: '', next: 0, last: Date.now(), mk: null };
+const sxOn = () => S.config.sxOn !== false;
+const SX_DEF = { fee: SX.fee, cap: SX.capGdp };
+function sxApply() { const c = S.config.sx || {}; SX.fee = c.fee >= .0125 && c.fee <= .05 ? c.fee : SX_DEF.fee; SX.capGdp = c.cap >= .05 && c.cap <= 1 ? c.cap : SX_DEF.cap; S.sx.v = c.vol >= .5 && c.vol <= 2 ? c.vol : 1; }
+sxApply();
+const sxBanned = uid => !!(S.config.sxBan && S.config.sxBan[uid]);
+function sxChainOk() { let prev = null, n = 0; for (const st of S.sx.log) { if (prev != null && crypto.createHash('sha256').update(prev + JSON.stringify([st.n, st.t, st.p])).digest('hex') !== st.h) return { ok: false, at: st.n }; prev = st.h; n++; } return { ok: true, n }; }
+function sxAdminView() { const W = mkWorld(), X = S.sx, day = X.log.length ? X.log[0].p : null;
+  const holders = Object.entries(W.A).filter(([u, n]) => n.sx && (sxVal(n) > 0 || n.sx.real || n.sx.fee)).map(([u, n]) => { const x = n.sx, held = Object.keys(x.h || {}).reduce((t, k) => t + (x.h[k] || 0) * sxBase(k), 0), cost = Object.values(x.cost || {}).reduce((a, b) => a + b, 0); return { id: u, name: n.name, val: Math.round(sxVal(n)), pl: Math.round(held - cost), real: Math.round(x.real || 0), fee: Math.round(x.fee || 0), pend: (x.o || []).length, cap: Math.round(sxCap(n)), ban: sxBanned(u), what: Object.keys(x.h || {}).filter(k => x.h[k] > 0).join(' ') }; }).sort((a, b) => b.val - a.val);
+  return { on: sxOn(), k: SX_ALL, p: SX_ALL.map(k => Math.round(sxShow(k) * 100) / 100), d: SX_ALL.map((k, i) => day && day[i] > 0 ? Math.round((sxShow(k) / day[i] - 1) * 1e4) / 100 : 0), fees: Math.round(X.fees), vol: Math.round(X.vol), n: X.n, next: X.next, held: holders.reduce((t, h) => t + h.val, 0), holders, tape: (X.tape || []).slice(0, 60), set: { fee: SX.fee, cap: SX.capGdp, vol: X.v || 1 }, def: SX_DEF, chain: sxChainOk(), news: X.news.slice(0, 8) }; }
+function sxAdmin(me, b) { const op = String(b.op || '');
+  if (op === 'set') { const fee = +b.fee / 100, cap = +b.cap / 100, vol = +b.vol; if (!(fee >= .0125 && fee <= .05)) return { err: 'The fee must be between 1.25% and 5%. Below 1.25%, causing world events on purpose could start to pay.' }; if (!(cap >= .05 && cap <= 1)) return { err: 'The limit must be between 5% and 100% of GDP.' }; if (!(vol >= .5 && vol <= 2)) return { err: 'Choose calm (0.5) to wild (2).' };
+    const was = JSON.stringify(S.config.sx || {}); S.config.sx = { fee, cap, vol }; sxApply(); audit(me.name, 'Stock exchange', 'settings', `${was} → fee ${(fee * 100).toFixed(2)}%, limit ${Math.round(cap * 100)}% of GDP, swings ×${vol}`); broadcast('config', effCfg()); }
+  else if (op === 'open' || op === 'close') { S.config.sxOn = op === 'open'; if (op === 'close') sxCancelAll(); audit(me.name, 'Stock exchange', op === 'open' ? 'opened' : 'closed'); broadcast('config', effCfg()); }
+  else if (op === 'cancelall') { sxCancelAll(); audit(me.name, 'Stock exchange', 'all waiting orders handed back'); }
+  else if (op === 'ban' || op === 'unban') { const id = String(b.id || ''); if (!S.docs['nations/' + id]) return { err: 'Unknown nation.' }; S.config.sxBan = S.config.sxBan || {}; if (op === 'ban') S.config.sxBan[id] = Date.now(); else delete S.config.sxBan[id]; audit(me.name, 'Stock exchange', op === 'ban' ? 'blocked from buying' : 'allowed to buy again', nationName(id)); }
+  else if (op === 'liquidate') { const id = String(b.id || ''), W = mkWorld(), n = W.A[id]; if (!n || !n.sx) return { err: 'That nation holds nothing.' }; const x = n.sx; let back = 0; for (const o of x.o || []) { if (o.side === 'buy') back += o.amt + o.fee; else { x.h[o.s] = (x.h[o.s] || 0) + o.u; x.cost[o.s] = (x.cost[o.s] || 0) + (o.cost || 0); } } x.o = [];
+    let worth = 0, cost = 0; for (const k of Object.keys(x.h || {})) { worth += (x.h[k] || 0) * sxBase(k); cost += (x.cost || {})[k] || 0; } worth = Math.floor(worth); x.h = {}; x.cost = {}; x.real = (x.real || 0) + worth - cost; lateGive(W, n, worth + back, 'stocks'); core.touch(W, id); commit(W);
+    addNote(id, 'economy', `📈 The administrators sold all your shares at today's price, with no fee: ${WP.moneyS(worth)} is back in your treasury.`); audit(me.name, 'Stock exchange', 'sold out a nation at the current price', `${n.name}: ${WP.moneyS(worth)}`); }
+  else return { err: 'Unknown action.' };
+  persist(); return { ok: true }; }
+const sxNorm = () => { let u = 0, v = 0; while (!u) u = rng(); while (!v) v = rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+const sxBase = k => WP.sxPrice(S.sx.p, k);                        // what one unit is worth (units never change in a split)
+const sxShow = k => sxBase(k) / (S.sx.F[k] || 1);                  // the price players see
+const sxVal = n => { const x = n && n.sx; if (!x) return 0; let v = 0; for (const k of Object.keys(x.h || {})) if (SX_ALL.includes(k)) v += (x.h[k] || 0) * sxBase(k); for (const o of x.o || []) v += o.side === 'buy' ? o.amt : (o.u || 0) * sxBase(o.s); return v; };
+// taxes and reforms that take a share of a treasury take the same share of the shares held (so stocks are not a tax shelter)
+function sxSeize(n, amount) { const x = n && n.sx; if (!x || !(amount > 0)) return 0; let v = 0; for (const k of Object.keys(x.h || {})) v += (x.h[k] || 0) * sxBase(k); if (!(v > 0)) return 0; const f = Math.min(1, amount / v); for (const k of Object.keys(x.h)) { x.h[k] *= 1 - f; if (x.cost && x.cost[k]) x.cost[k] *= 1 - f; } return v * f; }
+const sxCap = n => Math.max(SX.capFloor, (n.gdp || 0) * SX.capGdp);
+// what happened in the world since the last step (each kind with how many times, and a random size)
+function sxEvents(W, from, to) { const ev = [], add = (k, c) => { if (c > 0) ev.push([k, c, .5 + rng()]); }, inW = t => t > from && t <= to;
+  try { let wars = 0, peace = 0; const seen = new Set(); for (const [u, n] of Object.entries(W.A)) for (const [v, r] of Object.entries(n.rel || {})) { const key = u < v ? u + '|' + v : v + '|' + u; if (inW(r.war || 0) && !seen.has('w' + key)) { seen.add('w' + key); wars++; } if (inW(r.peace || 0) && !seen.has('p' + key)) { seen.add('p' + key); peace++; } } add('war', wars); add('peace', peace); } catch (e) {}
+  try { add('strike', (S.strikeLog || []).filter(x => inW(x.t)).length); add('nuke', (S.nukes || []).filter(x => inW(x.t)).length); add('dis', (S.dis || []).filter(x => inW(x.t)).length); } catch (e) {}
+  try { if (S.crisis && inW(S.crisis.start || 0)) add('crisis', 1); if (S.games && inW(S.games.start || 0)) add('games', 1); add('space', ((S.late && S.late.hof) || []).filter(x => x.kind === 'space' && inW(x.t)).length); } catch (e) {}
+  try { const M = S.mkt, X = S.sx; if (M && M.on && M.stock && M.ref) { const cur = {}; for (const [r, kk] of [['oil', 'oil'], ['steel', 'steel'], ['food', 'food']]) { const f = M.ref[r] > 0 ? (M.stock[r] || 0) / M.ref[r] : null; if (f == null) continue; cur[r] = f; const was = X.mk && X.mk[r]; if (was > 0) { const ch = f / was; if (ch < .96) add(kk + 'Up', 1); else if (ch > 1.04) add(kk + 'Dn', 1); else cur[r] = was; } } X.mk = { ...(X.mk || {}), ...cur }; } } catch (e) {}
+  return ev; }
+function sxFill(W, now) { let any = false;
+  for (const [u, n] of Object.entries(W.A)) { const x = n.sx; if (!x || !(x.o || []).length || (n.wgz || 0) > now) continue; const keep = [];
+    for (const o of x.o) { if (!(o.t < now) || !SX_ALL.includes(o.s)) { keep.push(o); continue; } const P = sxBase(o.s); x.h = x.h || {}; x.cost = x.cost || {}; let line;
+      if (o.side === 'buy') { const units = o.amt / P; x.h[o.s] = (x.h[o.s] || 0) + units; x.cost[o.s] = (x.cost[o.s] || 0) + o.amt + o.fee; S.sx.fees += o.fee; S.sx.vol += o.amt; x.fee = (x.fee || 0) + o.fee; line = { t: now, s: o.s, side: 'buy', sh: units * (S.sx.F[o.s] || 1), px: sxShow(o.s), amt: o.amt + o.fee, fee: o.fee }; }
+      else { const gross = Math.floor(o.u * P), fee = Math.ceil(gross * SX.fee), net = Math.max(0, gross - fee); lateGive(W, n, net, 'stocks'); S.sx.fees += fee; S.sx.vol += gross; x.fee = (x.fee || 0) + fee; x.real = (x.real || 0) + net - (o.cost || 0); line = { t: now, s: o.s, side: 'sell', sh: o.u * (S.sx.F[o.s] || 1), px: sxShow(o.s), amt: net, fee, pl: Math.round(net - (o.cost || 0)) }; }
+      x.done = [line, ...(x.done || [])].slice(0, 12); any = true; S.sx.tape = [{ t: now, u, name: n.name, s: o.s, side: o.side, amt: Math.round(line.amt), px: Math.round(line.px * 100) / 100, pl: line.pl }, ...(S.sx.tape || [])].slice(0, 150); }
+    x.o = keep; for (const k of Object.keys(x.h || {})) if (!(x.h[k] > 1e-9)) { delete x.h[k]; if (x.cost) delete x.cost[k]; } core.touch(W, u); }
+  return any; }
+function sxTick(W) { const now = Date.now(), X = S.sx; if (now < (X.next || 0)) return false;
+  const ev = sxEvents(W, X.last || now - SX_TICK, now), r = WP.sxStep(X, [sxNorm(), ...SXK.map(sxNorm)], ev), news = [];
+  for (const k of SXK) { const d = sxShow(k); if (d > SX.splitHi) { X.F[k] = (X.F[k] || 1) * SX.splitX; news.push({ t: now, split: k, x: SX.splitX }); } else if (d < SX.splitLo) { X.F[k] = (X.F[k] || 1) / SX.splitX; news.push({ t: now, split: k, x: 1 / SX.splitX }); } }
+  const p = SX_ALL.map(k => Math.round(sxShow(k) * 1e4) / 1e4); X.chain = crypto.createHash('sha256').update(X.chain + JSON.stringify([X.n, now, p])).digest('hex');
+  X.log.push({ t: now, n: X.n, p, h: X.chain }); X.log = X.log.slice(-288); const hr = Math.floor(now / HOUR); if (!X.hr.length || Math.floor(X.hr[X.hr.length - 1].t / HOUR) !== hr) { X.hr.push({ t: now, p }); X.hr = X.hr.slice(-720); }
+  if (r.why.length) { const mv = SXK.map(k => [k, r.mv[k]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2).map(([k, v]) => [k, Math.round(v * 1e4) / 1e4]); news.push({ t: now, ev: ev.map(e => [e[0], e[1]]), mv }); }
+  if (news.length) X.news = [...news.reverse(), ...X.news].slice(0, 40);
+  X.last = now; X.next = Math.floor(now / SX_TICK) * SX_TICK + SX_TICK;
+  if (sxOn() && !chaosOn() && !(S.fresh && S.fresh.wait)) sxFill(W, now);
+  persist(); broadcast('sx', { t: now, p, next: X.next, news: news.length ? X.news.slice(0, news.length) : null, h: X.chain, F: X.F }); return true; }
+function sxView(uid) { const X = S.sx, n = S.docs['nations/' + uid], now = Date.now();
+  return { on: sxOn(), why: !sxOn() ? 'The exchange is closed by the administrators.' : lateOff() || '', k: SX_ALL, p: SX_ALL.map(k => Math.round(sxShow(k) * 1e4) / 1e4), F: X.F, log: X.log.map(x => [x.t, x.p]), hr: X.hr.map(x => [x.t, x.p]), news: X.news, next: X.next, now, chain: X.chain, n: X.n, fees: Math.round(X.fees), vol: Math.round(X.vol),
+    top: Object.values(S.docs).filter(d => d && d.sx && d.name && (d.sx.real || 0) > 0).map(d => ({ name: d.name, real: Math.round(d.sx.real) })).sort((a, b) => b.real - a.real).slice(0, 5), fee: SX.fee, cap: SX.capGdp,
+    me: n ? { cap: Math.round(sxCap(n)), val: Math.round(sxVal(n)) } : null }; }
+function sxOrder(me, b) { const off = lateOff(); if (off) return { err: off }; if (!sxOn()) return { err: 'The exchange is closed right now.' }; if (finaleLock()) return { err: 'Not during the season finale.' };
+  const W = mkWorld(), n = W.A[me.id]; if (!n || n.ai) return { err: 'Found a nation first.' }; if (core.rankOf(n.xp) < SX.rank) return { err: 'The exchange opens at the rank of Elder.' }; if ((n.wgz || 0) > Date.now()) return { err: 'Not during war games.' };
+  const x = n.sx = n.sx || {}; x.h = x.h || {}; x.cost = x.cost || {}; x.o = x.o || []; const op = String(b.op || ''), now = Date.now(); let msg;
+  if (op === 'cancel') { const i = x.o.findIndex(o => o.id === String(b.id)); if (i < 0) return { err: 'That order has already been filled or cancelled.' }; const o = x.o[i]; x.o.splice(i, 1);
+    if (o.side === 'buy') lateGive(W, n, o.amt + o.fee, 'stocks'); else { x.h[o.s] = (x.h[o.s] || 0) + o.u; x.cost[o.s] = (x.cost[o.s] || 0) + (o.cost || 0); } msg = 'Order cancelled. Nothing was charged.'; }
+  else if (op === 'buy' || op === 'sell') { const s = String(b.s || ''); if (!SX_ALL.includes(s)) return { err: 'Unknown company.' };
+    x.rl = (x.rl || []).filter(t => t > now - HOUR); if (x.rl.length >= SX.perHour) return { err: `You can place ${SX.perHour} orders an hour. Try again a little later.` }; if (x.o.length >= SX.maxOrders) return { err: `You can have ${SX.maxOrders} orders waiting at once.` };
+    if (op === 'buy' && sxBanned(me.id)) return { err: 'The administrators have stopped your nation from buying shares. You can still sell what you hold.' };
+    if (op === 'buy') { const amt = Math.floor(Number(b.amt)); if (!Number.isFinite(amt) || amt < SX.min) return { err: `The smallest order is ${WP.moneyS(SX.min)}.` }; if (amt > 1e15) return { err: 'That is too much for one order.' }; if (!(n.cash >= amt)) return { err: 'Your treasury does not hold that much.' };
+      const cap = sxCap(n), have = sxVal(n); if (have + amt > cap) return { err: `A nation can hold shares worth up to ${Math.round(SX.capGdp * 100)}% of its GDP (${WP.moneyS(cap)} for you). You hold ${WP.moneyS(have)}, so you can buy ${WP.moneyS(Math.max(0, cap - have))} more.` };
+      const fee = Math.ceil(amt * SX.fee); latePay(W, n, amt, 'stocks'); x.o.push({ id: crypto.randomBytes(5).toString('hex'), s, side: 'buy', amt: amt - fee, fee, t: now }); msg = `Order placed: ${WP.moneyS(amt)} of ${s}. It fills at the next price.`; }
+    else { const have = x.h[s] || 0; if (!(have > 0)) return { err: 'You hold no shares of that.' }; let f = Number(b.pct); if (!Number.isFinite(f) || !(f > 0)) return { err: 'Choose how much to sell.' }; f = Math.min(1, f); if (f > .995) f = 1; const u = have * f, worth = u * sxBase(s);
+      if (f < 1 && worth < SX.min) return { err: `The smallest order is ${WP.moneyS(SX.min)}. Sell everything, or a bigger part.` }; const cost = (x.cost[s] || 0) * f; x.h[s] = have - u; x.cost[s] = (x.cost[s] || 0) - cost; if (f === 1) { delete x.h[s]; delete x.cost[s]; }
+      x.o.push({ id: crypto.randomBytes(5).toString('hex'), s, side: 'sell', u, cost, t: now }); msg = `Order placed: sell ${f === 1 ? 'all' : Math.round(f * 100) + '%'} of your ${s}. It fills at the next price.`; }
+    x.rl.push(now); }
+  else return { err: 'Unknown order.' };
+  core.touch(W, me.id); commit(W); return { msg, me: S.docs['nations/' + me.id] || null, view: sxView(me.id) }; }
+// closing the exchange hands every waiting order back untouched
+function sxCancelAll() { const W = mkWorld(); for (const [u, n] of Object.entries(W.A)) { const x = n.sx; if (!x || !(x.o || []).length) continue; for (const o of x.o) { if (o.side === 'buy') lateGive(W, n, o.amt + o.fee, 'stocks'); else { x.h = x.h || {}; x.cost = x.cost || {}; x.h[o.s] = (x.h[o.s] || 0) + o.u; x.cost[o.s] = (x.cost[o.s] || 0) + (o.cost || 0); } } x.o = []; core.touch(W, u); } commit(W); }
 // rebel camps: a new one appears on unclaimed land every couple of hours (up to the cap); old ones pack up after two days
 function campLoop(W) { const now = Date.now(); if (S.config.camps === false) { if (S.camps.length) { S.camps.length = 0; W.campch = true; } return; }
   for (let i = S.camps.length - 1; i >= 0; i--) if (S.camps[i].until <= now || W.OWN[S.camps[i].h]) { S.camps.splice(i, 1); W.campch = true; }
@@ -1986,7 +2067,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     try { bossWatch(W); } catch (e) { logErr('bossWatch: ' + e.message); }
     try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); councilDaily(W); nukeAccLoop(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); try { sxTick(W); } catch (e) { logErr('Exchange: ' + (e.stack || e)); } councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);
@@ -2253,7 +2334,7 @@ function lateAct(uid, b) { const off = lateOff(); if (off) return { error: off }
 S.econ = S.econ && typeof S.econ === 'object' ? S.econ : { idleT: 0, idleTaken: 0, burns: [] };
 function idleTaxRun(W) { const over = +S.config.idleOver || 0, pct = +S.config.idlePct || 0, now = Date.now(); if (!(over > 0 && pct > 0)) return 0; if (S.chaos && S.chaos.on) return 0; if (now - (S.econ.idleT || 0) < 59 * 60e3) return 0;
   const hrs = Math.min(6, S.econ.idleT ? Math.max(1, Math.floor((now - S.econ.idleT) / HOUR)) : 1); S.econ.idleT = now; let took = 0;
-  for (const [u, n] of Object.entries(W.A)) { const ex = (n.cash || 0) - over; if (!(ex > 0)) continue; const t = Math.floor(ex * (1 - Math.pow(1 - Math.min(50, pct) / 100, hrs))); if (t < 1) continue; try { core.finSync(W, n); } catch (e) {} n.cash -= t; try { core.finAdd(W, n, 'tax', -t); } catch (e) {} took += t; core.touch(W, u);
+  for (const [u, n] of Object.entries(W.A)) { const ex = (n.cash || 0) + sxVal(n) - over; if (!(ex > 0)) continue; const t = Math.floor(ex * (1 - Math.pow(1 - Math.min(50, pct) / 100, hrs))); if (t < 1) continue; try { core.finSync(W, n); } catch (e) {} { const c_ = Math.min(t, Math.max(0, n.cash || 0)); n.cash -= c_; if (t > c_) sxSeize(n, t - c_); } try { core.finAdd(W, n, 'tax', -t); } catch (e) {} took += t; core.touch(W, u);
     if (!n.ai && S.users[u]) { const m = meta(u), day = Math.floor(now / 864e5); if (m.idleDay !== day) { m.idleDay = day; addNote(u, 'economy', `🏦 World Bank holding tax: money in your treasury above ${WP.moneyS(over)} is taxed ${pct}% an hour. Spend or invest it to avoid the tax.`); } } }
   S.econ.idleTaken = (S.econ.idleTaken || 0) + took; S.econ.idleLast = { t: now, took }; return took; }
 // IDLE DRAIN: money above $1B in a nation whose leader has not been online for 7+ days slowly drains away (2% a day by default), so abandoned treasuries do not sit in the economy for good. Admin switch: config.idleDrain / idleDrainPct.
@@ -2261,8 +2342,8 @@ const DRAIN = { days: 7, floor: 1e9, pct: 2 };
 const drainOn = () => S.config.idleDrain !== false, drainPct = () => (S.config.idleDrainPct != null ? +S.config.idleDrainPct : DRAIN.pct);
 function idleDrainRun(W) { const now = Date.now(), pct = drainPct(); if (!drainOn() || !(pct > 0)) return 0; if (S.chaos && S.chaos.on) return 0; if (now - (S.econ.drainT || 0) < 59 * 60e3) return 0;
   const hrs = Math.min(6, S.econ.drainT ? Math.max(1, Math.floor((now - S.econ.drainT) / HOUR)) : 1); S.econ.drainT = now; let took = 0, who = 0;
-  for (const [u, n] of Object.entries(W.A)) { if (n.ai || !S.users[u]) continue; const seen = meta(u).lastSeen || 0; if (!seen || now - seen < DRAIN.days * 864e5) continue; const ex = (n.cash || 0) - DRAIN.floor; if (!(ex > 0)) continue;
-    const t = Math.floor(ex * (1 - Math.pow(1 - Math.min(50, pct) / 100, hrs / 24))); if (t < 1) continue; try { core.finSync(W, n); } catch (e) {} n.cash -= t; try { core.finAdd(W, n, 'other', -t); } catch (e) {} took += t; who++; core.touch(W, u);
+  for (const [u, n] of Object.entries(W.A)) { if (n.ai || !S.users[u]) continue; const seen = meta(u).lastSeen || 0; if (!seen || now - seen < DRAIN.days * 864e5) continue; const ex = (n.cash || 0) + sxVal(n) - DRAIN.floor; if (!(ex > 0)) continue;
+    const t = Math.floor(ex * (1 - Math.pow(1 - Math.min(50, pct) / 100, hrs / 24))); if (t < 1) continue; try { core.finSync(W, n); } catch (e) {} { const c_ = Math.min(t, Math.max(0, n.cash || 0)); n.cash -= c_; if (t > c_) sxSeize(n, t - c_); } try { core.finAdd(W, n, 'other', -t); } catch (e) {} took += t; who++; core.touch(W, u);
     const m = meta(u); m.drained = (m.drained || 0) + t; if (!m.drainNote || now - m.drainNote > 7 * 864e5) { m.drainNote = now; addNote(u, 'economy', `🏦 Your nation has been without a leader for over ${DRAIN.days} days, so money above ${WP.moneyS(DRAIN.floor)} in its treasury drains away at ${pct}% a day. Log in to stop it.`); } }
   S.econ.drainTaken = (S.econ.drainTaken || 0) + took; S.econ.drainLast = { t: now, took, who }; return took; }
 function econView() { const W = mkWorld(), now = Date.now(), ids = Object.keys(W.A), pl = ids.filter(u => !W.A[u].ai && S.users[u]), cash = worldCash(W), day = Math.floor(now / 864e5);
@@ -2279,7 +2360,7 @@ function econView() { const W = mkWorld(), now = Date.now(), ids = Object.keys(W
     prices: pNow ? { now: pNow, day: pDay ? pDay.p : null, first: p0 ? p0.p : null, t0: p0 ? p0.t : 0, idx: idx(hist[hist.length - 1]), idxDay: idx(pDay), series: hist.slice(-200).map(h => ({ t: h.t, v: idx(h) })) } : null, mktOn: !!(S.mkt && S.mkt.on),
     drain: (() => { const idle = pl.filter(u => { const sn = meta(u).lastSeen || 0; return sn && now - sn >= DRAIN.days * 864e5; }); return { on: drainOn(), pct: drainPct(), days: DRAIN.days, floor: DRAIN.floor, taken: Math.round(S.econ.drainTaken || 0), last: S.econ.drainLast || null, idle: idle.length, held: Math.round(idle.reduce((t, u) => t + Math.max(0, (W.A[u].cash || 0) - DRAIN.floor), 0)) }; })(),
     jackpots: { slots: Math.round((J.jp || {}).pot || 0), tables: Math.round((J.jp2 || {}).pot || 0) }, late: { auc: S.late.auc ? { n: (AUC.items.find(x => x.k === S.late.auc.k) || {}).n, end: S.late.auc.end, top: S.late.auc.top ? { name: pubName(S.late.auc.top.u), amt: S.late.auc.top.amt } : null, bids: S.late.auc.bids } : null, aucNext: S.late.aucNext || 0, aucOn: S.config.auctionOn !== false, hist: S.late.hist.slice(0, 8), firsts: Object.keys(S.late.space.firsts).length, hq: Object.values(S.blocs || {}).filter(x => x.hq && x.hq.pool > 0).map(x => ({ name: x.name, lv: x.hq.lv || 0, pool: Math.round(x.hq.pool) })) },
-    set: { income: S.config.income == null ? 1 : S.config.income, routePay: S.config.routePay == null ? 1 : S.config.routePay, idleOver: +S.config.idleOver || 0, idlePct: +S.config.idlePct || 0 }, idle: { taken: Math.round(S.econ.idleTaken || 0), last: S.econ.idleLast || null }, burns: (S.econ.burns || []).slice(-5) }; }
+    set: { income: S.config.income == null ? 1 : S.config.income, routePay: S.config.routePay == null ? 1 : S.config.routePay, idleOver: +S.config.idleOver || 0, idlePct: +S.config.idlePct || 0 }, idle: { taken: Math.round(S.econ.idleTaken || 0), last: S.econ.idleLast || null }, burns: (S.econ.burns || []).slice(-5), sx: { on: sxOn(), fees: Math.round(S.sx.fees || 0), vol: Math.round(S.sx.vol || 0), held: Math.round(Object.values(W.A).reduce((t, n) => t + sxVal(n), 0)), holders: Object.values(W.A).filter(n => sxVal(n) > 0).length } }; }
 // ---------- game check-up: a wide scan for anything the admins may want to look at ----------
 S.moneyLog = Array.isArray(S.moneyLog) ? S.moneyLog : [];
 function moneySample(W) { const last = S.moneyLog[S.moneyLog.length - 1]; if (last && Date.now() - last.t < 55 * 60e3) return; const c = worldCash(W); S.moneyLog.push({ t: c.t, all: c.all, players: c.players }); if (S.moneyLog.length > 240) S.moneyLog.splice(0, S.moneyLog.length - 240); }
@@ -2761,6 +2842,7 @@ const NUM_FIELDS = ['cash', 'pop', 'troops', 'ships', 'air', 'spies', 'xp', 'tec
 async function adminRoute(p, req, res, me) {
   if (!isStaff(me)) return send(res, 403, { error: 'Admins only.' });
   // the owner burns money from their own treasury, to help the economy (owner only, never a co-admin, never another nation)
+  if (p === '/api/admin/sx') { if (!me.admin) return send(res, 403, { error: 'Only the owner can do that.' }); if (req.method === 'GET') return send(res, 200, sxAdminView()); const b = await readBody(req, 1024), r = sxAdmin(me, b || {}); if (r.err) return send(res, 400, { error: r.err }); return send(res, 200, { ok: true, sx: sxAdminView() }); }
   if (p === '/api/admin/exscn' && !me.admin) return send(res, 403, { error: 'Only the owner can do that.' });
   if (p === '/api/admin/exscn' && req.method === 'POST') { const b = await readBody(req, 8 * 1024), L = Array.isArray(S.config.exScn) ? S.config.exScn : (S.config.exScn = []); const T = (x, n) => String(x == null ? '' : x).replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
     if (b.op === 'del') { const i = L.findIndex(x => x.id === String(b.id)); if (i < 0) return send(res, 400, { error: 'That scenario is already gone.' }); L.splice(i, 1); }
@@ -3302,9 +3384,10 @@ async function adminRoute(p, req, res, me) {
         }
       else if (op === 'drain') { const on = !!b.on, pct = Math.round((+b.pct || DRAIN.pct) * 10) / 10; if (!(pct > 0 && pct <= 20)) return send(res, 400, { error: 'Choose 0.1% to 20% a day.' }); const was = `${drainOn() ? 'on' : 'off'} ${drainPct()}%`; S.config.idleDrain = on; S.config.idleDrainPct = pct; audit(me.name, 'World economy', 'idle drain', `${was} → ${on ? 'on' : 'off'} ${pct}%`); persist(); }
       else if (op === 'burn') { const pct = Math.round(+b.pct * 10) / 10, over = Math.max(0, Math.round(+b.over || 0)); if (!(pct > 0 && pct <= 50)) return send(res, 400, { error: 'Choose 0.1% to 50%.' }); if (b.confirm !== 'REMOVE') return send(res, 400, { error: 'Type REMOVE to confirm.' }); if (S.chaos && S.chaos.on) return send(res, 400, { error: 'Not during a Chaos world.' });
-        const W = mkWorld(); let took = 0, hit = 0; for (const [u, n] of Object.entries(W.A)) { const ex = (n.cash || 0) - over; if (!(ex > 0)) continue; const t = Math.floor(ex * pct / 100); if (t < 1) continue; try { core.finSync(W, n); } catch (e) {} n.cash -= t; try { core.finAdd(W, n, 'tax', -t); } catch (e) {} took += t; hit++; core.touch(W, u); if (!n.ai && S.users[u]) addNote(u, 'economy', `🏦 World Bank currency reform: ${pct}% of your treasury above ${M(over)} was withdrawn from circulation (${M(t)}). Every nation was treated the same.`); }
+        const W = mkWorld(); let took = 0, hit = 0; for (const [u, n] of Object.entries(W.A)) { const ex = (n.cash || 0) + sxVal(n) - over; if (!(ex > 0)) continue; const t = Math.floor(ex * pct / 100); if (t < 1) continue; try { core.finSync(W, n); } catch (e) {} { const c_ = Math.min(t, Math.max(0, n.cash || 0)); n.cash -= c_; if (t > c_) sxSeize(n, t - c_); } try { core.finAdd(W, n, 'tax', -t); } catch (e) {} took += t; hit++; core.touch(W, u); if (!n.ai && S.users[u]) addNote(u, 'economy', `🏦 World Bank currency reform: ${pct}% of your treasury above ${M(over)} was withdrawn from circulation (${M(t)}). Every nation was treated the same.`); }
         commit(W); (S.econ.burns = S.econ.burns || []).push({ t: Date.now(), pct, over, took: Math.round(took), hit, by: me.name }); S.econ.burns = S.econ.burns.slice(-20); audit(me.name, 'World economy', 'one-time removal', `${pct}% above ${M(over)}: ${M(took)} from ${hit} nations`); persist();
         }
+      else if (op === 'sx') { S.config.sxOn = !!b.on; if (!b.on) sxCancelAll(); audit(me.name, 'World economy', 'stock exchange', b.on ? 'opened' : 'closed'); persist(); broadcast('config', effCfg()); }
       else if (op === 'aucstart') { if (S.late.auc) return send(res, 400, { error: 'An auction is already running.' }); const off = lateOff(); if (off) return send(res, 400, { error: off }); aucStart(me.name); }
       else if (op === 'auccancel') { const a = S.late.auc; if (!a) return send(res, 400, { error: 'No auction is running.' }); if (a.top) { const W = mkWorld(), o = W.A[a.top.u]; if (o) { lateGive(W, o, a.top.amt, 'other'); core.touch(W, a.top.u); commit(W); if (S.users[a.top.u]) addNote(a.top.u, 'economy', `🔨 The World Auction was cancelled. Your bid of ${M(a.top.amt)} is back in your treasury.`); } } S.late.auc = null; persist(); audit(me.name, 'World auction cancelled', null); }
       else if (op === 'aucauto') { S.config.auctionOn = !!b.on; persist(); audit(me.name, 'World auction', null, b.on ? 'weekly auctions on' : 'weekly auctions off'); }
@@ -3508,6 +3591,9 @@ async function handle(req, res) {
     if (p === '/api/poker') return pokerRoute(p, req, res, me);
     if (p === '/api/casino/totals' && req.method === 'GET') return send(res, 200, { tot: casinoTotals() });
     if (p === '/api/casino/live' && req.method === 'GET') return send(res, 200, czLive(me.id));
+    if (p === '/api/sx' && req.method === 'GET') return send(res, 200, sxView(me.id));
+    if (p === '/api/sx/proof' && req.method === 'GET') return send(res, 200, { steps: S.sx.log.map(x => ({ n: x.n, t: x.t, p: x.p, h: x.h })), k: SX_ALL, how: 'Each fingerprint is SHA-256 of (the previous fingerprint + JSON of [step number, time, prices]).' });
+    if (p === '/api/sx' && req.method === 'POST') { if (limited('sx:' + me.id, 10, 10e3)) return send(res, 429, { error: 'Slow down.' }); const b = await readBody(req, 1024); touch(me.id, req); const r = sxOrder(me, b || {}); if (r.err) return send(res, 400, { error: r.err }); return send(res, 200, { ok: true, ...r }); }
     if (p === '/api/late' && req.method === 'GET') return send(res, 200, lateView(me.id));
     if (p === '/api/late' && req.method === 'POST') { if (finaleLock()) return send(res, 423, FINALE_LOCK_MSG); if (limited('late:' + me.id, 12, 10e3)) return send(res, 429, { error: 'Slow down.' }); const b = await readBody(req, 2048); touch(me.id, req); { const jl = hcJail(me.id); if (jl) return send(res, 423, jl); }
       const r = lateAct(me.id, b || {}); return send(res, r.error ? 400 : 200, r); }
