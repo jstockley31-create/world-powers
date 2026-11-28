@@ -2076,7 +2076,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     try { bossWatch(W); } catch (e) { logErr('bossWatch: ' + e.message); }
     try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); try { sxGather(W); } catch (e) { logErr('Exchange: ' + (e.stack || e)); } councilDaily(W); nukeAccLoop(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); try { core.whRestock(W); } catch (e) { logErr("Warhead restock: " + (e.stack || e)); } try { sxGather(W); } catch (e) { logErr('Exchange: ' + (e.stack || e)); } councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);
@@ -2241,7 +2241,7 @@ function boxGrant(W, uid, k) { const n = W.A[uid], T = lateTax(W, uid), lucky = 
   else if (k === 'chest') { const pr = Math.round(rr(25, 40) * x); n.prestige = (n.prestige || 0) + pr; n.badges = [...(n.badges || []), { s: 'box', k: 'box' + Date.now(), ic: '👑', t: `Prestige Chest${lucky ? ' (lucky)' : ''}, won at the Mystery Box auction` }]; out = `+${pr} prestige and a rare badge`; }
   return { lucky, out }; }
 function boxStart(by) { const n = (S.late.boxN || 0) + 1, it = BOX.items[(n - 1) % BOX.items.length], now = Date.now(); S.late.boxN = n; S.late.box = { id: n, k: it.k, t: now, end: now + BOX.durH * HOUR, top: null, bids: 0 }; S.late.boxNext = now + BOX.everyH * HOUR; persist();
-  systemMessage(`🎁 MYSTERY BOX AUCTION: ${it.ic} ${it.n} is up for ${BOX.durH} hours. ${it.d} Bids start at ${WP.moneyS(BOX.minBid)}. Bid from Projects & Prestige → World races.`); broadcast('announce', { text: `🎁 Mystery Box: ${it.n} is up for auction!` }); if (by) audit(by, 'Mystery box started', it.n); }
+  systemMessage(`🎁 MYSTERY BOX AUCTION: ${it.ic} ${it.n} is up for ${BOX.durH} hours. ${it.d} Bids start at ${WP.moneyS(BOX.minBid)}. Bid from Prestige → World races.`); broadcast('announce', { text: `🎁 Mystery Box: ${it.n} is up for auction!` }); if (by) audit(by, 'Mystery box started', it.n); }
 function boxSettle() { const a = S.late.box; if (!a) return; const it = boxItem(a.k), top = a.top; S.late.box = null;
   const W = mkWorld(), n = top && W.A[top.u];
   if (top && n) { const g = boxGrant(W, top.u, a.k); core.touch(W, top.u); commit(W);

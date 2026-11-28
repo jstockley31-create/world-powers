@@ -109,12 +109,22 @@ const UWONDERS = {
 const UW = { stages: 4, stageH: 6, rank: 4, refund: .5, score: 2000 };
 // GRAND PROJECTS: bold national gambles. Pay up front, wait, then they succeed or fail; a failure burns every dollar.
 const GRAND = {
-  genome: { n: 'Human Genome Project', ic: '🧬', p: .8, cost: 2e10, h: 6, pr: 8, d: 'Health drifts 10 higher for good.', fx: { health: 10 } },
-  collider: { n: 'Super Collider', ic: '🔬', p: .75, cost: 3e10, h: 8, pr: 10, d: 'Research costs 12% less for good.', fx: { research: .88 } },
-  moon: { n: 'Moon Landing', ic: '🌕', p: .7, cost: 6e10, h: 12, pr: 25, d: '+5 approval and +3 stability for good.', fx: { ap: 5, st: 3 } },
-  mars: { n: 'Mars Colony', ic: '🪐', p: .5, cost: 1.5e11, h: 24, pr: 40, d: '+5% GDP and research 10% cheaper for good.', fx: { gdp: 1.05, research: .9 } },
-  agi: { n: 'Artificial Superintelligence', ic: '🤖', p: .4, cost: 2.5e11, h: 24, pr: 50, d: '+6% GDP, +6% tax revenue and 10% more operation XP for good.', fx: { gdp: 1.06, tax: 1.06, xp: 1.1 } }
+  // t = tier (1 starter, 2 major, 3 mega, 4 legendary); rk = rank needed (default: GRANDC.rank)
+  statue: { n: 'Colossal Monument', ic: '🗽', t: 1, rk: 1, p: .9, cost: 5e8, h: 1, pr: 2, d: '+1 approval for good.', fx: { ap: 1 } },
+  rail: { n: 'High-Speed Rail', ic: '🚄', t: 1, rk: 1, p: .85, cost: 2e9, h: 2, pr: 3, d: 'One more trade partner counts toward your trade bonus, for good.', fx: { tcap: 1 } },
+  vaccine: { n: 'Vaccine Program', ic: '💉', t: 1, rk: 1, p: .85, cost: 4e9, h: 3, pr: 4, d: 'Health drifts 5 higher for good.', fx: { health: 5 } },
+  univ: { n: 'World-Class Universities', ic: '🎓', t: 1, rk: 2, p: .8, cost: 8e9, h: 4, pr: 5, d: 'Education drifts 8 higher for good.', fx: { edu: 8 } },
+  genome: { n: 'Human Genome Project', ic: '🧬', t: 2, p: .8, cost: 2e10, h: 6, pr: 8, d: 'Health drifts 10 higher for good.', fx: { health: 10 } },
+  collider: { n: 'Super Collider', ic: '🔬', t: 2, p: .75, cost: 3e10, h: 8, pr: 10, d: 'Research costs 12% less for good.', fx: { research: .88 } },
+  moon: { n: 'Moon Landing', ic: '🌕', t: 2, p: .7, cost: 6e10, h: 12, pr: 25, d: '+5 approval and +3 stability for good.', fx: { ap: 5, st: 3 } },
+  fusion: { n: 'Fusion Reactor', ic: '⚛️', t: 3, p: .6, cost: 1e11, h: 16, pr: 30, d: 'Government spending costs 5% less and research 5% less, for good.', fx: { spend: .95, research: .95 } },
+  mars: { n: 'Mars Colony', ic: '🪐', t: 3, p: .5, cost: 1.5e11, h: 24, pr: 40, d: '+5% GDP and research 10% cheaper for good.', fx: { gdp: 1.05, research: .9 } },
+  agi: { n: 'Artificial Superintelligence', ic: '🤖', t: 3, p: .4, cost: 2.5e11, h: 24, pr: 50, d: '+6% GDP, +6% tax revenue and 10% more operation XP for good.', fx: { gdp: 1.06, tax: 1.06, xp: 1.1 } },
+  elevator: { n: 'Space Elevator', ic: '🛗', t: 4, p: .45, cost: 5e11, h: 30, pr: 70, d: '+4% tax revenue and two more trade partners count, for good.', fx: { tax: 1.04, tcap: 2 } },
+  dyson: { n: 'Dyson Swarm', ic: '☀️', t: 4, p: .35, cost: 1e12, h: 36, pr: 100, d: '+5% GDP and +3% tax revenue for good.', fx: { gdp: 1.05, tax: 1.03 } },
+  ark: { n: 'Interstellar Ark', ic: '🚀', t: 4, p: .25, cost: 5e12, h: 48, pr: 250, d: '+8 approval, +5 stability and 15% more operation XP for good.', fx: { ap: 8, st: 5, xp: 1.15 } }
 };
+const GRAND_TIER = { 1: 'Starter', 2: 'Major', 3: 'Mega', 4: 'Legendary' };
 // WORLD STOCK EXCHANGE. Five companies and an index fund. Rules that keep it fair:
 // - Nobody's trades move a price, so nothing can be pumped, dumped or handed to a friend.
 // - An order never fills at the price on screen: it fills at the NEXT price, which does not exist yet when the order is placed.
@@ -661,6 +671,8 @@ const VASSAL = { tax: .5, res: .1, loot: .1, freeH: 48 };
 // a launchable warhead: only for nations that already hold a deterrent, and very expensive
 // nuclear warheads are a last resort: very expensive, slow to build, two weeks between launches, only after 24 hours of war, and devastating
 const WARHEAD = { tech: 400, rank: 7, cash: 25e9, cash0: 2e9, inc: 20, steel: 9000, oil: 9000, goods: 6000, buildH: 24, holdH: 24, cdD: 14, warH: 0, rogueH: 72, km: 2600, nukedH: 72, falloutH: 48, winterH: 36, angerD: 7, aiWar: .5 };
+// a nuclear strike on the Rising Power: +25 aggression only, no fallout, no rogue status. The warhead comes back armed once that Rising Power is gone. Once every 7 days.
+const BOSSNUKE = { aggr: 25, cdD: 7 };
 // conventional and non-nuclear heavy weapons: real options short of a nuke
 // every heavy weapon belongs to a tier: the higher tiers take far more research, so the big weapons stay special
 const HV_TIER = { 1: 'Tactical', 2: 'Strategic', 3: 'Advanced', 4: 'Superweapon' };
@@ -2054,6 +2066,7 @@ function Core(PD, CARDS) {
     if ((d.wgz || 0) > W.now) return `${d.name} is away at war games and cannot be touched until they end.`;
     if (!W.cfg.war) return 'Warfare is currently disabled by the administrators.';
     if (W.m.nonukes) return 'A World Council nuclear weapons ban is in force: no launches until it expires.';
+    if (d.ai && d.ai.boss && me.bossNuke && W.now - me.bossNuke < BOSSNUKE.cdD * 864e5) return `You can nuke a Rising Power once every ${BOSSNUKE.cdD} days: ${fmtT(me.bossNuke + BOSSNUKE.cdD * 864e5 - W.now)} left.`;
     if (!warheadReady(W, me)) return me.warhead ? `Your warhead is not armed yet: ${fmtT(me.warhead.ready - W.now)} left.` : 'You have no armed warhead.';
     if (!atWar(W, u, v)) return `You are not at war with ${d.name}. Declare war first.`;
     { const cf = ceasefireMsg(W, me, d); if (cf) return cf; }
@@ -2065,6 +2078,14 @@ function Core(PD, CARDS) {
     // several nations may strike the same country, one after another (each strike adds its own damage)
     return null;
   }
+  // the warhead used on the Rising Power: no rebuild wait, and it is owed back (armed) once that Rising Power is gone
+  function bossSpend(W, me, v) { if ((me.whStock || 0) > 0) { me.whStock--; me.warhead = { t: W.now, ready: W.now }; } else me.warhead = null; me.whOwed = [...(me.whOwed || []), v]; me.bossNuke = W.now; }
+  function bossPenalty(W, me) { me.aggr = Math.min(100, (me.aggr || 0) + BOSSNUKE.aggr); me.approval = clamp(me.approval - 5, 0, 100); }
+  // hand back warheads owed for strikes on a Rising Power that has now fallen. Returns how many came back.
+  function whRestock(W) { let n_ = 0; for (const [u, n] of Object.entries(W.A)) { if (!(n.whOwed || []).length) continue; const keep = [];
+      for (const v of n.whOwed) { const b = W.A[v]; if (b && b.ai && b.ai.boss) { keep.push(v); continue; } if (n.nukeBan > W.now) continue;
+        if (!n.warhead) n.warhead = { t: W.now, ready: W.now }; else n.whStock = (n.whStock || 0) + 1; n_++; note(W, u, 'war', `☢ The Rising Power has fallen: the warhead you used on it is back in your arsenal, armed and ready.`); }
+      n.whOwed = keep; if (!keep.length) delete n.whOwed; touch(W, u); } return n_; }
   function detonate(W, u, v, h, retaliation) {
     const me = W.A[u], d = W.A[v], pct = x => Math.round(x * 100);
     // ground zero
@@ -2073,11 +2094,12 @@ function Core(PD, CARDS) {
     for (const r in RES) d.res[r] = Math.floor((d.res[r] || 0) * .45);
     d.approval = clamp(d.approval - 35, 0, 100); d.stability = clamp(d.stability - 50, 0, 100); d.health = clamp((d.health || 50) - 35, 0, 100); d.morale = clamp((d.morale || 50) - 35, 0, 100);
     d.nuked = { t: W.now, until: Math.max(W.now + tq(W, WARHEAD.nukedH * HOUR), d.nuked && d.nuked.until || 0), h: +h, by: u, byName: me.name, taxOk: 1 }; // the target keeps collecting taxes; the launcher loses them instead (below)
-    if (!(retaliation || struckBy(W, me, v))) me.nukeTax = Math.max(me.nukeTax || 0, W.now + tq(W, WARHEAD.nukedH * HOUR)); // a second strike in self-defense is exempt
+    const boss = !retaliation && !!(d.ai && d.ai.boss); // a strike on the Rising Power: no fallout, no rogue status, only +25 aggression
+    if (!(retaliation || struckBy(W, me, v) || boss)) me.nukeTax = Math.max(me.nukeTax || 0, W.now + tq(W, WARHEAD.nukedH * HOUR)); // a second strike in self-defense is exempt
     d.nukedBy = Object.fromEntries(Object.entries({ ...(d.nukedBy || {}), [u]: W.now }).filter(([, t]) => W.now - t < 72 * HOUR));
     // fallout zone and worldwide nuclear winter
     const hit = [];
-    for (const x of Object.keys(W.A)) {
+    for (const x of boss ? [] : Object.keys(W.A)) {
       const n = W.A[x]; if (x === v) continue; n.winter = Math.max(n.winter || 0, W.now + tq(W, WARHEAD.winterH * HOUR)); n.health = clamp((n.health || 50) - 3, 0, 100); n.stability = clamp(n.stability - 3, 0, 100);
       const near = hexesOf(W, x).some(k => kmBetween(+k, +h) <= WARHEAD.km);
       if (near) { n.fallout = Math.max(n.fallout || 0, W.now + tq(W, WARHEAD.falloutH * HOUR)); n.pop = Math.round(n.pop * .9); n.health = clamp(n.health - 20, 0, 100); n.approval = clamp(n.approval - 15, 0, 100); n.stability = clamp(n.stability - 8, 0, 100); hit.push(x);
@@ -2087,8 +2109,8 @@ function Core(PD, CARDS) {
       touch(W, x);
     }
     // the attacker becomes a pariah. A second strike (automatic retaliation, or answering a nation that nuked you in the last 72 hours) is defense, not aggression.
-    const secondStrike = retaliation || struckBy(W, me, v);
-    spendWarhead(W, me);
+    const secondStrike = retaliation || struckBy(W, me, v) || boss;
+    if (boss) { bossSpend(W, me, v); bossPenalty(W, me); } else spendWarhead(W, me);
     // AI nations poisoned by the fallout may declare war on the launcher (unless they are its allies)
     if (!secondStrike) for (const x of hit) { const n = W.A[x]; if (x === u || !n || !n.ai || n.ai.boss || atWar(W, x, u) || allies(W, u).includes(x) || Math.random() >= WARHEAD.aiWar) continue;
       setRel(n, u, 'war', W.now); setRel(n, u, 'unally', W.now); setRel(n, u, 'untrade', W.now); n.rel[u].fair = 1; n.rel[u].def = 1;
@@ -2097,23 +2119,23 @@ function Core(PD, CARDS) {
       me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + tq(W, WARHEAD.rogueH * HOUR)); me.nukeRogue = W.now; // rogue status from a nuke can't be bought off or voted away
       for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after its nuclear strike.`); touch(W, a); }
     }
-    me.approval = clamp(me.approval - (secondStrike ? 5 : me.gov === 'dic' ? 5 : 20), 0, 100);
+    if (!boss) me.approval = clamp(me.approval - (secondStrike ? 5 : me.gov === 'dic' ? 5 : 20), 0, 100);
     const sum = `${num(loss.pop)} people and ${num(loss.troops)} troops killed${loss.infra ? `, ${loss.infra} infrastructure level${loss.infra > 1 ? 's' : ''} destroyed` : ''}, GDP −60%${(me.nukeTax || 0) > W.now ? `. Your own tax collection is suspended for ${WARHEAD.nukedH} hours` : ''}`;
-    log(me, `☢ Your nuclear strike on ${pname(h)} (${d.name}): ${sum}. Your nation is now a rogue state for at least ${WARHEAD.rogueH} hours.`, W);
+    log(me, `☢ Your nuclear strike on ${pname(h)} (${d.name}): ${sum}.${boss ? ` A strike on the Rising Power: +${BOSSNUKE.aggr} aggression, no fallout, and your warhead comes back once it falls.` : secondStrike ? '' : ` Your nation is now a rogue state for at least ${WARHEAD.rogueH} hours.`}`, W);
     log(d, `☢ ${me.name} detonated a nuclear weapon over ${pname(h)}: ${sum}.`, W);
     note(W, v, 'attack', `☢ ${me.name} launched a nuclear strike on ${pname(h)}. ${sum}.`);
-    news(W, u, `☢ ${retaliation ? 'RETALIATION — ' : ''}${me.name} has launched a nuclear strike on ${d.name}. ${pname(h)} is in ruins and fallout is spreading.`);
-    for (const x of Object.keys(W.A)) if (x !== u && x !== v && !W.A[x].ai && !hit.includes(x)) note(W, x, 'war', `☢ ${me.name} has launched a nuclear strike on ${d.name}. The world enters a nuclear winter for ${WARHEAD.winterH} hours.`);
+    news(W, u, `☢ ${retaliation ? 'RETALIATION — ' : ''}${me.name} has launched a nuclear strike on ${d.name}. ${pname(h)} is in ruins${boss ? '' : ' and fallout is spreading'}.`);
+    if (!boss) for (const x of Object.keys(W.A)) if (x !== u && x !== v && !W.A[x].ai && !hit.includes(x)) note(W, x, 'war', `☢ ${me.name} has launched a nuclear strike on ${d.name}. The world enters a nuclear winter for ${WARHEAD.winterH} hours.`);
     try { if (owner(W, +h) === v) batter(W, v, +h, 2); } catch (e) {}
     aggrHit(W, u, v, 'nuclear strike'); (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, t: W.now });
     touch(W, u, v); return sum;
   }
   // a Golden Dome destroyed the nuclear missile in flight: no detonation, but the warhead is spent and the launch still counts
   function interceptNuke(W, u, v, h, retaliation) {
-    const me = W.A[u], d = W.A[v], secondStrike = retaliation || struckBy(W, me, v);
-    spendWarhead(W, me);
+    const me = W.A[u], d = W.A[v], boss = !retaliation && !!(d.ai && d.ai.boss), secondStrike = retaliation || struckBy(W, me, v) || boss;
+    if (boss) { bossSpend(W, me, v); bossPenalty(W, me); } else spendWarhead(W, me);
     if (!secondStrike) { me.aggr = 100; me.rogue = Math.max(me.rogue || 0, W.now + tq(W, WARHEAD.rogueH * HOUR)); me.nukeRogue = W.now; for (const a of allies(W, u)) { setRel(W.A[a], u, 'unally', W.now); note(W, a, 'diplo', `You ended your alliance with ${me.name} after it launched a nuclear missile.`); touch(W, a); } }
-    me.approval = clamp(me.approval - (secondStrike ? 3 : 12), 0, 100); d.approval = clamp(d.approval + 8, 0, 100); d.stability = clamp(d.stability + 5, 0, 100);
+    if (!boss) me.approval = clamp(me.approval - (secondStrike ? 3 : 12), 0, 100); d.approval = clamp(d.approval + 8, 0, 100); d.stability = clamp(d.stability + 5, 0, 100);
     news(W, u, `☢ ${me.name} launched a nuclear missile at ${d.name}, but ${d.name}'s Golden Dome intercepted it high above ${pname(h)}.`);
     note(W, v, 'attack', `🛡 Your Golden Dome intercepted a nuclear missile launched by ${me.name}!`); log(d, `🛡 Your Golden Dome intercepted a nuclear missile launched by ${me.name} at ${pname(h)}.`, W);
     aggrHit(W, u, v, 'nuclear strike'); (W.nukeFx = W.nukeFx || []).push({ by: u, byName: me.name, to: v, toName: d.name, from: me.cap, h: +h, place: pname(h), retaliation: !!retaliation, intercepted: true, t: W.now });
@@ -3583,7 +3605,7 @@ function Core(PD, CARDS) {
     if (n.gp[k]) fail(`The ${G.n} is under way: the result comes in ${fmtT(n.gp[k].until - W.now)}.`);
     if (Object.keys(n.gp).length) fail('Your scientists can run one grand project at a time.');
     if ((n.gpfail[k] || 0) > W.now) fail(`After the last failure your scientists need ${fmtT(n.gpfail[k] - W.now)} before trying again.`);
-    if (rankOf(n.xp) < GRANDC.rank) fail(`Grand projects need the rank of ${RANKS[GRANDC.rank][1]}.`);
+    { const rk_ = G.rk != null ? G.rk : GRANDC.rank; if (rankOf(n.xp) < rk_) fail(`The ${G.n} needs the rank of ${RANKS[rk_][1]}.`); }
     if (n.cash < G.cost) fail(`The ${G.n} costs ${money(G.cost)}.`);
     n.cash -= G.cost; const h = G.h * (NOADM ? .5 : 1); n.gp[k] = { until: W.now + tq(W, h * HOUR), spent: G.cost, t: W.now };
     const pc = Math.round(grandP(n, k) * 100); n.gp[k].p = grandP(n, k); news(W, u, `${G.ic} ${n.name} has launched the ${G.n}. Its chance of success: ${pc}%.`); gainXP(W, u, 40); touch(W, u);
@@ -3704,10 +3726,10 @@ function Core(PD, CARDS) {
   }
 
 
-  return { expedResolve, grandP, campAt, campPlan, campSpawn, campLoot, wgOn, WONDER_MAX, wonderCount, INFRA_LV, infraLv, infraF, infraDesc, progNeed, BOOST_CAP, boostSum, ARMOR, armorWhy, armorLv, armorOf, tankBatch, TANK, STEELUP, domeKm, domeCovers, STANDBY, sdOf, sdTroops, STORE, storeCaps, storeDeep, storeHours, storeUpkeep, popCap, gdpTarget, storeRoom, spoilSafe, spoilRate, storeOn, storeStep, MERC, HQ, SPACE, mercOn, hqLv, BATTER, batOf, batF, JOINT, jointSupport, supplyOn, OUTLV, SUPPLY, opLvl, supplyKm, supplyF, opUpCost, opUpCheck, provInfo, hexRaw, EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, trekMods, trekSpend, trekBack, trekDb, trekP, trekKind, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
+  return { BOSSNUKE, whRestock, expedResolve, grandP, campAt, campPlan, campSpawn, campLoot, wgOn, WONDER_MAX, wonderCount, INFRA_LV, infraLv, infraF, infraDesc, progNeed, BOOST_CAP, boostSum, ARMOR, armorWhy, armorLv, armorOf, tankBatch, TANK, STEELUP, domeKm, domeCovers, STANDBY, sdOf, sdTroops, STORE, storeCaps, storeDeep, storeHours, storeUpkeep, popCap, gdpTarget, storeRoom, spoilSafe, spoilRate, storeOn, storeStep, MERC, HQ, SPACE, mercOn, hqLv, BATTER, batOf, batF, JOINT, jointSupport, supplyOn, OUTLV, SUPPLY, opLvl, supplyKm, supplyF, opUpCost, opUpCheck, provInfo, hexRaw, EXRISK, EXP, ARTS, expedCost, expedOdds, expLvl, trekMods, trekSpend, trekBack, trekDb, trekP, trekKind, FIN, finAdd, finSync, slVideo, vpRank, bacVal, crashPoint, crashAt, aidMissionMin, legacy, legacyCount, landCount, TALL, tallLvl, SLOT_LINES, DOMEFIX, domeFixCost, hasCoast, UPG, minL, lvlL, hasInfra, upCost, progCost, reserveCap, routesOf, routePay, routeCut, routeCost, routeOk, cdF, storeKeep, covertCheck, covertCost, covertLock, TAP, dirtyCost, warheadCost, PACT_CAUSE, RARE, rareCost, RES_SLOW, resSlow, TAXDRAG, taxDrag, fairOn, fairScore, liveScore, oldScore, keptAllies, FAIR, FAIR_FROM, covert, covertBegin, cipherIntel, nukeRogue, unrestF, spreadF, CONQ, garrison, conqList, AUTOBUY, autoUnit, autoBuyTick, MUN, munLeft, munRoom, gapF, hvScale, rName, ADMIN, VASSAL, COMEBACK, comebackTick, shieldOn, OUTPOST, outpostCheck, outpostCost, outpostDef, RUSH, CASINO, casinoMax, bjVal, rushTick, starterRoom, overPaused, adminCap, adminState, provAdmin, adminF, officeCost, vassalsOf, OVER, overTick, farLands, holdF, startStrict, startDist, ACH_TIER, ACH_XP, RANK_TAX, promoCash, achGrant, HEAVY, canHeavy, heavyCostTxt, domeLvl, domeMis, domeNuke, canDomeUp, nukeAccident, capMoveCost, canMoveCap, devLvl, devTotal, devCost, routeW, routeStart, tradeVal, gamesOn, gamesF, gamesRank, gamesEnd, disasterHit, foundRebel, breakAway, crisisOn, crisisGoal, crisisRank, crisisEnd, crisisGive, blocOf, sameBloc, blocCap, blocStageCost, blocGoalReward, blocGoalState, blocScore, blocTick, AIRBORNE, airborneOk, P, CN, land, sea, nbrs, pname, measure, pactWar, defending, hitRecently, maxMissiles, NTEST, oceanSite, oceanName, setLandTest, DOME, domeOn, domeEmp, canDome, getCard, orderMult, orderEdge, lawSlots, lawCost, wonderHolder, missionsFor, mReward, fxMul, fxAdd, tcap, STAGE_H, canDeal, bundleTxt, achCheck, rogue, ROGUE_AT, ROGUE_MIN, AI_AGGR_CAP, RELEASE, PROV_MAX, provCheck, BOOST_KEYS, boostTxt, DIRTY, canDirty, INSPECT, inspectFee, OVER, overAt, overstretch, BRIBE, bribeNeeded, bribePrice, bribeRecent, radOn, airBatch, navyBatch, aggrScale, rogueCheck, nuked, nukeF, canWarhead, canLaunch, warheadReady, WARHEAD, devAid, canStrike, bestGen, genF, streakMult, GARRISON, MISSILE, NUKE, GEN_TYPES, CHAINS, troopCap, soft, reach, attackPlan, kmBetween, world, mods, computeOwn, owner, hexesOf, rankOf, rankName, maxHex, R, atWar, warSince, pact, offered, others, wars, allies, traders, embargoed, sanctioned, oilF, cheap, power, score, isCoastal, hasCoast,
     noLimit: () => NOADM, effTax, routeDays: () => ROUTE_D, freeze, thaw, uwOwner, uwStage, puUpkeepH, warCostH, armyF, puF, budget, domeUpkeep, debtRatio, rating, interestRate, CREDIT, radClouds, PEACE_H, TREATY_BREAK, peaceSince, gdpTarget, taxIncome, spendPerTick, upkeep, production, consumption, popCap, prices, spreads, maxBorrow, LOYAL, loyalF, MGAME, mgPrize, mgFee, mgWait, mgShare, mgCheck, mgBegin, mgPay, MKT, mkOn, mktTick, mktDemand, mkRef, mkStock, mkLimit, mkLeft, mkUsed, mkRoomSell, emerRoom, emerUnit,
     recruitBatch, navyBatch, airBatch, spyCap, expandCost, settleCost, actCheck, researchCost, maxTrain, infraCost, fortCost, rallyCost, campaignCost, dailyGrant, left, expandTargets, startOk, hexAge, route, canAttack, defense, navalDefense, atkMult, atkCost, techF, moraleF,
     condOk, normalize, exec, tick, startEvent, applyEff, fmtT, log, news, note, touch, setRel, CARDS };
 }
-return { SX, SXK, sxStep, sxIndex, sxPrice, EXSCN, EXMAP, TREK, CAMP, WARGAME, HV_TIER, DEBT_PROPOSE_MAX, UWONDERS, UW, GRAND, GRANDC, grandP, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
+return { SX, SXK, sxStep, sxIndex, sxPrice, EXSCN, EXMAP, TREK, CAMP, WARGAME, HV_TIER, DEBT_PROPOSE_MAX, UWONDERS, UW, GRAND, GRAND_TIER, GRANDC, grandP, PUNITS, WARCOST, ARMYUP, COSMETICS, CHAMP_COLORS, CHAMP_COLOR_NAMES, isChampion, Core, DISARM, NUKEACC, CAPMOVE, DEV, GAMES, DISASTER, REBEL, CRISIS, CRISES, BLOC, BPROJ, LAWS, WONDERS, EXPEDS, MISSIONS, ACH, FLAG_LAYOUTS, FLAG_EMBLEMS, FLAG_COLORS, FLAG_HEX, flagSVG, AUTO_TAX, CHAINS, NUKE, WARHEAD, GEN_TYPES, MIN, HOUR, TICK, TICKS_PER_YEAR, RES, TYPE, CAPP, RANKS, GOV, COLORS, ACTS, DEFCFG, DEFBUDGET, EFFKEYS, COVERT, RESOLUTIONS, EVENTS, money, moneyS, num, clamp };
 });
