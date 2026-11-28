@@ -884,15 +884,17 @@ const wgFinishAll = why => { for (const g of Object.values(S.wgs)) try { wgFinis
 // Prices live on the server only. A price step uses fresh randomness drawn at that moment, so the next price cannot be known by anyone
 // in advance (it is not stored anywhere, not even in a backup). Orders fill at the NEXT step, never at the price on screen. Nobody's
 // trades move a price. Every step is chained to the one before by a fingerprint, so the record cannot be quietly rewritten.
-const SX = WP.SX, SXK = WP.SXK, SX_ALL = [...SXK, SX.idx.k], SX_TICK = SX.tickMin * 60e3;
-if (!S.sx || !S.sx.p) S.sx = { p: Object.fromEntries(SXK.map(k => [k, SX.base])), F: {}, comp: {}, bud: {}, n: 0, log: [], hr: [], news: [], fees: 0, vol: 0, chain: '', next: 0, last: Date.now(), mk: null };
+const SX = WP.SX, SXK = WP.SXK, SX_ALL = [...SXK, SX.idx.k], SX_TICK = SX.tickMin * 60e3, SX_STEP = SX.stepS * 1e3, SX_LIVE = Math.round(3600 / SX.stepS);
+if (!S.sx || !S.sx.p) S.sx = { p: Object.fromEntries(SXK.map(k => [k, SX.base])), F: {}, comp: {}, bud: {}, n: 0, log: [], m5: [], hr: [], news: [], fees: 0, vol: 0, chain: '', next: 0, last: Date.now(), mk: null };
+// one-time: the exchange used to step every 5 minutes. Keep that day of prices for the charts, and shrink the running event average to the new small steps.
+if (!S.sx.m5) { S.sx.m5 = (S.sx.log || []).map(x => ({ t: x.t, p: x.p })); for (const k of Object.keys(S.sx.comp || {})) S.sx.comp[k] /= SX_TICK / SX_STEP; }
 const sxOn = () => S.config.sxOn !== false;
 const SX_DEF = { fee: SX.fee, cap: SX.capGdp };
 function sxApply() { const c = S.config.sx || {}; SX.fee = c.fee >= .0125 && c.fee <= .05 ? c.fee : SX_DEF.fee; SX.capGdp = c.cap >= .05 && c.cap <= 1 ? c.cap : SX_DEF.cap; S.sx.v = c.vol >= .5 && c.vol <= 2 ? c.vol : 1; }
 sxApply();
 const sxBanned = uid => !!(S.config.sxBan && S.config.sxBan[uid]);
 function sxChainOk() { let prev = null, n = 0; for (const st of S.sx.log) { if (prev != null && crypto.createHash('sha256').update(prev + JSON.stringify([st.n, st.t, st.p])).digest('hex') !== st.h) return { ok: false, at: st.n }; prev = st.h; n++; } return { ok: true, n }; }
-function sxAdminView() { const W = mkWorld(), X = S.sx, day = X.log.length ? X.log[0].p : null;
+function sxAdminView() { const W = mkWorld(), X = S.sx, day = X.m5.length ? X.m5[0].p : null;
   const holders = Object.entries(W.A).filter(([u, n]) => n.sx && (sxVal(n) > 0 || n.sx.real || n.sx.fee)).map(([u, n]) => { const x = n.sx, held = Object.keys(x.h || {}).reduce((t, k) => t + (x.h[k] || 0) * sxBase(k), 0), cost = Object.values(x.cost || {}).reduce((a, b) => a + b, 0); return { id: u, name: n.name, val: Math.round(sxVal(n)), pl: Math.round(held - cost), real: Math.round(x.real || 0), fee: Math.round(x.fee || 0), pend: (x.o || []).length, cap: Math.round(sxCap(n)), ban: sxBanned(u), what: Object.keys(x.h || {}).filter(k => x.h[k] > 0).join(' ') }; }).sort((a, b) => b.val - a.val);
   return { on: sxOn(), k: SX_ALL, p: SX_ALL.map(k => Math.round(sxShow(k) * 100) / 100), d: SX_ALL.map((k, i) => day && day[i] > 0 ? Math.round((sxShow(k) / day[i] - 1) * 1e4) / 100 : 0), fees: Math.round(X.fees), vol: Math.round(X.vol), n: X.n, next: X.next, held: holders.reduce((t, h) => t + h.val, 0), holders, tape: (X.tape || []).slice(0, 60), set: { fee: SX.fee, cap: SX.capGdp, vol: X.v || 1 }, def: SX_DEF, chain: sxChainOk(), news: X.news.slice(0, 8) }; }
 function sxAdmin(me, b) { const op = String(b.op || '');
@@ -928,18 +930,25 @@ function sxFill(W, now) { let any = false;
       x.done = [line, ...(x.done || [])].slice(0, 12); any = true; S.sx.tape = [{ t: now, u, name: n.name, s: o.s, side: o.side, amt: Math.round(line.amt), px: Math.round(line.px * 100) / 100, pl: line.pl }, ...(S.sx.tape || [])].slice(0, 150); }
     x.o = keep; for (const k of Object.keys(x.h || {})) if (!(x.h[k] > 1e-9)) { delete x.h[k]; if (x.cost) delete x.cost[k]; } core.touch(W, u); }
   return any; }
-function sxTick(W) { const now = Date.now(), X = S.sx; if (now < (X.next || 0)) return false;
-  const ev = sxEvents(W, X.last || now - SX_TICK, now), r = WP.sxStep(X, [sxNorm(), ...SXK.map(sxNorm)], ev), news = [];
+// the world loop notes what happened in the world; the next price step uses it
+let sxEvQ = [];
+function sxGather(W) { const now = Date.now(), X = S.sx, ev = sxEvents(W, X.last || now - 30e3, now); X.last = now; if (ev.length) sxEvQ.push(...ev); }
+// a price step, every few seconds
+function sxFast() { if (SHUTTING) return; const now = Date.now(), X = S.sx, ev = sxEvQ; sxEvQ = [];
+  const r = WP.sxStep(X, [sxNorm(), ...SXK.map(sxNorm)], ev), news = [];
   for (const k of SXK) { const d = sxShow(k); if (d > SX.splitHi) { X.F[k] = (X.F[k] || 1) * SX.splitX; news.push({ t: now, split: k, x: SX.splitX }); } else if (d < SX.splitLo) { X.F[k] = (X.F[k] || 1) / SX.splitX; news.push({ t: now, split: k, x: 1 / SX.splitX }); } }
   const p = SX_ALL.map(k => Math.round(sxShow(k) * 1e4) / 1e4); X.chain = crypto.createHash('sha256').update(X.chain + JSON.stringify([X.n, now, p])).digest('hex');
-  X.log.push({ t: now, n: X.n, p, h: X.chain }); X.log = X.log.slice(-288); const hr = Math.floor(now / HOUR); if (!X.hr.length || Math.floor(X.hr[X.hr.length - 1].t / HOUR) !== hr) { X.hr.push({ t: now, p }); X.hr = X.hr.slice(-720); }
+  X.log.push({ t: now, n: X.n, p, h: X.chain }); if (X.log.length > SX_LIVE + 60) X.log = X.log.slice(-SX_LIVE);
+  const b5 = Math.floor(now / SX_TICK); if (!X.m5.length || Math.floor(X.m5[X.m5.length - 1].t / SX_TICK) !== b5) { X.m5.push({ t: now, p }); X.m5 = X.m5.slice(-288); }
+  const hr = Math.floor(now / HOUR); if (!X.hr.length || Math.floor(X.hr[X.hr.length - 1].t / HOUR) !== hr) { X.hr.push({ t: now, p }); X.hr = X.hr.slice(-720); }
   if (r.why.length) { const mv = SXK.map(k => [k, r.mv[k]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2).map(([k, v]) => [k, Math.round(v * 1e4) / 1e4]); news.push({ t: now, ev: ev.map(e => [e[0], e[1]]), mv }); }
   if (news.length) X.news = [...news.reverse(), ...X.news].slice(0, 40);
-  X.last = now; X.next = Math.floor(now / SX_TICK) * SX_TICK + SX_TICK;
-  if (sxOn() && !chaosOn() && !(S.fresh && S.fresh.wait)) sxFill(W, now);
-  persist(); broadcast('sx', { t: now, p, next: X.next, news: news.length ? X.news.slice(0, news.length) : null, h: X.chain, F: X.F }); return true; }
+  X.next = now + SX_STEP;
+  if (sxOn() && !chaosOn() && !(S.fresh && S.fresh.wait) && Object.values(S.docs).some(d => d && d.sx && d.sx.o && d.sx.o.length)) { const W = mkWorld(); if (sxFill(W, now)) commit(W); }
+  if (news.length || X.n % 6 === 0) persist(); broadcast('sx', { t: now, p, next: X.next, news: news.length ? X.news.slice(0, news.length) : null, h: X.chain, F: X.F }); return true; }
+setInterval(() => { try { sxFast(); } catch (e) { logErr('Exchange: ' + (e.stack || e)); } }, SX_STEP);
 function sxView(uid) { const X = S.sx, n = S.docs['nations/' + uid], now = Date.now();
-  return { on: sxOn(), why: !sxOn() ? 'The exchange is closed by the administrators.' : lateOff() || '', k: SX_ALL, p: SX_ALL.map(k => Math.round(sxShow(k) * 1e4) / 1e4), F: X.F, log: X.log.map(x => [x.t, x.p]), hr: X.hr.map(x => [x.t, x.p]), news: X.news, next: X.next, now, chain: X.chain, n: X.n, fees: Math.round(X.fees), vol: Math.round(X.vol),
+  return { on: sxOn(), why: !sxOn() ? 'The exchange is closed by the administrators.' : lateOff() || '', k: SX_ALL, p: SX_ALL.map(k => Math.round(sxShow(k) * 1e4) / 1e4), F: X.F, log: X.m5.map(x => [x.t, x.p]), live: X.log.slice(-SX_LIVE).filter(x => x.t > now - HOUR).map(x => [x.t, x.p]), hr: X.hr.map(x => [x.t, x.p]), news: X.news, next: X.next, now, chain: X.chain, n: X.n, fees: Math.round(X.fees), vol: Math.round(X.vol),
     top: Object.values(S.docs).filter(d => d && d.sx && d.name && (d.sx.real || 0) > 0).map(d => ({ name: d.name, real: Math.round(d.sx.real) })).sort((a, b) => b.real - a.real).slice(0, 5), fee: SX.fee, cap: SX.capGdp,
     me: n ? { cap: Math.round(sxCap(n)), val: Math.round(sxVal(n)) } : null }; }
 function sxOrder(me, b) { const off = lateOff(); if (off) return { err: off }; if (!sxOn()) return { err: 'The exchange is closed right now.' }; if (finaleLock()) return { err: 'Not during the season finale.' };
@@ -2067,7 +2076,7 @@ function worldLoop() {
     for (const u of Object.keys(W.A)) if (BOTS.isBot(u)) { try { BOTS.turn(W, u, W.cfg); } catch (e) { logErr('AI nation error: ' + (e.stack || e)); } }
     try { bossWatch(W); } catch (e) { logErr('bossWatch: ' + e.message); }
     try { const mk_ = core.mktTick(W); if (mk_) W.mkch = Math.max(W.mkch || 0, mk_); } catch (e) { logErr('World market update failed: ' + (e.stack || e)); }
-    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); try { sxTick(W); } catch (e) { logErr('Exchange: ' + (e.stack || e)); } councilDaily(W); nukeAccLoop(W);
+    pactCheck(W); councilWatch(W); botVotes(W); councilResolve(W); core.blocTick(W); crisisLoop(W); gamesLoop(W); disLoop(W); campLoop(W); wgLoop(); try { sxGather(W); } catch (e) { logErr('Exchange: ' + (e.stack || e)); } councilDaily(W); nukeAccLoop(W);
     if (!RH.length || now - RH[RH.length - 1].t >= HOUR) rankPoint(W);
     if (!chaosOn()) try { seasonTick(W); } catch (e) { logErr('Season update failed: ' + (e.stack || e)); }
     W.welcome = null; commit(W);

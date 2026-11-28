@@ -122,7 +122,7 @@ const GRAND = {
 // - Each price step is a fair coin (no drift up or down), so no way of timing it wins on average, and every trade pays a fee.
 // - Prices come from fresh randomness drawn at the moment of the step (nobody, the owner included, can know the next one),
 //   and every step is chained to the one before by a fingerprint anyone can check.
-const SX = { tickMin: 5, fee: .015, min: 1e6, capGdp: .3, capFloor: 5e7, maxOrders: 6, perHour: 20, rank: 1, base: 100, splitHi: 400, splitLo: 12, splitX: 4, sm: .0035, clip: .015, budget: .02, budgetTicks: 288, compN: 288, loot: .25,
+const SX = { tickMin: 5, stepS: 5, fee: .015, min: 1e6, capGdp: .3, capFloor: 5e7, maxOrders: 6, perHour: 20, rank: 1, base: 100, splitHi: 400, splitLo: 12, splitX: 4, sm: .0035, clip: .015, budget: .02, budgetTicks: 17280, compN: 17280, loot: .25,
   secs: { MOIL: { n: 'Meridian Oil', ic: '🛢', b: 1, s: .0048 }, TITN: { n: 'Titan Steel', ic: '🏗', b: 1, s: .0045 }, AEGS: { n: 'Aegis Defense', ic: '🛡', b: .8, s: .005 }, NOVA: { n: 'Nova Technologies', ic: '🛰', b: 1.2, s: .0055 }, HRVS: { n: 'Harvest Foods', ic: '🌾', b: .7, s: .004 } },
   idx: { k: 'WPX', n: 'World Powers Index', ic: '🌐' },
   // what world events do to each company (a share of the price, before a random size of half to one and a half times)
@@ -132,7 +132,7 @@ const SXK = Object.keys(SX.secs);
 // company); ev = [[kind, count, size 0.5..1.5]]. Returns the moves made. Pure: the same inputs always give the same step.
 function sxStep(st, z, ev) { const shock = {}, why = []; for (const k of SXK) shock[k] = 0;
   for (const [kind, cnt, u] of ev || []) { const E = SX.ev[kind]; if (!E || !(cnt > 0)) continue; const f = Math.sqrt(Math.min(9, cnt)) * Math.max(.5, Math.min(1.5, u || 1)); for (const k of SXK) if (E[k]) shock[k] += E[k] * f; why.push(kind); }
-  const V_ = Math.max(.25, Math.min(3, st.v || 1)); /* the admins' calm-to-wild setting: bigger or smaller steps, still a fair coin */ const m = z[0] * SX.sm * V_, mv = {}; st.comp = st.comp || {}; st.bud = st.bud || {}; st.n = (st.n || 0) + 1;
+  /* prices move every few seconds: each small step is sized so that five minutes, an hour and a day swing exactly as much as before */ const Q_ = Math.sqrt(SX.stepS / (SX.tickMin * 60)), V_ = Math.max(.25, Math.min(3, st.v || 1)) * Q_; /* the admins' calm-to-wild setting: bigger or smaller steps, still a fair coin */ const m = z[0] * SX.sm * V_, mv = {}; st.comp = st.comp || {}; st.bud = st.bud || {}; st.n = (st.n || 0) + 1;
   SXK.forEach((k, i) => { const S_ = SX.secs[k], B = (st.bud[k] = (st.bud[k] || []).filter(x => x[0] > st.n - SX.budgetTicks)), used = B.reduce((t, x) => t + (x[1] > 0 ? x[1] : 0), 0), usedN = B.reduce((t, x) => t + (x[1] < 0 ? -x[1] : 0), 0); let sh = Math.max(-SX.clip, Math.min(SX.clip, shock[k]));
     /* events can move a company at most 2% up and 2% down in any 24 hours: always less than the fees on a round trip, so causing events yourself can never pay */ sh = sh > 0 ? Math.min(sh, Math.max(0, SX.budget - used)) : Math.max(sh, -Math.max(0, SX.budget - usedN)); if (sh) B.push([st.n, sh]); const c = st.comp[k] || 0, vr = (S_.b * S_.b * SX.sm * SX.sm + S_.s * S_.s) * V_ * V_;
     const r = S_.b * m + S_.s * V_ * z[i + 1] + sh - c - vr / 2; st.comp[k] = c + (sh - c) / SX.compN; st.p[k] = Math.max(1e-6, (st.p[k] || SX.base) * Math.exp(r)); mv[k] = r; });
