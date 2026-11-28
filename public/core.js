@@ -239,21 +239,36 @@ const NUKEACC = { perDay: 1 / 25, warheadX: 1.5, gapD: 7, h: 48, pop: .05, food:
 // giving up nuclear weapons: the world (and your own people) celebrate. No new program for 7 days afterwards.
 const DISARM = { ap: 12, st: 6, aggr: 20, warheadAp: 6, boost: { ap: 6, st: 4, h: 48 }, worldAp: 2, xp: 100, refund: .2, banD: 7 };
 const EXPEDS = {
-  mountains: { n: 'Mountain survey', d: 'Steel deposits and rare minerals — or an avalanche.', h: 3, cost: { cash: 2.5e5, food: 120, oil: 60 }, cx: 3, res: 'steel', share: .3,
+  caves: { n: 'Cave survey', ic: '🔦', d: 'A quick look underground: crystals and old stores, or a rockfall. Short and cheap.', h: 1, cost: { cash: 8e4, food: 40, oil: 10 }, cx: 1, res: 'goods', share: .3,
+    boom: 'a rockfall sealed the passage', leg: ['Crystal cathedral', 'a cavern the size of a cathedral, walled in gemstones'], arts: ['Lantern of the First Miner', 'Blind Fish Fossil'],
+    ev: [['A side passage drops away into the dark.', 'Rope down', 'Stay on the main gallery'], ['Water is rising in the lower chamber.', 'Grab the samples first', 'Climb out now']] },
+  ruins: { n: 'Ancient ruins dig', ic: '🏺', d: 'Dig up a buried city: coins, relics and tomb gold, or a collapse.', h: 2, cost: { cash: 1.6e5, food: 80, oil: 20 }, cx: 2, res: 'cash', share: 0,
+    boom: 'the trench walls caved in on the dig', leg: ['Royal tomb', 'an untouched royal tomb, still sealed'], arts: ['Sceptre of the Forgotten Queen', 'Tablet of the First Law'],
+    ev: [['The diggers reach a sealed chamber with a cracked roof.', 'Open it', 'Shore it up first'], ['Looters were seen near the site last night.', 'Dig through the night', 'Post guards and wait']] },
+  mountains: { n: 'Mountain survey', ic: '⛰', d: 'Steel deposits and rare minerals — or an avalanche.', h: 3, cost: { cash: 2.5e5, food: 120, oil: 60 }, cx: 3, res: 'steel', share: .3,
     boom: 'an avalanche buried the camp', leg: ['Mother lode', 'a mountain of pure iron ore'], arts: ['Crystal Skull of the Peaks', 'Dwarf-King\'s Hammer'],
     ev: [['A glittering seam sits behind an unstable ice shelf.', 'Dig in', 'Mark it and move on'], ['A storm is rolling in over the pass.', 'Push through the storm', 'Wait it out']] },
-  desert: { n: 'Desert prospecting', d: 'Oil fields under the sand — or a sandstorm.', h: 3, cost: { cash: 2.5e5, food: 150, oil: 40 }, cx: 3, res: 'oil', share: .3,
+  desert: { n: 'Desert prospecting', ic: '🏜', d: 'Oil fields under the sand — or a sandstorm.', h: 3, cost: { cash: 2.5e5, food: 150, oil: 40 }, cx: 3, res: 'oil', share: .3,
     boom: 'a sandstorm swallowed the caravan', leg: ['Gusher', 'an oil field that shot a column of crude into the sky'], arts: ['Sun Disc of the Pharaohs', 'Caravan Master\'s Astrolabe'],
     ev: [['The drillers hit a pressure pocket: a bigger well, or a blowout.', 'Drill deeper', 'Cap it'], ['A shortcut runs straight through bandit country.', 'Take the shortcut', 'Go the long way round']] },
-  jungle: { n: 'Jungle expedition', d: 'Lost cities, artifacts and exotic goods — and real dangers.', h: 5, cost: { cash: 4e5, food: 250, oil: 80 }, cx: 5, res: 'goods', share: .3,
+  jungle: { n: 'Jungle expedition', ic: '🌴', d: 'Lost cities, artifacts and exotic goods — and real dangers.', h: 5, cost: { cash: 4e5, food: 250, oil: 80 }, cx: 5, res: 'goods', share: .3,
     boom: 'fever and flash floods wiped out the team', leg: ['Lost city of gold', 'a lost city with streets of gold'], arts: ['Jade Mask of the Serpent King', 'Golden Idol'],
     ev: [['The team found a sealed temple door covered in warnings.', 'Break the seal', 'Leave it sealed'], ['A local guide offers a fast path through the swamp.', 'Follow the guide', 'Stick to the map']] },
-  ocean: { n: 'Deep-sea expedition', d: 'Sunken treasure. Needs a coastal province.', h: 6, cost: { cash: 6e5, food: 150, oil: 200 }, cx: 6, res: 'cash', share: 0, coast: true,
+  ocean: { n: 'Deep-sea expedition', ic: '⚓', d: 'Sunken treasure. Needs a coastal province.', h: 6, cost: { cash: 6e5, food: 150, oil: 200 }, cx: 6, res: 'cash', share: 0, coast: true,
     boom: 'a storm sank the salvage ship', leg: ['Treasure galleon', 'a treasure galleon packed with gold'], arts: ['Trident of the Deep', 'Pirate King\'s Compass'],
     ev: [['Sonar picks up a second wreck in deeper, colder water.', 'Dive deeper', 'Stick to the first wreck'], ['A rival salvage ship is racing you to the wreck.', 'Race them', 'Back off']] },
-  arctic: { n: 'Arctic research station', d: 'Research samples and a real chance of a scientific breakthrough.', h: 8, cost: { cash: 8e5, food: 300, oil: 250 }, cx: 8, res: 'tech', share: .3,
+  arctic: { n: 'Arctic research station', ic: '🧊', d: 'Research samples and a real chance of a scientific breakthrough.', h: 8, cost: { cash: 8e5, food: 300, oil: 250 }, cx: 8, res: 'tech', share: .3,
     boom: 'the ice shelf collapsed under the station', leg: ['Frozen discovery', 'an ancient lab frozen in the ice'], arts: ['Meteorite Core', 'Mammoth Ivory Codex'],
-    ev: [['A strange signal is coming from deep under the ice.', 'Drill down to it', 'Log it and stay safe'], ['A whiteout is coming, with a week of work still to do.', 'Keep working', 'Shelter in the station']] }
+    ev: [['A strange signal is coming from deep under the ice.', 'Drill down to it', 'Log it and stay safe'], ['A whiteout is coming, with a week of work still to do.', 'Keep working', 'Shelter in the station']] },
+  volcano: { n: 'Volcano descent', ic: '🌋', d: 'Rare metals from inside a live crater, or an eruption.', h: 10, cost: { cash: 1.2e6, food: 350, oil: 300 }, cx: 12, res: 'steel', share: .3,
+    boom: 'the crater erupted with the team inside', leg: ['Heart of the mountain', 'a vein of rare metals as wide as a road'], arts: ['Obsidian Crown', 'Ever-Warm Stone'],
+    ev: [['The lava lake is dropping, exposing a glittering ledge.', 'Go down to the ledge', 'Sample from the rim'], ['The ground has started to tremble.', 'Finish the drilling', 'Pull back to the ridge']] },
+  abyss: { n: 'Abyssal trench dive', ic: '🦑', d: 'The deepest place on Earth: a lost treasure fleet, and crushing pressure. Needs a coastal province.', h: 15, cost: { cash: 1.8e6, food: 300, oil: 600 }, cx: 18, res: 'cash', share: 0, coast: true,
+    boom: 'the submersible imploded in the trench', leg: ['The drowned fleet', 'an entire treasure fleet lying on the sea floor'], arts: ['Pearl of the Abyss', 'Bell of the Drowned Flagship'],
+    ev: [['The hull is creaking, and the wreck is another 400 metres down.', 'Keep descending', 'Hold this depth'], ['Something very large is circling the lights.', 'Carry on with the salvage', 'Surface now']] },
+  orbit: { n: 'Orbital salvage mission', ic: '🛰', d: 'Launch a crew to strip a dead space station: priceless technology, at an enormous price.', h: 24, cost: { cash: 3e6, food: 400, oil: 1200 }, cx: 30, res: 'tech', share: .3,
+    boom: 'the capsule was lost on re-entry', leg: ['The black box', 'a sealed research module with decades of lost experiments'], arts: ['Fragment of the First Satellite', 'Star-Chart of the Lost Crew'],
+    ev: [['A debris field lies between the capsule and the best module.', 'Fly through it', 'Take the long orbit round'], ['Fuel is low, and one more module is in reach.', 'Go for the module', 'Start the burn home']] }
 };
 // how bold the expedition is: careful = small steady gains, daring = big wins and big losses. All three pay back more than they cost on average.
 const EXRISK = {
@@ -507,7 +522,71 @@ const EXSCN2 = {
   ],
 };
 for (const k of Object.keys(EXSCN2)) EXSCN[k] = [...(EXSCN[k] || []), ...EXSCN2[k]];
+const EXSCN3 = {
+  caves: [
+    ["🦇","A colony of bats blocks the only dry passage. Beyond it, {c} can see something glinting.","Push through the bats","Find another way","A storm of wings, then a chamber full of crystal.","The bats panicked, lamps went out, and {n} of the crew took falls in the dark.","A longer crawl, and nothing lost."],
+    ["💧","An underground river runs fast and cold. The far bank has untouched galleries.","Swim the river","Stay on this bank","They crossed on a line and found a gallery nobody has ever seen.","The current took the packs and nearly took {c}.","They mapped this bank carefully."],
+    ["🕯","The air is getting thin and the candles burn low. The best chamber is just ahead.","Go on quickly","Turn back to fresh air","In and out in ten minutes, with full sample bags.","Two of the crew passed out and had to be dragged clear.","Fresh air, clear heads, a slower day."],
+    ["🪨","A boulder choke blocks the passage. {c} thinks one good shove would clear it.","Shift the boulders","Leave the choke alone","It rolled clear and opened a whole new level.","The roof came with it. The way back took hours to dig out.","They left the choke for a better-equipped team."],
+    ["🎨","The walls are covered in ancient paintings. Taking a slab would be worth a fortune.","Cut out a slab","Photograph and leave","The slab came away clean. A museum will pay dearly.","The slab shattered, and the dust ruined the instruments.","The photographs alone caused a stir back home."],
+    ["🕳","A shaft drops straight down. A dropped stone takes six seconds to land.","Rope down the shaft","Mark it on the map","At the bottom: a lake, and a beach of raw gemstones.","The rope frayed on the lip. {c} is lucky to be alive.","It is on the map for next time."],
+  ],
+  ruins: [
+    ["🗝","A bronze door stands sealed, with a warning carved above it.","Force the door","Translate the warning first","Behind it, shelves of gold vessels, untouched.","The warning was about the ceiling. {n} of the diggers are hurt.","The warning said \"storeroom\". They opened it safely, a day later."],
+    ["🐍","The richest trench is full of snakes sunning themselves.","Clear them and dig","Dig elsewhere","Snakes cleared, and the trench gave up a hoard of coins.","A bite. The doctor is busy and the dig is at a standstill.","The second trench was poorer but peaceful."],
+    ["🏛","A local official offers to look the other way on export papers, for a share.","Take the deal","Do it by the book","The crates sailed through. Everything reached home.","The official took the share and the best pieces, then vanished.","The paperwork took a week, and every piece is legal."],
+    ["⚱️","A sealed jar is heavy and rattles. Opening it here risks whatever is inside.","Open it now","Crate it for the lab","Coins. Hundreds of them, bright as the day they were buried.","Papyrus, which turned to dust the moment the air touched it.","The lab will open it properly."],
+    ["🌧","The rains are a week early and the trenches are flooding.","Dig through the rain","Cover the site and wait","They saved the mosaic floor hours before the flood.","A trench wall slumped, burying the tools and a season of work.","Tarpaulins held. The site kept."],
+    ["🗺","A shepherd sells a hand-drawn map to \"the real palace\", a day away.","Follow the map","Stay on the known site","The shepherd was right. The palace steps are still there.","A day wasted, and the shepherd is richer.","They kept digging where the walls already showed."],
+  ],
+  volcano: [
+    ["🌋","A lava tube leads deeper than any survey has gone. The walls are still warm.","Enter the tube","Survey from the mouth","The tube opened onto walls of raw metal ore.","A gas pocket. {n} of the crew were carried out.","They mapped the entrance and moved on."],
+    ["☁️","The gas meters are climbing. The richest vent is fifty metres on.","Dash for the vent","Back off and wait","Masks on, in and out, with the best samples of the trip.","The masks were not enough. A bad hour and a ruined day.","The wind cleared the gas by evening."],
+    ["🧪","The crater lake is acid, but there are crystals growing on its shore.","Wade out for the crystals","Use the long poles","Worth every burn on their boots.","The acid ate through the boat and the sample cases.","The poles reached a few small ones."],
+    ["🔥","A fresh lava flow has cut the path. {c} says the crust will hold a person.","Cross the crust","Go the long way","It held. They saved a day and kept their nerve.","It did not hold everywhere. One bad burn and lost gear.","A long hot detour."],
+    ["📈","The seismograph shows the tremors building toward something.","Keep drilling","Move camp to the ridge","The tremors faded and the drill hit a rich seam.","The camp slid forty metres downhill in the night.","From the ridge they watched a small eruption, safely."],
+    ["💎","Diamonds, in the wall of an unstable vent, within reach of an arm.","Chip them out","Leave the vent alone","A pocketful of rough diamonds.","The vent wall gave way. {c} was pulled back by the belt.","They looked, and left."],
+  ],
+  abyss: [
+    ["🦑","A shape as long as the ship passes under the submersible. It seems curious.","Follow it down","Hold position","It led them straight to a wreck nobody has charted.","It was not curious. It was hungry. The manipulator arm is gone.","It lost interest and sank away."],
+    ["🔩","A bolt on the viewport is weeping seawater. The treasure hold is in sight.","Finish the dive","Abort and surface","The bolt held, and the hold was full.","The viewport cracked. An emergency ascent, and weeks of repairs.","Up safely. The bolt was replaced in an hour."],
+    ["🕯","The lights fail. In the dark, the sea floor is glowing.","Go toward the glow","Wait for the lights","A field of glowing vents, and gold-bearing chimneys around them.","They drifted into a canyon wall in the dark.","The lights came back after a long ten minutes."],
+    ["⚓","The wreck has shifted. Her strongroom is now under a leaning mast.","Cut in under the mast","Work the outer holds","The strongroom door fell open. Chests, stacked three deep.","The mast came down across the tether.","The outer holds gave a modest haul."],
+    ["🌊","The surface ship reports a storm arriving in two hours. The dive needs three.","Finish the dive","Surface early","They surfaced into the first squall with the nets full.","Recovery in a gale. The crane is bent and half the haul is back on the bottom.","On deck and lashed down before the wind."],
+    ["📻","A faint sonar ping, regular as a heartbeat, comes from deeper in the trench.","Investigate the ping","Ignore it","A lost research sub, with its strongbox intact.","It was an old mine. They backed away very slowly, and lost the day.","They logged it for the navy."],
+  ],
+  orbit: [
+    ["🛰","The station is tumbling faster than planned. Docking will be rough.","Dock anyway","Match the spin slowly","A hard dock, a cheer, and hours saved.","The docking ring bent. Half the modules are now out of reach.","Slow and smooth. The fuel gauge noticed."],
+    ["☄️","A debris shower is forecast. The best lab module is on the exposed side.","Strip the lab first","Shelter in the capsule","They got the lab out minutes before the first impacts.","A fragment went through a solar panel and the cargo net.","They watched the sparks from behind the shielding."],
+    ["🔋","The old reactor on the station is still warm. Its core would be priceless.","Pull the core","Leave it sealed","The core is aboard, shielded and humming.","A coolant leak. Decontamination cost a day and a spacesuit.","Some things are better left in orbit."],
+    ["👩‍🚀","{c} is on a spacewalk when the tether reel jams. The prize is three metres further.","Unclip and reach","Come back in","Three metres there, three metres back, and the prize in hand.","A slow drift, a tense rescue, and no more spacewalks this trip.","The reel was fixed and the walk repeated safely."],
+    ["📡","An inspection satellite from another nation is closing in for a look.","Carry on in plain sight","Go dark until it passes","They waved. The footage made the mission famous.","A formal protest, and a legal hold on part of the cargo.","Two quiet orbits lost."],
+    ["⛽","There is fuel for one more module, or for a wide safety margin on re-entry.","Take the module","Keep the margin","A tight re-entry, and the richest haul the program has ever had.","Too tight. They came down hard and far off course, and the cargo suffered.","A gentle splashdown."],
+  ],
+};
+for (const k of Object.keys(EXSCN3)) EXSCN[k] = [...(EXSCN[k] || []), ...EXSCN3[k]];
+EXSCN.abyss.push(
+  ["🐋","A whale carcass on the sea floor is covered in feeding creatures, and something metal glints beneath it.","Dig under the carcass","Leave the feast alone","Under the bones: a strongbox, barnacled shut.","The scavengers turned on the submersible and fouled both thrusters.","They filmed it and moved on."],
+  ["🧭","The compass is spinning. {c} thinks a huge mass of iron lies just off the plotted course.","Steer for the iron","Hold the plotted course","An ironclad nobody knew was down here, her safe still locked.","Magnetic rock. Two hours of air wasted finding nothing.","The plotted course held true."],
+  ["🫧","A curtain of bubbles is rising from a crack. Past it, the floor drops into a hidden basin.","Go through the bubbles","Go around","The basin was a graveyard of ships, untouched.","Methane. The engines choked and the craft sank a hundred metres before they caught it.","The long way round cost an hour."],
+  ["🔦","One battery bank is failing. There is power for the lights or the grabbing arm, not both, in the next chamber.","Arm on, lights off","Lights on, look only","Working by feel, they filled the basket.","In the dark the arm tore the basket loose. It is still falling.","They saw everything and touched nothing."],
+  ["🪸","The safest route is a slow climb over a coral wall. The fast route is a narrow cut straight through it.","Take the cut","Climb over the wall","Through with a hand to spare each side.","Wedged. It took an hour of scraping to back out, and the hull shows it.","A slow, careful climb."],
+  ["📼","The crew recover a ship's log from a wreck. It mentions a second vessel, \"half a league north, carrying the pay chests\".","Search to the north","Stay with this wreck","The log was honest. The pay chests were there.","Half a league of empty mud, and the oxygen clock running.","They stayed and worked the wreck in front of them."]);
+EXSCN.orbit.push(
+  ["🧊","A coolant line outside has frozen solid. Thawing it with the thrusters is quick and risky.","Use the thrusters","Wait for sunlight","A two-second burn, and the line ran clear.","The burn spun the capsule and snapped an antenna.","Forty minutes later the sun did the job."],
+  ["💻","The old station computer still boots. Its drives hold years of research, behind a failing power bus.","Power it up and copy","Pull the drives cold","Every file copied before the bus died for good.","The surge cooked the drives and one of the laptops.","The drives are aboard. The lab will see what survives."],
+  ["🚪","The hatch to the richest module is jammed. {c} suggests the pyrotechnic bolts.","Blow the bolts","Work it with the pry bar","A clean bang, and the hatch swung open.","The hatch went, and so did a chunk of the module behind it.","Two hours with a pry bar. It opened in the end."],
+  ["🌞","A solar flare warning comes up from the ground. The crew can keep working or shelter behind the water tanks.","Keep working","Take shelter","The flare was weaker than forecast. A full shift gained.","A hard dose. The flight surgeon has grounded half the crew.","They played cards behind the tanks."],
+  ["🪢","The cargo net is full. One more container could be lashed to the outside of the capsule.","Lash it on","Leave it behind","It rode all the way down, scorched but whole.","It tore loose on re-entry and took a heat tile with it.","They left it turning slowly in the sun."],
+  ["🎥","Mission control wants a live broadcast from the station, in the middle of the busiest work shift.","Do the broadcast","Decline politely","Half the world watched. Sponsors are queuing up.","Live on air, {c} let go of a wrench. It is now its own satellite, and so is the schedule.","Work came first."]);
+// expeditions far from any town or trail (underwater, in orbit) draw only on their own situations
+const EXOWN = { abyss: 1, orbit: 1 };
 const EXINTRO = {
+  caves: ['Lamps lit, the entrance behind them.', 'An hour underground.', 'Dripping water, somewhere ahead.', 'A cold draught from below.', 'The last daylight, far above.', 'Silence, and their own breathing.'],
+  ruins: ['Dawn over the dig.', 'Midday, dust in the air.', 'Evening, the trenches in shadow.', 'A cool night under canvas.', 'Morning, the sieves already working.', 'Late afternoon, a hot wind.'],
+  volcano: ['Dawn, steam on the rim.', 'Noon, the rock too hot to touch.', 'Dusk, the crater glowing.', 'Night, the ground humming.', 'A sulphur-yellow morning.', 'Afternoon, ash on the wind.'],
+  abyss: ['First light, the crane swinging out.', 'Two thousand metres and falling.', 'Black water, lights on.', 'The hull ticking with the pressure.', 'A calm sea above, a long way up.', 'Night on deck, the tether humming.'],
+  orbit: ['Sunrise, the sixteenth today.', 'Night side, city lights below.', 'Over the ocean, radio quiet.', 'Day side, visors down.', 'Crossing the terminator.', 'Mission clock: all nominal.'],
   mountains: ['Dawn, with frost on the ropes.', 'Mid-afternoon, thin air.', 'Dusk on the high trail.', 'A grey morning above the tree line.', 'Night camp, wind in the guy lines.', 'Noon, snow glare.'],
   desert: ['Dawn, before the heat.', 'High noon, no shade.', 'Dusk, the sand cooling.', 'A night of bright stars.', 'Mid-morning, wind from the south.', 'Late afternoon, long shadows.'],
   jungle: ['Dawn mist under the canopy.', 'Midday, dripping heat.', 'Dusk, the insects starting up.', 'A night of heavy rain.', 'Morning, howler monkeys overhead.', 'Afternoon, a storm building.'],
@@ -517,6 +596,11 @@ const EXINTRO = {
 const EXCREW = ['Okafor', 'Lindqvist', 'Marlowe', 'Tanaka', 'Reyes', 'Dubois', 'Halloran', 'Petrov', 'Nakamura', 'Castellan', 'Abara', 'Voss', 'Iyer', 'Brandt', 'Moreau', 'Quill', 'Sato', 'Ferreira', 'Hale', 'Zielinski'];
 // each expedition's own map (800 x 500): where it starts, the goal, and three places it may stop in each third of the way
 const EXMAP = {
+  caves: { s: [70, 90, 'Cave Mouth'], g: [720, 420, 'The Crystal Hall'], c: [[[190, 170, 'Bat Gallery', 'e'], [215, 75, 'Dry Crawl', 'n'], [175, 265, 'The Squeeze', 'r']], [[385, 250, 'Blind River', 'r'], [405, 130, 'Painted Chamber', 'n'], [355, 360, 'Boulder Choke', 'e']], [[570, 320, 'The Long Drop', 'r'], [590, 200, 'Echo Vault', 'e'], [545, 430, 'Mirror Lake', 'n']]] },
+  ruins: { s: [70, 425, 'Dig Camp'], g: [720, 90, 'The Sealed Palace'], c: [[[195, 345, 'Outer Wall', 'e'], [220, 440, 'Potters Quarter', 'n'], [175, 250, 'Collapsed Gate', 'r']], [[380, 265, 'Street of Columns', 'n'], [405, 390, 'The Granary', 'e'], [350, 150, 'Serpent Shrine', 'r']], [[565, 200, 'Royal Road', 'e'], [590, 320, 'The Old Well', 'n'], [540, 90, 'Tomb Stair', 'r']]] },
+  volcano: { s: [65, 430, 'Ash Camp'], g: [715, 95, 'The Fire Lake'], c: [[[195, 345, 'Cinder Fields', 'e'], [220, 440, 'Dead Forest', 'n'], [175, 250, 'Steam Vents', 'r']], [[380, 265, 'Glass Slope', 'r'], [405, 390, 'Old Lava Tube', 'n'], [350, 150, 'Sulphur Terraces', 'e']], [[565, 200, 'The Broken Rim', 'r'], [590, 320, 'Crater Shelf', 'e'], [545, 95, 'Devils Stair', 'n']]] },
+  abyss: { s: [70, 70, 'Surface Ship'], g: [720, 430, 'The Drowned Fleet'], c: [[[190, 160, 'Twilight Shelf', 'e'], [215, 70, 'Kelp Forest', 'n'], [175, 255, 'The Drop-Off', 'r']], [[385, 250, 'Whale Fall', 'n'], [405, 135, 'Glowing Vents', 'e'], [355, 355, 'Canyon Wall', 'r']], [[570, 320, 'Black Smokers', 'r'], [590, 205, 'Silt Plain', 'e'], [545, 425, 'Kraken Deep', 'n']]] },
+  orbit: { s: [80, 430, 'Launch Site'], g: [715, 90, 'Station Meridian'], c: [[[195, 340, 'Max Q', 'r'], [225, 440, 'Coast Phase', 'e'], [175, 245, 'Low Orbit', 'n']], [[380, 265, 'Debris Belt', 'r'], [405, 390, 'Night Side', 'n'], [350, 150, 'Transfer Burn', 'e']], [[565, 200, 'Solar Wing', 'e'], [590, 320, 'Docking Ring', 'r'], [540, 90, 'Lab Module', 'n']]] },
   mountains: { s: [70, 430, 'Base Camp'], g: [715, 85, 'The Iron Crown'], c: [[[200, 330, 'Shepherd\'s Hut', 'e'], [215, 420, 'Lower Moraine', 'n'], [170, 235, 'Raven Tarn', 'r']], [[380, 250, 'Widow\'s Pass', 'r'], [400, 370, 'The Old Workings', 'e'], [345, 150, 'Glacier Tongue', 'n']], [[560, 190, 'Knife Ridge', 'r'], [590, 300, 'Hollow Slope', 'e'], [540, 80, 'Cloud Camp', 'n']]] },
   desert: { s: [65, 410, 'Fort Hadar'], g: [725, 110, 'The Black Basin'], c: [[[195, 340, 'Bitter Wells', 'e'], [210, 440, 'Wadi Sahr', 'n'], [180, 240, 'The Singing Dunes', 'r']], [[385, 270, 'Ruins of Qasr', 'n'], [410, 400, 'Salt Flats', 'e'], [360, 150, 'Red Mesa', 'r']], [[575, 210, 'Camel\'s Rest', 'e'], [595, 330, 'The Glass Field', 'r'], [545, 95, 'Lost Oasis', 'n']]] },
   jungle: { s: [70, 420, 'River Landing'], g: [720, 95, 'Temple of the Serpent'], c: [[[195, 345, 'Mangrove Bend', 'n'], [220, 440, 'Mosquito Flats', 'r'], [175, 250, 'Howler Ridge', 'e']], [[380, 265, 'The Sunken Road', 'e'], [405, 385, 'Blackwater Swamp', 'r'], [350, 150, 'Veil Falls', 'n']], [[565, 200, 'Stone Heads', 'n'], [590, 320, 'Vine Gorge', 'r'], [540, 90, 'Cloud Forest', 'e']]] },
@@ -2901,7 +2985,7 @@ function Core(PD, CARDS) {
     const n = W.A[u]; if (!n) fail('Found a nation first.'); if (!has(EXPEDS, k)) fail('Unknown destination.'); const E = EXPEDS[k];
     risk = has(EXRISK, risk) ? risk : 'standard';
     if (rankOf(n.xp) < 1) fail('Expeditions need the rank of Elder.'); if (n.exped) fail(`Your expedition returns in ${fmtT(n.exped.end - W.now)}.`);
-    if (E.coast && !hasCoast(W, u)) fail('A deep-sea expedition needs a coastal province.');
+    if (E.coast && !hasCoast(W, u)) fail(`The ${E.n.toLowerCase()} needs a coastal province.`);
     const c = expedCost(W, u, k); for (const r in c) if ((r === 'cash' ? n.cash : n.res[r] || 0) < c[r]) fail(`This expedition needs ${money(c.cash)}${Object.keys(c).filter(r => r !== 'cash').map(r => `, ${num(c[r])} ${r}`).join('')}.`);
     for (const r in c) { if (r === 'cash') n.cash -= c[r]; else n.res[r] -= c[r]; }
     n.exped = { k, risk, c: c.cash, t: W.now, end: W.now + tq(W, E.h * HOUR), trek: trekNew(rng) }; log(n, `An expedition has set out: ${E.n} (${EXRISK[risk].n.toLowerCase()}). It returns in ${E.h} hours.`, W); touch(W, u); mTrack(W, u, 'exped', 1);
@@ -2914,8 +2998,8 @@ function Core(PD, CARDS) {
   const trekKind = (x, i) => { const M = EXMAP[x.k], w = x.trek && x.trek.w, p = M && w && M.c[i] && M.c[i][w[i]]; return (p && p[3]) || 'n'; };
   // every situation this expedition can meet: its own, the ones any expedition can meet, and the admins' additions
   function trekDb(W, k) { const out = []; const add = (id, e) => { if (Array.isArray(e) && e.length >= 7 && e.slice(1, 7).every(t => typeof t === 'string' && t)) out.push({ id, ic: String(e[0] || '🧭').slice(0, 8), q: e[1], a: e[2], b: e[3], g: e[4], x: e[5], s: e[6], c: Array.isArray(e[7]) && e[7][0] && e[7][1] ? e[7] : null }); };
-    (EXSCN[k] || []).forEach((e, i) => add(k.slice(0, 2) + i, e)); EXSCN.any.forEach((e, i) => add('an' + i, e));
-    for (const c of (W.cfg && Array.isArray(W.cfg.exScn) ? W.cfg.exScn : [])) if (c && (c.k === k || c.k === 'any') && c.id) add('cu' + c.id, [c.ic, c.q, c.a, c.b, c.g, c.x, c.s]);
+    (EXSCN[k] || []).forEach((e, i) => add(k.slice(0, 2) + i, e)); if (!EXOWN[k]) EXSCN.any.forEach((e, i) => add('an' + i, e));
+    for (const c of (W.cfg && Array.isArray(W.cfg.exScn) ? W.cfg.exScn : [])) if (c && (c.k === k || (c.k === 'any' && !EXOWN[k])) && c.id) add('cu' + c.id, [c.ic, c.q, c.a, c.b, c.g, c.x, c.s]);
     return out; }
   const trekPlace = (x, i) => { const M = EXMAP[x.k], w = x.trek && x.trek.w; return M && w && M.c[i] && M.c[i][w[i]] ? M.c[i][w[i]][2] : 'the trail'; };
   function trekScene(W, u, x, i, rng) { const n = W.A[u], db = trekDb(W, x.k), seen = n.exsn || [], used = new Set(x.trek.st.map(s => s.id)); let pool = db.filter(s => !seen.includes(s.id) && !used.has(s.id)); if (!pool.length) pool = db.filter(s => !used.has(s.id)); if (!pool.length) pool = db;
@@ -2951,10 +3035,10 @@ function Core(PD, CARDS) {
     const n = W.A[u], x = n.exped; if (!x) return false; const E = EXPEDS[x.k]; if (!E) { n.exped = null; return true; }
     if (x.trek && W.now < x.end) { const T = x.trek, fr = (W.now - x.t) / Math.max(1, x.end - x.t); let ch = false;
       while (T.st.length < T.f.length && fr >= T.f[T.st.length]) { const last = T.st[T.st.length - 1]; if (last && !last.pick) { trekOrder(W, u, x, last, 'safe', rng); last.auto = 1; trekMo(x, -1); last.mo = x.trek.mo; } const st = trekScene(W, u, x, T.st.length, rng); T.st.push(st); ch = true;
-        note(W, u, 'economy', `🧭 ${E.n}, at ${st.at}: ${st.q} Open the expedition map on the Projects page to give your orders: "${st.a}" or "${st.b}". If you do not choose before the next stop, they play it safe.`); }
+        note(W, u, 'economy', `🧭 ${E.n}, at ${st.at}: ${st.q} Open the expedition map on the Operations page to give your orders: "${st.a}" or "${st.b}". If you do not choose before the next stop, they play it safe.`); }
       return ch; }
     if (x.trek) { const last = x.trek.st[x.trek.st.length - 1]; if (last && !last.pick) { trekOrder(W, u, x, last, 'safe', rng); last.auto = 1; trekMo(x, -1); last.mo = x.trek.mo; } }
-    if (!x.trek && !x.evDone && x.c && W.now >= x.t + (x.end - x.t) / 2 && W.now < x.end) { x.evDone = 1; if (rng() < EXP.evChance) { const i = Math.floor(rng() * E.ev.length); x.ev = { i, pick: null }; note(W, u, 'economy', `🧭 ${E.n}: ${E.ev[i][0]} Choose on the Projects page before it returns: "${E.ev[i][1]}" or "${E.ev[i][2]}".`); } return true; }
+    if (!x.trek && !x.evDone && x.c && W.now >= x.t + (x.end - x.t) / 2 && W.now < x.end) { x.evDone = 1; if (rng() < EXP.evChance) { const i = Math.floor(rng() * E.ev.length); x.ev = { i, pick: null }; note(W, u, 'economy', `🧭 ${E.n}: ${E.ev[i][0]} Choose on the Operations page before it returns: "${E.ev[i][1]}" or "${E.ev[i][2]}".`); } return true; }
     if (W.now < x.end) return false; n.exped = null;
     const cash0 = n.cash;
     const legacy = !x.c, risk = has(EXRISK, x.risk) ? x.risk : 'standard', R = EXRISK[risk], push = x.trek ? trekMods(x).bold >= 2 : !!(x.ev && x.ev.pick === 'push');
