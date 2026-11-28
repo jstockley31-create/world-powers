@@ -3511,7 +3511,7 @@ async function handle(req, res) {
       const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + urls.slice(0, 5000).map(u => `<url><loc>${escH(base + u)}</loc><lastmod>${day}</lastmod></url>`).join('\n') + '\n</urlset>\n';
       res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Content-Type-Options': 'nosniff' }); return res.end(xml); }
     if (req.method === 'GET' && p === '/api/public/stats') return send(res, 200, publicStats(), { 'Cache-Control': 'public, max-age=30' });
-    if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: noLeaders(HOF), cur, feats: ((S.late || {}).hof || []).slice(0, 40).map(x => ({ t: x.t, ic: x.ic, name: x.name, what: x.what })) }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
+    if (req.method === 'GET' && p === '/api/public/hof') { let cur = null; try { const se = S.seasons.cur; if (se) { const v = seasonView(seasonW(), se, null); cur = { ...v, top: v.top.slice(0, 10) }; } } catch (e) { } return send(res, 200, { hof: noLeaders(HOF), cur }, { 'Cache-Control': 'public, max-age=30' }); } // public: anyone can see the Hall of Fame
     if (req.method === 'GET' && p === S.adminPath) { const me = auth(req); if (!isStaff(me)) return notFound(req, res); return serveStatic(req, res, ADMIN_HTML); }
     if (req.method === 'GET' && p.startsWith('/n/')) return await nationPage(req, res, p.slice(3));
     if (!p.startsWith('/api/')) return notFound(req, res);

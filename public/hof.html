@@ -39,18 +39,46 @@ table{border-collapse:collapse;width:100%;font-size:14.5px}td{border-top:1px sol
 .foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--ln);font-size:12.5px;color:#6f7d8a}
 .mu{color:var(--mu)}
 .titles td.r b{color:var(--gd2)}
-.feats div{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--ln)}.feats div:first-child{border-top:0}.feats .ic{font-size:20px;text-align:center}.feats .dt{color:var(--mu);font-size:13px;white-space:nowrap}
 .quiet{color:var(--mu);font-size:13.5px;margin:6px 0 0}
 .empty{border:1px dashed var(--ln);border-radius:14px;padding:30px;text-align:center;color:var(--mu)}
 footer{margin-top:50px;padding-top:18px;border-top:1px solid var(--ln);color:var(--mu);font-size:13px;display:flex;gap:16px;flex-wrap:wrap}footer a{color:var(--mu)}
 @media(max-width:720px){.nav a.l{display:none}.stats{grid-template-columns:repeat(2,1fr)}.champ{grid-template-columns:auto 1fr}.champ .v{grid-column:1/-1;text-align:left}.pod{grid-template-columns:1fr}.shd .when{text-align:left}.champ .fl svg{width:60px;height:40px}}
+
+/* granite memorial wall: names etched into dark stone, champions in gold */
+:root{--gr:#1b1d21;--grl:#2c2f35;--et:#c9ccd2;--et2:#8d9199}
+.granite,.card,.stats div{background-color:var(--gr);background-image:radial-gradient(circle at 28% 18%,rgba(255,255,255,.05),transparent 55%),repeating-radial-gradient(circle at 70% 60%,rgba(255,255,255,.022) 0 1px,transparent 1px 3px)}
+.card{border:0;border-top:1px solid #34373d;border-radius:4px;box-shadow:inset 0 0 70px rgba(0,0,0,.55),0 10px 30px rgba(0,0,0,.45)}
+.stats{border-radius:4px;border-color:#2a2d33;background:#2a2d33}.stats b{font-family:Inter,system-ui,sans-serif;font-weight:600;color:var(--et);text-shadow:0 -1px 0 #000,0 1px 0 rgba(255,255,255,.07)}.stats span{color:var(--et2);letter-spacing:.04em}
+h1{background:none;color:var(--et);-webkit-text-fill-color:currentColor;letter-spacing:.16em;text-transform:uppercase;text-shadow:0 -2px 0 rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.1)}
+h2.sec{color:var(--et);letter-spacing:.14em;text-transform:uppercase;font-size:18px;text-shadow:0 -1px 0 #000}
+.et{font-family:Cinzel,Georgia,serif;color:var(--et);text-shadow:0 -1px 0 rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.08)}
+.lab{font:600 11.5px Inter,system-ui,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:var(--et2)}
+.wall{scroll-margin-top:70px;margin:0 0 22px;padding:30px 34px}
+.wall .top{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--grl);padding-bottom:14px}
+.wall .top .et{font-size:26px;letter-spacing:.12em;text-transform:uppercase;line-height:1.2}
+.wall .top .lab{text-align:right;line-height:1.8}
+.wall .ch{display:flex;align-items:center;gap:18px;margin:24px 0 20px}.wall .crown{font-size:38px;line-height:1}
+.wall .ch .fl svg{width:66px;height:44px;border-radius:3px;box-shadow:0 4px 14px #000c}.wall .ch .sw{width:44px;height:44px}
+.wall .nm{font-family:Cinzel,Georgia,serif;font-size:clamp(28px,4.4vw,42px);line-height:1.15;letter-spacing:.04em;color:#e9c46a;text-shadow:0 -1px 0 rgba(0,0,0,.9),0 0 18px rgba(233,196,106,.22)}
+.wall .sc{margin-left:auto;text-align:right}.wall .sc .et{font-size:24px;font-variant-numeric:tabular-nums}
+.wall .lst{columns:2;column-gap:48px}.wall .lst div{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #26292e;break-inside:avoid}
+.wall .lst .rn{font-family:Cinzel,Georgia,serif;color:var(--et2);width:42px;flex:none;text-shadow:0 -1px 0 #000}.wall .lst .who{font-family:Cinzel,Georgia,serif;color:#b9bdc4;font-size:16.5px;text-shadow:0 -1px 0 #000;flex:1;min-width:0}
+.wall .lst .v{font-size:13px;color:#7e838b;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wall .lst .fl svg{width:24px;height:16px;opacity:.9}.wall .lst .sw{width:24px;height:16px;margin-right:8px;border-radius:2px}
+.wall .p2 .who{color:var(--sv)}.wall .p3 .who{color:var(--bz)}
+.wall .awl{margin-top:22px;font-size:13.5px;color:var(--et2);line-height:1.9}.wall .awl b{color:var(--et);font-weight:600}.wall .awl span{white-space:nowrap}
+.wall .foot{border-top-color:var(--grl);color:#6b7078;margin-top:18px}
+.roll a{border-radius:4px;border-color:#2a2d33;background-color:var(--gr)}.roll .sn{color:var(--et2)}.roll b{font-family:Cinzel,Georgia,serif;color:#e9c46a}
+.titles td{border-top-color:#26292e}.titles td:nth-child(2){font-family:Cinzel,Georgia,serif;color:#b9bdc4}
+.live .pill{border-radius:4px}
+@media(max-width:720px){.wall{padding:22px 18px}.wall .lst{columns:1}.wall .ch{flex-wrap:wrap}.wall .sc{margin-left:0;text-align:left;width:100%}.wall .top .lab{text-align:left}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style></head><body>
 <nav class="nav"><div class="in"><a class="brand" href="/"><img src="/icon.svg" alt="">WORLD POWERS</a><a class="l" href="/updates">Updates</a><a class="l" href="/faq">FAQ</a><a class="play" href="/play">Play now</a></div></nav>
 <main class="w">
 <header class="hero"><svg class="laurel" viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="#d4a64a" stroke-width="2" stroke-linecap="round"><path d="M22 54C10 46 8 30 14 18"/><path d="M42 54c12-8 14-24 8-36"/></g><g fill="#d4a64a"><ellipse cx="12" cy="26" rx="3" ry="6" transform="rotate(-25 12 26)"/><ellipse cx="12" cy="37" rx="3" ry="6" transform="rotate(-45 12 37)"/><ellipse cx="17" cy="47" rx="3" ry="6" transform="rotate(-65 17 47)"/><ellipse cx="52" cy="26" rx="3" ry="6" transform="rotate(25 52 26)"/><ellipse cx="52" cy="37" rx="3" ry="6" transform="rotate(45 52 37)"/><ellipse cx="47" cy="47" rx="3" ry="6" transform="rotate(65 47 47)"/></g><path d="M22 36l-2-14 7 6 5-9 5 9 7-6-2 14z" fill="#f0d48f" stroke="#8a6a24" stroke-width="1.2" stroke-linejoin="round"/></svg>
 <h1>Hall of Fame</h1><p class="lede">Every season ends with a champion. Once a season is recorded here it is permanent: nobody can change or remove it, not even the game's administrators.</p></header>
-<div id="stats"></div><div id="live"></div><div id="roll"></div><div id="list"><p class="mu">Loading the Hall of Fame…</p></div><div id="titles"></div><div id="feats"></div>
+<div id="live"></div><div id="list"><p class="mu">Loading the Hall of Fame…</p></div>
 <footer><span>World Powers</span><a href="/play">Play</a><a href="/updates">Updates</a><a href="/faq">FAQ</a><a href="/fair">Fair play</a></footer>
 </main>
 <script src="/core.js"></script>
@@ -66,17 +94,14 @@ fetch('/api/public/hof').then(r=>r.json()).then(j=>{
  const tally={};for(const s of real){const k=s.champion.name;(tally[k]=tally[k]||{n:0,x:s.champion,last:0}).n++;tally[k].x=s.champion;tally[k].last=Math.max(tally[k].last,s.season)}
  const T=Object.entries(tally).sort((a,b)=>b[1].n-a[1].n||b[1].last-a[1].last);
  const nations=new Set();for(const s of real)for(const x of s.top||[])nations.add(x.name);
- $('stats').innerHTML=`<div class="stats" role="list"><div role="listitem"><b>${real.length}</b><span>seasons decided</span></div><div role="listitem"><b>${T.length}</b><span>different champions</span></div><div role="listitem"><b>${T[0]?T[0][1].n:0}</b><span>most titles${T[0]?`: ${esc(T[0][0])}`:''}</span></div><div role="listitem"><b>${(j.feats||[]).length}</b><span>great feats</span></div></div>`;
  const c=j.cur;if(c){const now=Date.now(),live=c.status==='live',pct=live&&c.end&&c.start?Math.min(100,Math.max(0,(now-c.start)/(c.end-c.start)*100)):0,left=c.end?Math.max(0,c.end-now):0;
   $('live').innerHTML=`<h2 class="sec">Current season</h2><section class="card live"><div class="hd"><div><span class="pill"><i></i>${live?'In progress':'Starting soon'}</span><h3>${esc(c.name)}</h3><div class="mu">${live?`Ranked by ${esc(c.metricName.toLowerCase())}`:`Starts ${d(c.start)}`}</div></div>${live&&c.end?`<div class="mu" style="text-align:right">Ends ${d(c.end)}<br><b style="color:var(--tx)">${Math.floor(left/864e5)}d ${Math.floor(left%864e5/36e5)}h left</b></div>`:''}</div>${live&&c.end?`<div class="tbar" role="progressbar" aria-label="Season progress" aria-valuenow="${Math.round(pct)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct.toFixed(1)}%"></i></div><div class="tlab"><span>${d(c.start)}</span><span>${Math.round(pct)}% through</span></div>`:''}${c.top&&c.top.length?`<table style="margin-top:12px">${c.top.map(x=>`<tr><td class="n">${x.r}</td><td>${FL(x)}${esc(x.name)}</td><td class="r">${esc(x.f)}</td></tr>`).join('')}</table>`:''}</section>`}
- if(L.length>1)$('roll').innerHTML=`<h2 class="sec">Champions <small>Every season's winner</small></h2><nav class="roll" aria-label="Champions by season">${L.map(s=>`<a href="#s${s.season}-${s.start}"><span class="sn">Season ${s.season}</span>${FL(s.champion)}<b>${esc(s.champion.name)}</b><span class="mu" style="font-size:12.5px">${esc(s.name)}</span></a>`).join('')}</nav>`;
- $('list').innerHTML=(L.length?`<h2 class="sec">Seasons <small>Newest first</small></h2>`+L.map(s=>{const t=s.top||[];return `<section class="card season" id="s${s.season}-${s.start}"><div class="shd"><div><div class="no">Season ${s.season}</div><h3>${esc(s.name)}</h3></div><div class="when">${d(s.start)} – ${d(s.end)}<br>Ranked by ${esc(s.metricName.toLowerCase())} · ${s.players} nation${s.players===1?'':'s'}</div></div>
-  <div class="champ">${FL(s.champion)}<div><span class="t">CHAMPION</span><b>${esc(s.champion.name)}</b></div><div class="v">${esc(s.champion.shown)}<small>${esc(s.metricName)}</small></div></div>
-  ${t.length>1?`<div class="pod">${t.slice(1,3).map(x=>`<div class="pd p${x.r}"><span class="rk">${x.r===2?'2nd':'3rd'}</span>${FL(x)}<div><b>${esc(x.name)}</b><small>${esc(x.shown)}</small></div></div>`).join('')}</div>`:''}
-  ${t.length>3?`<table>${t.slice(3).map(x=>`<tr><td class="n">${x.r}</td><td>${FL(x)}${esc(x.name)}</td><td class="r">${esc(x.shown)}</td></tr>`).join('')}</table>`:''}
-  ${s.awards&&s.awards.length?`<div class="aw">${s.awards.map(a=>`<div><div class="k">🏅 ${esc(a.award)}</div><div class="nm">${FL(a)}${esc(a.name)}</div><div class="mu">${esc(a.shown)}</div></div>`).join('')}</div>`:''}
-  <div class="foot"><span>${s.veterans?`🎗 ${s.veterans} nation${s.veterans===1?'':'s'} earned the participation badge`:''}</span><span>Recorded ${new Date(s.recorded||s.end).toUTCString().slice(5,22)} UTC · permanent record</span></div></section>`}).join(''):'<div class="empty">No season has finished yet. The first champion will appear here.</div>')+(blank?`<p class="quiet">${blank} season${blank===1?'':'s'} ended without a qualifying nation.</p>`:'');
- if(T.length)$('titles').innerHTML=`<h2 class="sec">Most titles</h2><section class="card"><table class="titles">${T.slice(0,10).map(([k,v],i)=>`<tr><td class="n">${i+1}</td><td>${FL(v.x)}${esc(k)}</td><td class="r"><b>${v.n}</b> title${v.n===1?'':'s'} · last in season ${v.last}</td></tr>`).join('')}</table></section>`;
- const F=j.feats||[];if(F.length)$('feats').innerHTML=`<h2 class="sec">Great feats <small>Space Race firsts and World Auction winners</small></h2><section class="card feats">${F.map(x=>`<div><span class="ic" aria-hidden="true">${esc(x.ic||'⭐')}</span><span><b>${esc(x.name)}</b> ${esc(x.what)}</span><span class="dt">${d(x.t)}</span></div>`).join('')}</section>`;
+ const RN=n=>{let r='';for(const[v,c]of[[1000,'M'],[900,'CM'],[500,'D'],[400,'CD'],[100,'C'],[90,'XC'],[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']])while(n>=v){r+=c;n-=v}return r};
+ $('list').innerHTML=(L.length?`<h2 class="sec">Seasons <small>Newest first</small></h2>`+L.map(s=>{const t=s.top||[];return `<section class="card wall season" id="s${s.season}-${s.start}"><div class="top"><div class="et">Season ${RN(s.season)}${s.name&&s.name!=='Season '+s.season?` · ${esc(s.name)}`:''}</div><div class="lab">${d(s.start)} – ${d(s.end)}<br>${esc(s.metricName)} · ${s.players} nation${s.players===1?'':'s'}</div></div>
+  <div class="ch"><span class="crown" aria-hidden="true">👑</span>${FL(s.champion)}<div><div class="lab">Champion</div><div class="nm">${esc(s.champion.name)}</div></div><div class="sc"><div class="et">${esc(s.champion.shown)}</div><div class="lab">${esc(s.metricName)}</div></div></div>
+  ${t.length>1?`<div class="lst">${t.slice(1).map(x=>`<div class="p${x.r}"><span class="rn">${RN(x.r)}</span>${FL(x)}<span class="who">${esc(x.name)}</span><span class="v">${esc(x.shown)}</span></div>`).join('')}</div>`:''}
+  ${s.awards&&s.awards.length?`<div class="awl">${s.awards.map(a=>`<span><b>${esc(a.award)}</b> ${esc(a.name)}</span>`).join(' · ')}</div>`:''}
+  <div class="foot"><span>${s.veterans?`🎗 ${s.veterans} nation${s.veterans===1?'':'s'} earned the participation badge`:''}</span><span>Carved ${new Date(s.recorded||s.end).toUTCString().slice(5,22)} UTC · permanent record</span></div></section>`}).join(''):'<div class="empty">No season has finished yet. The first champion will be carved here.</div>')+(blank?`<p class="quiet">${blank} season${blank===1?'':'s'} ended without a qualifying nation.</p>`:'');
+
 }).catch(()=>{$('list').innerHTML='<p class="mu">The Hall of Fame could not be loaded. Try again in a moment.</p>'});
 </script></body></html>
